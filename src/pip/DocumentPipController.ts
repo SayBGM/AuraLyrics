@@ -71,6 +71,7 @@ export class DocumentPipController {
 			this.applyRootSettings(root, nextSettings);
 			cover.toggleAttribute("hidden", !coverUrl || !nextSettings.backgroundEnabled);
 		};
+		let currentPlaying: boolean | undefined;
 		const session: PipSession = {
 			window: pipWindow,
 			root: content,
@@ -82,6 +83,10 @@ export class DocumentPipController {
 				}
 			},
 			setPlaying: (isPlaying) => {
+				if (currentPlaying === isPlaying) {
+					return;
+				}
+				currentPlaying = isPlaying;
 				this.updatePlayControl(controlsElement, isPlaying);
 			},
 			applySettings,

@@ -66,6 +66,37 @@ describe("DocumentPipController", () => {
 		expect(root?.classList.contains("controls-visible")).toBe(true);
 	});
 
+	test("does not rewrite the play toggle DOM when playback state is unchanged", async () => {
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+
+		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "", {
+			isPlaying: true,
+			onPrevious: vi.fn(),
+			onTogglePlay: vi.fn(),
+			onNext: vi.fn(),
+			onClose: vi.fn(),
+		});
+		const button = pipWindow.document.querySelector<HTMLButtonElement>('[data-control="toggle-play"]');
+		const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+		const innerHtmlWrites = vi.fn();
+		Object.defineProperty(button, "innerHTML", {
+			configurable: true,
+			get: () => descriptor?.get?.call(button) ?? "",
+			set: (value: string) => {
+				innerHtmlWrites(value);
+				descriptor?.set?.call(button, value);
+			},
+		});
+
+		session.setPlaying(true);
+		session.setPlaying(true);
+
+		expect(innerHtmlWrites).not.toHaveBeenCalled();
+	});
+
 	test("applies visual settings to the PiP root and background", async () => {
 		const pipWindow = createPipWindow();
 		window.documentPictureInPicture = {
