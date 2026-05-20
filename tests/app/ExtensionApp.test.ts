@@ -38,7 +38,7 @@ describe("ExtensionApp", () => {
 		app.start();
 		app.start();
 
-		expect(spicetify.Player.addEventListener).toHaveBeenCalledTimes(1);
+		expect(spicetify.Player.addEventListener).toHaveBeenCalledTimes(2);
 		expect(spicetify.Topbar?.Button).toHaveBeenCalledTimes(1);
 		app.destroy();
 	});
@@ -62,5 +62,35 @@ describe("ExtensionApp", () => {
 
 		expect(internals.applySettings).not.toHaveBeenCalled();
 		expect(internals.closePip).not.toHaveBeenCalled();
+	});
+
+	test("updates PiP play state from playback callbacks instead of the lyric frame tick", () => {
+		const { spicetify } = createSpicetify();
+		let playbackListener: (() => void) | undefined;
+		let isPlaying = true;
+		spicetify.Player.isPlaying = () => isPlaying;
+		spicetify.Player.addEventListener = vi.fn((event: string, listener: () => void) => {
+			if (event === "onplaypause") {
+				playbackListener = listener;
+			}
+		});
+		const app = new ExtensionApp(spicetify);
+		const setPlaying = vi.fn();
+		const internals = app as unknown as {
+			session: { setPlaying: (playing: boolean) => void };
+			lastLoadState: { status: string };
+			tick: (deltaTime: number) => void;
+		};
+		app.start();
+		internals.session = { setPlaying };
+		internals.lastLoadState = { status: "ready" };
+
+		internals.tick(1 / 60);
+		isPlaying = false;
+		playbackListener?.();
+
+		expect(setPlaying).toHaveBeenCalledTimes(1);
+		expect(setPlaying).toHaveBeenCalledWith(false);
+		app.destroy();
 	});
 });

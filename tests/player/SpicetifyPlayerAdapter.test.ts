@@ -13,6 +13,44 @@ const createSpicetify = (overrides: Partial<SpicetifyGlobal["Player"]>): Spiceti
 	}) as unknown as SpicetifyGlobal;
 
 describe("SpicetifyPlayerAdapter", () => {
+	test("subscribes to playback changes through Spicetify player events", () => {
+		const addEventListener = vi.fn();
+		const player = new SpicetifyPlayerAdapter(
+			createSpicetify({
+				isPlaying: () => false,
+				addEventListener,
+			})
+		);
+
+		player.attach();
+
+		expect(addEventListener).toHaveBeenCalledWith("songchange", expect.any(Function));
+		expect(addEventListener).toHaveBeenCalledWith("onplaypause", expect.any(Function));
+	});
+
+	test("emits playback state when Spicetify reports play/pause changes", () => {
+		let playPauseListener: (() => void) | undefined;
+		let isPlaying = true;
+		const player = new SpicetifyPlayerAdapter(
+			createSpicetify({
+				isPlaying: () => isPlaying,
+				addEventListener: vi.fn((event: string, listener: () => void) => {
+					if (event === "onplaypause") {
+						playPauseListener = listener;
+					}
+				}),
+			})
+		);
+		const listener = vi.fn();
+		player.playbackChanged.subscribe(listener);
+
+		player.attach();
+		isPlaying = false;
+		playPauseListener?.();
+
+		expect(listener).toHaveBeenCalledWith(false);
+	});
+
 	test("uses explicit pause when currently playing", () => {
 		const pause = vi.fn();
 		const togglePlay = vi.fn();

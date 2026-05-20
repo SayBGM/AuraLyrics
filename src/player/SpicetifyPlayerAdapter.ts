@@ -4,17 +4,21 @@ import { EventEmitter } from "../shared/EventEmitter";
 
 export class SpicetifyPlayerAdapter {
 	public readonly trackChanged = new EventEmitter<TrackIdentity | undefined>();
+	public readonly playbackChanged = new EventEmitter<boolean>();
 
 	private readonly onSongChange = () => this.trackChanged.emit(this.getCurrentTrack());
+	private readonly onPlayPause = () => this.playbackChanged.emit(this.isPlaying());
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {}
 
 	public attach(): void {
 		this.spicetify.Player.addEventListener("songchange", this.onSongChange);
+		this.spicetify.Player.addEventListener("onplaypause", this.onPlayPause);
 	}
 
 	public detach(): void {
 		this.spicetify.Player.removeEventListener?.("songchange", this.onSongChange);
+		this.spicetify.Player.removeEventListener?.("onplaypause", this.onPlayPause);
 	}
 
 	public getCurrentTrack(): TrackIdentity | undefined {

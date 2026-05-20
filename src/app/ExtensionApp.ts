@@ -84,6 +84,7 @@ export class ExtensionApp {
 		this.player.attach();
 		this.disposers.push(
 			this.player.trackChanged.subscribe((track) => void this.onTrackChanged(track)),
+			this.player.playbackChanged.subscribe((isPlaying) => this.session?.setPlaying(isPlaying)),
 			this.settings.subscribe(() => this.applySettings()),
 			this.pip.closed.subscribe(() => this.closePip(false))
 		);
@@ -222,7 +223,6 @@ export class ExtensionApp {
 		}
 		const settings = this.settings.get();
 		const timestamp = this.player.getTimestamp(settings.lyricsDelayMs);
-		this.session.setPlaying(this.player.isPlaying());
 		this.renderer.update(timestamp, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
 	}
 
