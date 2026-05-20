@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$Repo = if ($env:AURA_LYRICS_REPO) { $env:AURA_LYRICS_REPO } elseif ($env:DYNAMIC_PIP_LYRICS_REPO) { $env:DYNAMIC_PIP_LYRICS_REPO } else { "backgwangmin/spotify-lyris" }
+$Repo = if ($env:AURA_LYRICS_REPO) { $env:AURA_LYRICS_REPO } elseif ($env:DYNAMIC_PIP_LYRICS_REPO) { $env:DYNAMIC_PIP_LYRICS_REPO } else { "SayBGM/AuraLyrics" }
 $ExtensionName = "aura-lyrics.js"
 $BaseUrl = "https://github.com/$Repo/releases/latest/download"
 

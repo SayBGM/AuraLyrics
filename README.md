@@ -30,13 +30,13 @@ AuraLyrics is distributed as a single Spicetify extension file: `aura-lyrics.js`
 ### macOS / Linux
 
 ```sh
-curl -fsSL https://github.com/backgwangmin/spotify-lyris/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/SayBGM/AuraLyrics/releases/latest/download/install.sh | sh
 ```
 
 ### Windows PowerShell
 
 ```powershell
-iwr https://github.com/backgwangmin/spotify-lyris/releases/latest/download/install.ps1 -UseB | iex
+iwr https://github.com/SayBGM/AuraLyrics/releases/latest/download/install.ps1 -UseB | iex
 ```
 
 ### Manual Install

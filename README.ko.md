@@ -28,13 +28,13 @@ AuraLyrics는 Spicetify가 읽을 수 있는 단일 확장 파일 `aura-lyrics.j
 ### macOS / Linux
 
 ```sh
-curl -fsSL https://github.com/backgwangmin/spotify-lyris/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/SayBGM/AuraLyrics/releases/latest/download/install.sh | sh
 ```
 
 ### Windows PowerShell
 
 ```powershell
-iwr https://github.com/backgwangmin/spotify-lyris/releases/latest/download/install.ps1 -UseB | iex
+iwr https://github.com/SayBGM/AuraLyrics/releases/latest/download/install.ps1 -UseB | iex
 ```
 
 ### 수동 설치

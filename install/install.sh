@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-REPO="${AURA_LYRICS_REPO:-${DYNAMIC_PIP_LYRICS_REPO:-backgwangmin/spotify-lyris}}"
+REPO="${AURA_LYRICS_REPO:-${DYNAMIC_PIP_LYRICS_REPO:-SayBGM/AuraLyrics}}"
 EXTENSION_NAME="aura-lyrics.js"
 BASE_URL="https://github.com/${REPO}/releases/latest/download"
 
