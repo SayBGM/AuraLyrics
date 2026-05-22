@@ -7,7 +7,7 @@ body {
 	overflow: hidden;
 	background: #050505;
 	color: white;
-	font-family: spotify-circular, sans-serif;
+	font-family: "DM Sans", Inter, spotify-circular, sans-serif;
 	-webkit-app-region: drag;
 	user-select: none;
 }
@@ -20,6 +20,17 @@ body {
 	-webkit-app-region: drag;
 }
 
+#aura-lyrics-root::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background:
+		radial-gradient(circle at 14% 16%, rgba(255, 104, 72, 0.2), transparent 34%),
+		radial-gradient(circle at 88% 84%, rgba(35, 103, 255, 0.16), transparent 38%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 38%);
+	pointer-events: none;
+}
+
 .pip-cover {
 	position: absolute;
 	inset: -10%;
@@ -27,7 +38,7 @@ body {
 	height: 120%;
 	object-fit: cover;
 	filter: blur(var(--background-blur, 36px)) saturate(var(--background-saturation, 1.15));
-	transform: scale(1.05);
+	transform: scale(1.08);
 	opacity: 0.95;
 }
 
@@ -64,6 +75,7 @@ body {
 	place-items: center;
 	color: rgba(255, 255, 255, 0.96);
 	-webkit-app-region: drag;
+	font-family: "DM Sans", Inter, spotify-circular, sans-serif;
 }
 `;
 
@@ -79,9 +91,9 @@ const controlsStyles = `
 	padding: 6px;
 	border: 1px solid rgba(255, 255, 255, 0.16);
 	border-radius: 999px;
-	background: linear-gradient(180deg, rgba(32, 34, 37, 0.82), rgba(13, 14, 16, 0.76));
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 246, 248, 0.82));
 	backdrop-filter: blur(24px) saturate(1.35);
-	box-shadow: 0 18px 46px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.11);
+	box-shadow: 0 18px 46px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.84);
 	opacity: 0;
 	pointer-events: none;
 	transform: translate(-50%, 8px) scale(0.98);
@@ -111,7 +123,7 @@ const controlsStyles = `
 	border: 0;
 	border-radius: 999px;
 	background: transparent;
-	color: rgba(255, 255, 255, 0.92);
+	color: rgba(5, 5, 5, 0.72);
 	font: inherit;
 	line-height: 1;
 	transition: transform 150ms ease, background 150ms ease, color 150ms ease;
@@ -136,8 +148,8 @@ const controlsStyles = `
 .pip-controls button:focus-visible,
 .pip-close:hover,
 .pip-close:focus-visible {
-	background: rgba(255, 255, 255, 0.16);
-	color: #fff;
+	background: rgba(5, 5, 5, 0.08);
+	color: #050505;
 	transform: scale(1.05);
 	outline: none;
 }
@@ -154,9 +166,9 @@ const controlsStyles = `
 	top: 14px;
 	width: 30px;
 	height: 30px;
-	background: rgba(18, 20, 22, 0.72);
-	color: #fff;
-	border: 1px solid rgba(255, 255, 255, 0.16);
+	background: rgba(255, 255, 255, 0.86);
+	color: #050505;
+	border: 1px solid rgba(255, 255, 255, 0.42);
 	box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 	opacity: 0;
 	pointer-events: none;
@@ -166,6 +178,7 @@ const controlsStyles = `
 .pip-close:hover,
 .pip-close:focus-visible {
 	background: rgba(255, 75, 75, 0.88);
+	color: #fff;
 }
 
 .pip-close svg {
@@ -265,9 +278,9 @@ const lyricsStyles = `
 
 .lyric {
 	font-size: var(--lyrics-size);
-	font-weight: 800;
+	font-weight: 700;
 	letter-spacing: -0.045em;
-	line-height: 1.05;
+	line-height: 1.1;
 	text-shadow: 0 0 var(--text-shadow-blur-radius, 4px) rgba(255, 255, 255, var(--text-shadow-opacity, 0%));
 }
 
@@ -279,7 +292,7 @@ const lyricsStyles = `
 .line-group.active .line {
 	color: rgba(255, 255, 255, 0.98);
 	letter-spacing: -0.055em;
-	text-shadow: 0 0 calc(18px * var(--motion-intensity, 1)) rgba(255, 255, 255, 0.24);
+	text-shadow: 0 0 calc(18px * var(--motion-intensity, 1)) rgba(255, 104, 72, 0.28);
 }
 
 .line-group.sung .line {
@@ -299,7 +312,7 @@ const lyricsStyles = `
 
 .syllable {
 	display: inline-block;
-	background: linear-gradient(90deg, #fff var(--gradient-progress, 0%), rgba(255, 255, 255, 0.32) var(--gradient-progress, 0%));
+	background: linear-gradient(90deg, #fff 0%, #fff var(--gradient-progress, 0%), rgba(255, 104, 72, 0.42) var(--gradient-progress, 0%), rgba(255, 255, 255, 0.32) 100%);
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;

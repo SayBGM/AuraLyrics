@@ -39,6 +39,7 @@ export class SettingsView {
 		const settings = this.store.get();
 		this.container.replaceChildren(
 			this.styles(),
+			this.hero(),
 			this.section("General", [
 				this.select("Preset", settings.preset, Object.keys(PRESETS).concat("custom"), (value) => {
 					if (value === "custom") {
@@ -90,6 +91,20 @@ export class SettingsView {
 				}),
 			])
 		);
+	}
+
+	private hero(): HTMLElement {
+		const hero = document.createElement("div");
+		hero.className = "settings-hero";
+		const eyebrow = document.createElement("span");
+		eyebrow.className = "settings-eyebrow";
+		eyebrow.textContent = "AURALYRICS CONTROL";
+		const title = document.createElement("strong");
+		title.textContent = "Tune the PiP stage.";
+		const detail = document.createElement("p");
+		detail.textContent = "Album ambience, lyric sync, motion, and providers in one focused surface.";
+		hero.append(eyebrow, title, detail);
+		return hero;
 	}
 
 	private providerControls(settings: ExtensionSettings): HTMLElement[] {
