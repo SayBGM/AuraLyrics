@@ -1,6 +1,6 @@
 import type { Interlude, LineLyrics, LyricsDocument, SyllableLyrics } from "./types";
 
-const MINIMUM_INTERLUDE_DURATION = 2;
+const MINIMUM_INTERLUDE_DURATION = 6;
 const END_INTERLUDE_EARLY_BY = 0.25;
 
 export const buildInterlude = (startTime: number, endTime: number): Interlude => ({
@@ -8,6 +8,18 @@ export const buildInterlude = (startTime: number, endTime: number): Interlude =>
 	startTime,
 	endTime: Math.max(startTime, endTime),
 });
+
+export const stripInterludes = (lyrics: LyricsDocument): LyricsDocument => {
+	if (lyrics.type === "line") {
+		return { ...lyrics, content: lyrics.content.filter((item) => item.type !== "interlude") };
+	}
+	if (lyrics.type === "syllable") {
+		return { ...lyrics, content: lyrics.content.filter((item) => item.type !== "interlude") };
+	}
+	return lyrics;
+};
+
+export const rebuildInterludes = (lyrics: LyricsDocument): LyricsDocument => addInterludes(stripInterludes(lyrics));
 
 const addLineInterludes = (lyrics: LineLyrics): LineLyrics => {
 	const content = [...lyrics.content];

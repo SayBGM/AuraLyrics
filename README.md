@@ -87,7 +87,7 @@ If both fail, the settings UI reports that both desktop and mobile token request
 
 Settings are grouped into:
 
-- General: preset, aspect ratio, lyrics delay, font scale.
+- General: preset, lyrics delay, font scale.
 - Background: album background, blur, dim, saturation, vignette, inactive blur.
 - Lyrics: sync preference, alignment, vertical position, context lines, interludes.
 - Motion: animation, intensity, glow, reduced motion.

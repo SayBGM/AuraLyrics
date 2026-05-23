@@ -1,6 +1,7 @@
 import type { Interlude, LyricsDocument } from "../lyrics/types";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import type { AnimatedGroup } from "./AnimatedGroup";
+import type { InterludeWaveform } from "./AudioAnalysisWaveformService";
 import { InterludeView } from "./components/Interlude";
 import { LineVocals } from "./components/LineVocals";
 import { SyllableVocals } from "./components/SyllableVocals";
@@ -14,6 +15,8 @@ export type StatusViewModel = {
 	onAction?: () => void;
 };
 
+export type InterludeWaveformMap = Record<string, InterludeWaveform>;
+
 export class LyricsRenderer {
 	private container?: HTMLDivElement;
 	private lyricsViewport?: HTMLDivElement;
@@ -21,7 +24,13 @@ export class LyricsRenderer {
 	private groups: AnimatedGroup[] = [];
 	private settings?: ExtensionSettings;
 
-	public mount(root: HTMLElement, lyrics: LyricsDocument, settings: ExtensionSettings, provider?: string): void {
+	public mount(
+		root: HTMLElement,
+		lyrics: LyricsDocument,
+		settings: ExtensionSettings,
+		provider?: string,
+		waveforms: InterludeWaveformMap = {}
+	): void {
 		this.destroy();
 		this.container = document.createElement("div");
 		this.container.className = "aura-lyrics";
@@ -34,7 +43,7 @@ export class LyricsRenderer {
 		this.lyricsViewport.append(this.lyricsTrack);
 		this.container.append(this.lyricsViewport);
 		root.replaceChildren(this.container);
-		this.buildLyrics(lyrics, settings);
+		this.buildLyrics(lyrics, settings, waveforms);
 		appendProviderSource(this.lyricsTrack, provider);
 	}
 
@@ -84,7 +93,7 @@ export class LyricsRenderer {
 		this.settings = undefined;
 	}
 
-	private buildLyrics(lyrics: LyricsDocument, settings: ExtensionSettings): void {
+	private buildLyrics(lyrics: LyricsDocument, settings: ExtensionSettings, waveforms: InterludeWaveformMap): void {
 		if (!this.lyricsTrack) {
 			return;
 		}
@@ -100,7 +109,7 @@ export class LyricsRenderer {
 		if (lyrics.type === "line") {
 			for (const item of lyrics.content) {
 				if (item.type === "interlude") {
-					this.appendInterlude(item, settings);
+					this.appendInterlude(item, settings, waveforms);
 					continue;
 				}
 				const line = new LineVocals(item, settings);
@@ -112,7 +121,7 @@ export class LyricsRenderer {
 		}
 		for (const item of lyrics.content) {
 			if (item.type === "interlude") {
-				this.appendInterlude(item, settings);
+				this.appendInterlude(item, settings, waveforms);
 				continue;
 			}
 			if (settings.syncPreference === "line-only") {
@@ -146,11 +155,11 @@ export class LyricsRenderer {
 		applyHoldTiming(this.groups);
 	}
 
-	private appendInterlude(item: Interlude, settings: ExtensionSettings): void {
+	private appendInterlude(item: Interlude, settings: ExtensionSettings, waveforms: InterludeWaveformMap): void {
 		if (!this.lyricsTrack || !settings.showInterludes) {
 			return;
 		}
-		const interlude = new InterludeView(item);
+		const interlude = new InterludeView(item, waveforms[interludeKey(item)]);
 		this.groups.push(interlude);
 		this.lyricsTrack.append(interlude.element);
 	}
@@ -166,3 +175,7 @@ export class LyricsRenderer {
 		root.style.fontFamily = `${settings.fontFamily}, sans-serif`;
 	}
 }
+
+export const interludeKey = (interlude: Interlude): string => `${roundTime(interlude.startTime)}:${roundTime(interlude.endTime)}`;
+
+const roundTime = (value: number): number => Math.round(value * 1000) / 1000;

@@ -1,5 +1,5 @@
 import type { ExtensionSettings } from "../settings/SettingsStore";
-import { addInterludes } from "./InterludeBuilder";
+import { addInterludes, rebuildInterludes } from "./InterludeBuilder";
 import type { LyricsCache } from "./LyricsCache";
 import { normalizeLyrics } from "./LyricsNormalizer";
 import type { ProviderRegistry } from "./providers/ProviderRegistry";
@@ -43,7 +43,8 @@ export class LyricsService {
 		const primaryProvider = providers.find((provider) => provider.supports(track));
 		const cached = !refresh ? this.cache.get(track.uri) : undefined;
 		if (cached && cached.provider === primaryProvider?.id) {
-			return { status: "ready", track, lyrics: cached.lyrics, provider: cached.provider };
+			const lyrics = rebuildInterludes(cached.lyrics);
+			return { status: "ready", track, lyrics, provider: cached.provider };
 		}
 
 		const options = { ...DEFAULT_OPTIONS, ...this.options };

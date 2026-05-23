@@ -1,4 +1,5 @@
 import type { TrackIdentity } from "../lyrics/types";
+import type { AudioAnalysisData } from "../renderer/AudioAnalysisWaveformService";
 
 declare global {
 	interface Window {
@@ -60,6 +61,7 @@ export type SpicetifyGlobal = {
 	Config?: {
 		version?: string;
 	};
+	getAudioData?: (uri?: string) => Promise<AudioAnalysisData | undefined>;
 	showNotification?: (message: string, isError?: boolean, timeout?: number) => void;
 };
 

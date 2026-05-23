@@ -588,7 +588,6 @@ Syllable span은 `background-clip: text` 또는 pseudo-element overlay로 sung p
 - `popup-lyrics:font-size`
 - `popup-lyrics:blur-size`
 - `popup-lyrics:font-family`
-- `popup-lyrics:ratio`
 - `popup-lyrics:delay`
 - `popup-lyrics:services:*`
 - `popup-lyrics:services-order`

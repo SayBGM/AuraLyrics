@@ -1,4 +1,9 @@
 export const settingsStyles = `
+body.aura-lyrics-settings-open .main-trackCreditsModal-container {
+	width: min(920px, calc(100vw - 32px));
+	max-width: min(920px, calc(100vw - 32px));
+}
+
 .aura-lyrics-settings {
 	--mm-ink: #050505;
 	--mm-charcoal: #242424;
@@ -15,12 +20,11 @@ export const settingsStyles = `
 	--mm-purple: #7b4dff;
 	display: grid;
 	gap: 16px;
-	width: min(640px, calc(100vw - 48px));
+	width: min(860px, calc(100vw - 48px));
 	max-width: 100%;
-	max-height: min(78vh, 760px);
 	box-sizing: border-box;
 	overflow-x: hidden;
-	overflow-y: auto;
+	overflow-y: visible;
 	padding: 4px;
 	color: var(--mm-ink);
 	font-family: "DM Sans", Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -104,8 +108,8 @@ export const settingsStyles = `
 
 .aura-lyrics-settings .setting-row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 250px);
-	gap: 16px;
+	grid-template-columns: minmax(180px, 0.85fr) minmax(320px, 1.15fr);
+	gap: 22px;
 	align-items: center;
 	min-width: 0;
 	padding-top: 10px;
@@ -265,7 +269,6 @@ export const settingsStyles = `
 @media (max-width: 560px) {
 	.aura-lyrics-settings {
 		width: 100%;
-		max-height: 82vh;
 	}
 
 	.aura-lyrics-settings .settings-hero {

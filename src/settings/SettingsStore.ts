@@ -6,7 +6,6 @@ export type AlignmentMode = "natural" | "center" | "left";
 
 export type ExtensionSettings = {
 	preset: LyricsVisualPreset;
-	aspectRatio: "1:1" | "4:3" | "16:9";
 	lyricsDelayMs: number;
 	fontScale: number;
 	fontFamily: string;
@@ -47,7 +46,6 @@ const KNOWN_PROVIDER_IDS: ProviderId[] = ["spotify", "lrclib", "musixmatch", "ne
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
 	preset: "immersive",
-	aspectRatio: "1:1",
 	lyricsDelayMs: 0,
 	fontScale: 1,
 	fontFamily: "spotify-circular",
@@ -121,16 +119,6 @@ const parseNumber = (value: string | null | undefined, fallback: number): number
 	return Number.isFinite(next) ? next : fallback;
 };
 
-const legacyRatio = (value: string | null | undefined): ExtensionSettings["aspectRatio"] => {
-	if (value === "43") {
-		return "4:3";
-	}
-	if (value === "169") {
-		return "16:9";
-	}
-	return "1:1";
-};
-
 const sanitizeProviderOrder = (value: string | null | undefined): ProviderId[] => {
 	if (!value) {
 		return DEFAULT_SETTINGS.providers.order;
@@ -165,30 +153,32 @@ const normalizeProviderOrder = (value: unknown): ProviderId[] => {
 };
 
 type PersistedSettings = Partial<ExtensionSettings> & {
+	aspectRatio?: unknown;
 	fontSizePx?: number;
 	providers?: Partial<ExtensionSettings["providers"]>;
 };
 
 export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettings => {
 	const defaults = structuredClone(DEFAULT_SETTINGS);
-	const fontScale = raw.fontScale ?? (typeof raw.fontSizePx === "number" ? raw.fontSizePx / 25 : defaults.fontScale);
-	const providers: Partial<ExtensionSettings["providers"]> = raw.providers ?? {};
+	const { aspectRatio: _ignoredAspectRatio, fontSizePx, ...settings } = raw;
+	const fontScale = settings.fontScale ?? (typeof fontSizePx === "number" ? fontSizePx / 25 : defaults.fontScale);
+	const providers: Partial<ExtensionSettings["providers"]> = settings.providers ?? {};
 	const enabled: Partial<Record<ProviderId, boolean>> = providers.enabled ?? {};
 	return {
 		...defaults,
-		...raw,
+		...settings,
 		fontScale: clampNumber(fontScale, defaults.fontScale, 0.6, 2.4),
-		lyricsDelayMs: clampNumber(raw.lyricsDelayMs, defaults.lyricsDelayMs, -5000, 5000),
-		backgroundBlurPx: clampNumber(raw.backgroundBlurPx, defaults.backgroundBlurPx, 0, 80),
-		backgroundDim: clampNumber(raw.backgroundDim, defaults.backgroundDim, 0, 1),
-		backgroundSaturation: clampNumber(raw.backgroundSaturation, defaults.backgroundSaturation, 0, 2),
-		vignetteStrength: clampNumber(raw.vignetteStrength, defaults.vignetteStrength, 0, 1),
-		inactiveBlurPx: clampNumber(raw.inactiveBlurPx, defaults.inactiveBlurPx, 0, 4),
-		lyricsVerticalPosition: clampNumber(raw.lyricsVerticalPosition, defaults.lyricsVerticalPosition, 0.25, 0.75),
-		visibleContextLines: Math.round(clampNumber(raw.visibleContextLines, defaults.visibleContextLines, 0, 2)),
-		motionIntensity: clampNumber(raw.motionIntensity, defaults.motionIntensity, 0, 2),
-		springSoftness: clampNumber(raw.springSoftness, defaults.springSoftness, 0, 1),
-		glowStrength: clampNumber(raw.glowStrength, defaults.glowStrength, 0, 1.5),
+		lyricsDelayMs: clampNumber(settings.lyricsDelayMs, defaults.lyricsDelayMs, -5000, 5000),
+		backgroundBlurPx: clampNumber(settings.backgroundBlurPx, defaults.backgroundBlurPx, 0, 80),
+		backgroundDim: clampNumber(settings.backgroundDim, defaults.backgroundDim, 0, 1),
+		backgroundSaturation: clampNumber(settings.backgroundSaturation, defaults.backgroundSaturation, 0, 2),
+		vignetteStrength: clampNumber(settings.vignetteStrength, defaults.vignetteStrength, 0, 1),
+		inactiveBlurPx: clampNumber(settings.inactiveBlurPx, defaults.inactiveBlurPx, 0, 4),
+		lyricsVerticalPosition: clampNumber(settings.lyricsVerticalPosition, defaults.lyricsVerticalPosition, 0.25, 0.75),
+		visibleContextLines: Math.round(clampNumber(settings.visibleContextLines, defaults.visibleContextLines, 0, 2)),
+		motionIntensity: clampNumber(settings.motionIntensity, defaults.motionIntensity, 0, 2),
+		springSoftness: clampNumber(settings.springSoftness, defaults.springSoftness, 0, 1),
+		glowStrength: clampNumber(settings.glowStrength, defaults.glowStrength, 0, 1.5),
 		providers: {
 			...defaults.providers,
 			...providers,
@@ -286,7 +276,6 @@ export class SettingsStore {
 			...structuredClone(DEFAULT_SETTINGS),
 			fontScale: parseNumber(this.storage.get("popup-lyrics:font-size"), 25) / 25,
 			lyricsDelayMs: parseNumber(this.storage.get("popup-lyrics:delay"), DEFAULT_SETTINGS.lyricsDelayMs),
-			aspectRatio: legacyRatio(this.storage.get("popup-lyrics:ratio")),
 			backgroundEnabled: parseBool(this.storage.get("popup-lyrics:show-cover"), DEFAULT_SETTINGS.backgroundEnabled),
 			backgroundBlurPx: parseNumber(this.storage.get("popup-lyrics:blur-size"), DEFAULT_SETTINGS.backgroundBlurPx),
 			alignmentMode: parseBool(this.storage.get("popup-lyrics:center-align"), true) ? "center" : "left",

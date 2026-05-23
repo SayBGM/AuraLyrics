@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { LyricsCache } from "../../src/lyrics/LyricsCache";
 import { LyricsService } from "../../src/lyrics/LyricsService";
 import { ProviderRegistry } from "../../src/lyrics/providers/ProviderRegistry";
-import type { LyricsProvider, ProviderContext, ProviderId, TrackIdentity } from "../../src/lyrics/types";
+import type { LyricsDocument, LyricsProvider, ProviderContext, ProviderId, TrackIdentity } from "../../src/lyrics/types";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
 
 const track: TrackIdentity = {
@@ -109,6 +109,53 @@ describe("LyricsService", () => {
 		}
 		expect(state.provider).toBe("spotify");
 		expect(cache.get(track.uri)?.provider).toBe("spotify");
+	});
+
+	test("rebuilds cached interludes with the current threshold before rendering", async () => {
+		const staleCachedLyrics: LyricsDocument = {
+			type: "syllable",
+			startTime: 14.82,
+			endTime: 27.43,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 14.82,
+						endTime: 19.539,
+						syllables: [{ text: "아른아른", startTime: 14.82, endTime: 19.539, isPartOfWord: false }],
+					},
+				},
+				{ type: "interlude", startTime: 19.539, endTime: 21.38 },
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 21.63,
+						endTime: 27.43,
+						syllables: [{ text: "포근해진", startTime: 21.63, endTime: 27.43, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+		const cache = new LyricsCache();
+		cache.set(track.uri, staleCachedLyrics, "spotify");
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => {
+				throw new Error("should not fetch when cache is valid");
+			},
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { retryDelayMs: 0 });
+
+		const state = await service.load(track, DEFAULT_SETTINGS);
+
+		expect(state.status).toBe("ready");
+		if (state.status !== "ready" || state.lyrics.type !== "syllable") {
+			throw new Error("expected cached syllable lyrics");
+		}
+		expect(state.lyrics.content.some((item) => item.type === "interlude" && item.startTime === 19.539)).toBe(false);
 	});
 
 	test("returns ready lyrics when cache persistence fails after provider success", async () => {

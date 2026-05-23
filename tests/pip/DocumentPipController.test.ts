@@ -15,12 +15,13 @@ const createPipWindow = (): Window => {
 describe("DocumentPipController", () => {
 	test("renders hover controls for close and playback actions", async () => {
 		const pipWindow = createPipWindow();
+		const requestWindow = vi.fn(async () => pipWindow);
 		const onPrevious = vi.fn();
 		const onTogglePlay = vi.fn();
 		const onNext = vi.fn();
 		const onClose = vi.fn();
 		window.documentPictureInPicture = {
-			requestWindow: vi.fn(async () => pipWindow),
+			requestWindow,
 		};
 
 		await new DocumentPipController().open(DEFAULT_SETTINGS, "", {
@@ -31,6 +32,7 @@ describe("DocumentPipController", () => {
 			onClose,
 		});
 
+		expect(requestWindow).toHaveBeenCalledWith({ width: 600, height: 600 });
 		const controls = pipWindow.document.querySelector(".pip-controls");
 		const close = pipWindow.document.querySelector('[data-control="close"]');
 		expect(controls).not.toBeNull();

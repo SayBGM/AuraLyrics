@@ -6,12 +6,13 @@ import { type MusixmatchTokenResponse, MusixmatchTokenService } from "../lyrics/
 import { NeteaseProvider } from "../lyrics/providers/NeteaseProvider";
 import { ProviderRegistry } from "../lyrics/providers/ProviderRegistry";
 import { SpotifyProvider } from "../lyrics/providers/SpotifyProvider";
-import type { LyricsLoadState, TrackIdentity } from "../lyrics/types";
+import type { LyricsDocument, LyricsLoadState, TrackIdentity } from "../lyrics/types";
 import { DocumentPipController, type PipSession } from "../pip/DocumentPipController";
 import { SpicetifyStorageAdapter } from "../platform/SpicetifyStorageAdapter";
 import { PlaybackClock } from "../player/PlaybackClock";
 import { SpicetifyPlayerAdapter } from "../player/SpicetifyPlayerAdapter";
-import { LyricsRenderer } from "../renderer/LyricsRenderer";
+import { AudioAnalysisWaveformService, type TrackWaveformProfile } from "../renderer/AudioAnalysisWaveformService";
+import { type InterludeWaveformMap, interludeKey, LyricsRenderer } from "../renderer/LyricsRenderer";
 import type { SpicetifyGlobal } from "../runtime/spicetify";
 import { SettingsStore } from "../settings/SettingsStore";
 import { SettingsView } from "../settings/SettingsView";
@@ -30,6 +31,7 @@ export class ExtensionApp {
 	private readonly registry = new ProviderRegistry([new SpotifyProvider(), new LrclibProvider(), new MusixmatchProvider(), new NeteaseProvider()]);
 	private readonly lyricsService: LyricsService;
 	private readonly musixmatchTokenService: MusixmatchTokenService;
+	private readonly waveformService: AudioAnalysisWaveformService;
 	private readonly settingsView: SettingsView;
 	private readonly topbar: TopbarController;
 	private readonly disposers: Array<() => void> = [];
@@ -37,13 +39,22 @@ export class ExtensionApp {
 	private session?: PipSession;
 	private currentTrack?: TrackIdentity;
 	private lastLoadState: LyricsLoadState = { status: "idle" };
+	private waveformProfile?: TrackWaveformProfile;
 	private started = false;
+	private isPlaybackActive = false;
+	private playbackTimestampSec = 0;
+	private playbackResyncElapsedSec = 0;
+	private playbackSeekProbeElapsedSec = 0;
+	private readonly playbackResyncIntervalSec = 20;
+	private readonly playbackSeekProbeIntervalSec = 0.25;
+	private readonly playbackSeekSnapThresholdSec = 1.25;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
 		this.settings = new SettingsStore(this.storage);
 		this.cache = new LyricsCache(this.storage);
 		this.player = new SpicetifyPlayerAdapter(spicetify);
+		this.waveformService = new AudioAnalysisWaveformService(async (uri) => this.spicetify.getAudioData?.(uri));
 		this.musixmatchTokenService = new MusixmatchTokenService((url, body, headers) => {
 			if (!this.spicetify.CosmosAsync) {
 				throw new Error("Spicetify.CosmosAsync is not available.");
@@ -84,7 +95,7 @@ export class ExtensionApp {
 		this.player.attach();
 		this.disposers.push(
 			this.player.trackChanged.subscribe((track) => void this.onTrackChanged(track)),
-			this.player.playbackChanged.subscribe((isPlaying) => this.session?.setPlaying(isPlaying)),
+			this.player.playbackChanged.subscribe((isPlaying) => this.onPlaybackChanged(isPlaying)),
 			this.settings.subscribe(() => this.applySettings()),
 			this.pip.closed.subscribe(() => this.closePip(false))
 		);
@@ -115,8 +126,9 @@ export class ExtensionApp {
 	private async openPip(): Promise<void> {
 		try {
 			this.stateMachine.dispatch({ type: "openPiP" });
+			this.isPlaybackActive = this.player.isPlaying();
 			this.session = await this.pip.open(this.settings.get(), pipStyles, {
-				isPlaying: this.player.isPlaying(),
+				isPlaying: this.isPlaybackActive,
 				onPrevious: () => this.player.previous(),
 				onTogglePlay: () => this.player.togglePlay(),
 				onNext: () => this.player.next(),
@@ -126,6 +138,7 @@ export class ExtensionApp {
 			this.topbar.setActive(true);
 			this.clock = new PlaybackClock(this.session.window, (deltaTime) => this.tick(deltaTime));
 			this.clock.start();
+			this.resyncPlaybackTimestamp();
 			this.currentTrack = this.player.getCurrentTrack();
 			await this.loadCurrentTrack(false);
 		} catch (error) {
@@ -149,6 +162,7 @@ export class ExtensionApp {
 
 	private async onTrackChanged(track: TrackIdentity | undefined): Promise<void> {
 		this.currentTrack = track;
+		this.resyncPlaybackTimestamp();
 		if (!this.session) {
 			return;
 		}
@@ -163,6 +177,7 @@ export class ExtensionApp {
 		const track = this.currentTrack ?? this.player.getCurrentTrack();
 		this.currentTrack = track;
 		if (!track) {
+			this.waveformProfile = undefined;
 			this.showStatus("Waiting for music", "Start playing a Spotify track.");
 			this.stateMachine.dispatch({ type: "invalidTrack" });
 			return;
@@ -171,7 +186,15 @@ export class ExtensionApp {
 		this.stateMachine.dispatch({ type: "validTrack" });
 		this.showStatus("Loading lyrics", track.title);
 		this.lastLoadState = await this.lyricsService.load(track, this.settings.get(), refresh);
+		this.waveformProfile = this.lastLoadState.status === "ready" ? await this.waveformService.loadProfile(track) : undefined;
+		this.resyncPlaybackTimestamp();
 		this.renderLoadState(this.lastLoadState);
+	}
+
+	private onPlaybackChanged(isPlaying: boolean): void {
+		this.isPlaybackActive = isPlaying;
+		this.session?.setPlaying(isPlaying);
+		this.resyncPlaybackTimestamp();
 	}
 
 	private async refreshMusixmatchToken(): Promise<string | undefined> {
@@ -186,7 +209,7 @@ export class ExtensionApp {
 		}
 		if (state.status === "ready") {
 			this.stateMachine.dispatch({ type: "lyricsReady" });
-			this.renderer.mount(this.session.root, state.lyrics, this.settings.get(), state.provider);
+			this.renderer.mount(this.session.root, state.lyrics, this.settings.get(), state.provider, this.waveformsForLyrics(state.lyrics));
 			return;
 		}
 		if (state.status === "empty") {
@@ -222,14 +245,62 @@ export class ExtensionApp {
 			return;
 		}
 		const settings = this.settings.get();
-		const timestamp = this.player.getTimestamp(settings.lyricsDelayMs);
-		this.renderer.update(timestamp, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
+		if (this.isPlaybackActive) {
+			this.playbackTimestampSec = Math.max(0, this.playbackTimestampSec + deltaTime);
+			this.playbackResyncElapsedSec += deltaTime;
+			this.playbackSeekProbeElapsedSec += deltaTime;
+			if (this.playbackResyncElapsedSec >= this.playbackResyncIntervalSec) {
+				this.resyncPlaybackTimestamp();
+			} else if (this.playbackSeekProbeElapsedSec >= this.playbackSeekProbeIntervalSec) {
+				this.snapToPlayerTimestampIfNeeded();
+			}
+		}
+		this.renderer.update(this.playbackTimestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
+	}
+
+	private resyncPlaybackTimestamp(): void {
+		if (!this.session) {
+			return;
+		}
+		this.playbackTimestampSec = this.player.getTimestamp(this.settings.get().lyricsDelayMs);
+		this.playbackResyncElapsedSec = 0;
+		this.playbackSeekProbeElapsedSec = 0;
+	}
+
+	private snapToPlayerTimestampIfNeeded(): void {
+		this.playbackSeekProbeElapsedSec = 0;
+		const playerTimestampSec = this.player.getTimestamp(this.settings.get().lyricsDelayMs);
+		if (Math.abs(playerTimestampSec - this.playbackTimestampSec) >= this.playbackSeekSnapThresholdSec) {
+			this.playbackTimestampSec = playerTimestampSec;
+			this.playbackResyncElapsedSec = 0;
+		}
 	}
 
 	private applySettings(): void {
 		this.session?.applySettings(this.settings.get());
+		this.resyncPlaybackTimestamp();
 		if (this.session && this.lastLoadState.status === "ready") {
-			this.renderer.mount(this.session.root, this.lastLoadState.lyrics, this.settings.get(), this.lastLoadState.provider);
+			this.renderer.mount(
+				this.session.root,
+				this.lastLoadState.lyrics,
+				this.settings.get(),
+				this.lastLoadState.provider,
+				this.waveformsForLyrics(this.lastLoadState.lyrics)
+			);
 		}
+	}
+
+	private waveformsForLyrics(lyrics: LyricsDocument): InterludeWaveformMap {
+		if (!this.waveformProfile) {
+			return {};
+		}
+		const waveforms: InterludeWaveformMap = {};
+		const items = lyrics.type === "static" ? [] : lyrics.content;
+		for (const item of items) {
+			if (item.type === "interlude") {
+				waveforms[interludeKey(item)] = this.waveformService.waveformForInterlude(this.waveformProfile, item);
+			}
+		}
+		return waveforms;
 	}
 }

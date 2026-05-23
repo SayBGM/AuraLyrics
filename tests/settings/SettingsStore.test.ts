@@ -29,7 +29,6 @@ describe("SettingsStore", () => {
 		const storage = new MemoryStorage();
 		storage.set("popup-lyrics:font-size", "54");
 		storage.set("popup-lyrics:delay", "125");
-		storage.set("popup-lyrics:ratio", "169");
 		storage.set("popup-lyrics:show-cover", "false");
 		storage.set("popup-lyrics:services-order", JSON.stringify(["lrclib", "spotify"]));
 
@@ -37,7 +36,6 @@ describe("SettingsStore", () => {
 
 		expect(store.get().fontScale).toBeCloseTo(54 / 25);
 		expect(store.get().lyricsDelayMs).toBe(125);
-		expect(store.get().aspectRatio).toBe("16:9");
 		expect(store.get().backgroundEnabled).toBe(false);
 		expect(store.get().providers.order.slice(0, 2)).toEqual(["lrclib", "spotify"]);
 	});
@@ -84,5 +82,25 @@ describe("SettingsStore", () => {
 		expect(settings.fontScale).toBeCloseTo(2);
 		expect(settings.backgroundDim).toBe(1);
 		expect(settings.visibleContextLines).toBe(2);
+	});
+
+	test("drops removed legacy fields while normalizing saved settings", () => {
+		const storage = new MemoryStorage();
+		storage.set(
+			"aura-lyrics:settings",
+			JSON.stringify({
+				aspectRatio: "16:9",
+				fontSizePx: 30,
+			})
+		);
+
+		const settings = new SettingsStore(storage).get() as typeof DEFAULT_SETTINGS & {
+			aspectRatio?: unknown;
+			fontSizePx?: unknown;
+		};
+
+		expect(settings.fontScale).toBeCloseTo(30 / 25);
+		expect(settings.aspectRatio).toBeUndefined();
+		expect(settings.fontSizePx).toBeUndefined();
 	});
 });

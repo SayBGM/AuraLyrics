@@ -55,8 +55,12 @@ export const updateContextVisibility = (lyricsTrack: HTMLElement, contextLines: 
 		return;
 	}
 	rows.forEach((row, index) => {
-		const outOfContext = Math.abs(index - focused.index) > contextLines;
+		const distance = index - focused.index;
+		const outOfContext = Math.abs(distance) > contextLines;
 		row.classList.toggle("out-of-context", outOfContext);
+		row.classList.toggle("context-previous", distance === -1 && !outOfContext);
+		row.classList.toggle("context-next", distance === 1 && !outOfContext);
+		row.classList.toggle("context-current", distance === 0);
 		if (outOfContext) {
 			row.setAttribute("aria-hidden", "true");
 		} else {

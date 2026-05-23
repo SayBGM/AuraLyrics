@@ -157,6 +157,9 @@ describe("LyricsRenderer", () => {
 
 		const rows = Array.from(root.querySelectorAll<HTMLElement>(".vocals-group"));
 		expect(rows.map((row) => row.classList.contains("out-of-context"))).toEqual([true, false, false, false, true]);
+		expect(rows[1].classList.contains("context-previous")).toBe(true);
+		expect(rows[2].classList.contains("context-current")).toBe(true);
+		expect(rows[3].classList.contains("context-next")).toBe(true);
 	});
 
 	test("renders provider source below the final lyric", () => {
@@ -174,5 +177,32 @@ describe("LyricsRenderer", () => {
 		const rows = Array.from(root.querySelectorAll(".lyrics-track > *"));
 		expect(rows.at(-1)?.classList.contains("provider-source")).toBe(true);
 		expect(rows.at(-1)?.textContent).toContain("lrclib");
+	});
+
+	test("renders interlude soundwave bars and updates progress", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 14,
+			content: [
+				{ type: "vocal", text: "Before", startTime: 0, endTime: 4, oppositeAligned: false },
+				{ type: "interlude", startTime: 4, endTime: 10 },
+				{ type: "vocal", text: "After", startTime: 10, endTime: 14, oppositeAligned: false },
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS, "spotify", {
+			"4:10": { bars: [0.2, 0.6, 1], source: "audio-analysis" },
+		});
+		renderer.update(7, 1 / 60);
+
+		const interlude = root.querySelector<HTMLElement>(".interlude");
+		const bars = root.querySelectorAll<HTMLElement>(".interlude-wave-bar");
+		expect(bars).toHaveLength(3);
+		expect(interlude?.style.getPropertyValue("--interlude-progress")).toBe("50%");
+		expect(interlude?.dataset.waveformSource).toBe("audio-analysis");
+		expect(Array.from(bars).map((bar) => bar.style.getPropertyValue("--bar-fill-ratio"))).toEqual(["1", "0.5", "0"]);
 	});
 });

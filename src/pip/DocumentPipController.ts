@@ -40,8 +40,7 @@ export class DocumentPipController {
 		if (this.session && !this.session.window.closed) {
 			return this.session;
 		}
-		const size = this.getSize(settings.aspectRatio);
-		const pipWindow = await api.requestWindow(size);
+		const pipWindow = await api.requestWindow({ width: 600, height: 600 });
 		const doc = pipWindow.document;
 		doc.title = "AuraLyrics";
 		doc.body.replaceChildren();
@@ -104,17 +103,6 @@ export class DocumentPipController {
 	public close(): void {
 		this.session?.window.close();
 		this.session = undefined;
-	}
-
-	private getSize(ratio: ExtensionSettings["aspectRatio"]): { width: number; height: number } {
-		const width = 600;
-		if (ratio === "16:9") {
-			return { width, height: Math.round((width * 9) / 16) };
-		}
-		if (ratio === "4:3") {
-			return { width, height: Math.round((width * 3) / 4) };
-		}
-		return { width, height: width };
 	}
 
 	private createControls(doc: Document, controls?: PipControls): HTMLElement {

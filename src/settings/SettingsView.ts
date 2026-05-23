@@ -25,11 +25,20 @@ export class SettingsView {
 		}
 		this.container = document.createElement("div");
 		this.container.className = "aura-lyrics-settings";
+		document.body.classList.add("aura-lyrics-settings-open");
 		this.render();
 		spicetify.PopupModal.display({
 			title: "AuraLyrics",
 			content: this.container,
 		});
+		const observer = new MutationObserver(() => {
+			if (this.container?.isConnected) {
+				return;
+			}
+			document.body.classList.remove("aura-lyrics-settings-open");
+			observer.disconnect();
+		});
+		observer.observe(document.body, { childList: true, subtree: true });
 	}
 
 	private render(): void {
@@ -49,9 +58,6 @@ export class SettingsView {
 					}
 					this.render();
 				}),
-				this.select("Aspect ratio", settings.aspectRatio, ["1:1", "4:3", "16:9"], (value) =>
-					this.update({ aspectRatio: value as ExtensionSettings["aspectRatio"] })
-				),
 				this.number("Lyrics delay (ms)", settings.lyricsDelayMs, (value) => this.update({ lyricsDelayMs: value })),
 				this.range("Font scale", settings.fontScale, 0.72, 1.5, 0.01, (value) => this.update({ fontScale: value })),
 			]),

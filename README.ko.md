@@ -85,7 +85,7 @@ Token 생성은 두 단계로 시도합니다.
 
 설정은 다음 섹션으로 구성됩니다.
 
-- General: preset, aspect ratio, lyrics delay, font scale.
+- General: preset, lyrics delay, font scale.
 - Background: album background, blur, dim, saturation, vignette, inactive blur.
 - Lyrics: sync preference, alignment, vertical position, context lines, interludes.
 - Motion: animation, intensity, glow, reduced motion.

@@ -59,6 +59,25 @@ describe("SettingsView", () => {
 		const css = content?.querySelector("style")?.textContent ?? "";
 		expect(css).not.toContain("min-width: 520px");
 		expect(css).toContain("overflow-x: hidden");
+		expect(css).toContain(".main-trackCreditsModal-container");
+	});
+
+	test("marks the body while the settings modal is open", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		window.Spicetify = {
+			PopupModal: {
+				display: vi.fn(),
+			},
+		} as unknown as typeof window.Spicetify;
+
+		new SettingsView(store, providers, {
+			onRefreshLyrics: vi.fn(),
+			onClearCache: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+		}).open();
+
+		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(true);
+		document.body.classList.remove("aura-lyrics-settings-open");
 	});
 
 	test("updates Musixmatch token from the generated Spicetify token", async () => {
