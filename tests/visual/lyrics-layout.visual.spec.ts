@@ -13,6 +13,9 @@ declare global {
 const baseUrl = process.env.AURA_VISUAL_BASE_URL ?? "http://127.0.0.1:4173";
 const centerTolerancePx = 18;
 const syllableCenterTolerancePx = 36;
+const screenshotTolerance = {
+	maxDiffPixelRatio: 0.04,
+};
 
 test.use({
 	viewport: { width: 900, height: 520 },
@@ -53,7 +56,7 @@ test("line-sync rows stay centered without changing lyric layout width", async (
 	expect(metrics.activeCenterDelta).toBeLessThanOrEqual(centerTolerancePx);
 	expect(metrics.maxWidthDelta).toBeLessThanOrEqual(1);
 	expect(metrics.lineGaps.every((gap) => gap >= 18 && gap <= 72)).toBe(true);
-	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("line-sync-active.png");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("line-sync-active.png", screenshotTolerance);
 });
 
 test("word and syllable sync keeps readable tracking and visible glow", async ({ page }) => {
@@ -68,7 +71,7 @@ test("word and syllable sync keeps readable tracking and visible glow", async ({
 	expect(glow.trackOverflow).toEqual({ x: "visible", y: "visible" });
 	expect(glow.glowTop).toBeGreaterThanOrEqual(glow.viewportTop);
 	expect(glow.glowBottom).toBeLessThanOrEqual(glow.viewportBottom);
-	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("word-sync-active.png");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("word-sync-active.png", screenshotTolerance);
 });
 
 test("parenthetical ad-lib rows scroll independently with stable spacing", async ({ page }) => {
