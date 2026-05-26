@@ -13,7 +13,7 @@
 `popupLyrics.js`는 단일 파일에 워커, 공급자, PiP 렌더러, 설정 UI가 함께 들어 있다.
 
 - Worker/메인 분기: 파일 시작부에서 `navigator.serviceWorker` 존재 여부로 Worker 코드와 메인 확장 코드를 나눈다. Worker 쪽은 `setInterval(..., 16.66)`로 `"popup-lyric-update-ui"` 메시지를 보내고, 메인 쪽은 문서가 hidden일 때 Worker tick을 사용한다. 근거: [popupLyrics.js](/Users/backgwangmin/Documents/spotify-lyris/cli/Extensions/popupLyrics.js:8), [popupLyrics.js](/Users/backgwangmin/Documents/spotify-lyris/cli/Extensions/popupLyrics.js:39)
-- LyricProviders 4종: Spotify, Musixmatch, Netease, LRCLIB 순수 함수형 공급자를 갖고 모두 `{ lyrics }` 또는 `{ error }` 형태를 반환한다. 근거: [popupLyrics.js](/Users/backgwangmin/Documents/spotify-lyris/cli/Extensions/popupLyrics.js:99)
+- LyricProviders 3종: Spotify, Musixmatch, LRCLIB 순수 함수형 공급자를 갖고 모두 `{ lyrics }` 또는 `{ error }` 형태를 반환한다. 근거: [popupLyrics.js](/Users/backgwangmin/Documents/spotify-lyris/cli/Extensions/popupLyrics.js:99)
 - Provider fallback: 설정의 `servicesOrder`를 순회하며 켜진 공급자를 호출하고, 성공하면 중단하며 URI 기준 `CACHE`에 저장한다. 근거: [popupLyrics.js](/Users/backgwangmin/Documents/spotify-lyris/cli/Extensions/popupLyrics.js:446)
 - CanvasPiP: 숨겨진 `video`에 `canvas.captureStream()`을 연결하고, Topbar 버튼 클릭 시 `requestPictureInPicture()`를 호출한다. 커버 이미지는 별도 캔버스에 그려 배경 blur 소스로 쓴다. 근거: [popupLyrics.js](/Users/backgwangmin/Documents/spotify-lyris/cli/Extensions/popupLyrics.js:385)
 - Canvas 렌더링: `renderLyrics()`가 현재 가사 index와 progress를 계산하고, focus/previous/next line을 캔버스에 그린 뒤 gradient mask를 적용한다. 근거: [popupLyrics.js](/Users/backgwangmin/Documents/spotify-lyris/cli/Extensions/popupLyrics.js:668)
@@ -68,7 +68,6 @@ src/
     providers/
       SpotifyProvider.ts
       MusixmatchProvider.ts
-      NeteaseProvider.ts
       LrclibProvider.ts
       ProviderRegistry.ts
     parsers/
@@ -121,7 +120,7 @@ flowchart LR
     Service["LyricsService"]
     Cache["LyricsCache"]
     Registry["ProviderRegistry"]
-    Providers["Spotify / Musixmatch / Netease / LRCLIB Providers"]
+    Providers["Spotify / Musixmatch / LRCLIB Providers"]
     Parsers["Provider Parsers"]
     Normalize["LyricsNormalizer"]
     Interlude["InterludeBuilder"]
@@ -296,11 +295,11 @@ type LyricsLoadState =
 
 ### 6.4 ProviderRegistry와 Providers
 
-기존 4종 공급자를 TypeScript 클래스로 분리한다.
+공급자를 TypeScript 클래스로 분리한다.
 
 ```ts
 interface LyricsProvider {
-  id: "spotify" | "musixmatch" | "netease" | "lrclib";
+  id: "spotify" | "musixmatch" | "lrclib";
   supports(track: TrackIdentity): boolean;
   fetch(
     track: TrackIdentity,
@@ -311,7 +310,6 @@ interface LyricsProvider {
 
 - `SpotifyProvider`: Spotify color-lyrics endpoint를 호출한다. 기본은 line sync이며, 응답에 syllable/word timing이 있으면 `SyllableLyrics`로 승격한다.
 - `MusixmatchProvider`: 기존 token 설정을 유지하고 macro subtitle 응답을 line lyrics로 변환한다.
-- `NeteaseProvider`: LRC timestamp를 line lyrics로 변환하고 metadata/credit line을 제거한다.
 - `LrclibProvider`: syncedLyrics의 `[mm:ss.xx]` line timestamp와 `<mm:ss.xx>` word/syllable timestamp를 모두 파싱한다. `<...>`가 있으면 syllable 후보로, 없으면 line lyrics로 만든다.
 
 초기 버전에서 syllable data가 없는 provider는 line-level fallback을 제공한다. syllable 단위 동기화는 LRCLIB enhanced LRC 또는 Spotify payload에서 syllable/word timing을 확보할 수 있을 때 활성화한다.
@@ -605,14 +603,14 @@ Syllable span은 `background-clip: text` 또는 pseudo-element overlay로 sung p
 ## 13. 테스트 전략
 
 - Unit: `LrcParser`, `LyricsNormalizer`, `InterludeBuilder`, `Spring`, `MusicStateMachine`
-- Fixture: Spotify line payload, Musixmatch subtitle payload, Netease LRC, LRCLIB synced/enhanced LRC
+- Fixture: Spotify line payload, Musixmatch subtitle payload, LRCLIB synced/enhanced LRC
 - DOM test: `SyllableVocals.animate()`가 active/sung class와 CSS 변수 값을 갱신하는지 확인
 - Manual Spicetify test: PiP open/close, track change, pause/play, seek, delay 변경, provider fallback, cover background, CEF Document PiP 동작
 
 ## 14. 구현 순서 제안
 
 1. 타입, Spring, parser, normalizer를 먼저 구현한다.
-2. 기존 popup provider 4종을 TypeScript provider로 분리하고 line lyrics까지 동작시킨다.
+2. Spotify, Musixmatch, LRCLIB provider를 TypeScript provider로 분리하고 line lyrics까지 동작시킨다.
 3. Document PiP 창과 기본 status UI를 만든다.
 4. Line renderer를 연결해 기존 popupLyrics 수준의 기능을 DOM으로 대체한다.
 5. LRCLIB enhanced LRC 또는 Spotify payload에서 syllable timing을 파싱해 Syllable renderer를 활성화한다.

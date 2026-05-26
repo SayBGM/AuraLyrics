@@ -18,6 +18,10 @@ export type SpicetifyGlobal = {
 			item?: {
 				uri: string;
 				metadata?: Record<string, string>;
+				images?: Array<{ url?: string; uri?: string }>;
+				album?: {
+					images?: Array<{ url?: string; uri?: string }>;
+				};
 			};
 		};
 		getProgress(): number;
@@ -61,8 +65,18 @@ export type SpicetifyGlobal = {
 	Config?: {
 		version?: string;
 	};
+	colorExtractor?: (uri: string) => Promise<SpicetifyColorPalette>;
 	getAudioData?: (uri?: string) => Promise<AudioAnalysisData | undefined>;
 	showNotification?: (message: string, isError?: boolean, timeout?: number) => void;
+};
+
+export type SpicetifyColorPalette = {
+	DARK_VIBRANT: string;
+	DESATURATED: string;
+	LIGHT_VIBRANT: string;
+	PROMINENT: string;
+	VIBRANT: string;
+	VIBRANT_NON_ALARMING: string;
 };
 
 export const isTrackIdentity = (track: TrackIdentity | undefined): track is TrackIdentity => track !== undefined;

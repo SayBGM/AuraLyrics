@@ -6,6 +6,7 @@ export type PipSession = {
 	root: HTMLElement;
 	setCover(url?: string): void;
 	setPlaying(isPlaying: boolean): void;
+	setAccentColor(color?: string): void;
 	applySettings(settings: ExtensionSettings): void;
 };
 
@@ -44,6 +45,8 @@ export class DocumentPipController {
 		const doc = pipWindow.document;
 		doc.title = "AuraLyrics";
 		doc.body.replaceChildren();
+		const base = doc.createElement("base");
+		base.href = window.location.href;
 		const style = doc.createElement("style");
 		style.textContent = styles;
 		const root = doc.createElement("div");
@@ -54,13 +57,14 @@ export class DocumentPipController {
 		scrim.className = "pip-scrim";
 		const vignette = doc.createElement("div");
 		vignette.className = "pip-vignette";
+		const borderFrame = this.createBorderFrame(doc);
 		const content = doc.createElement("main");
 		content.className = "pip-content";
 		const closeButton = this.createControlButton(doc, "close", this.icon("close"), "Close", () => controls?.onClose());
 		closeButton.classList.add("pip-close");
 		const controlsElement = this.createControls(doc, controls);
-		root.append(cover, scrim, vignette, content, closeButton, controlsElement);
-		doc.head.append(style);
+		root.append(cover, scrim, vignette, borderFrame, content, closeButton, controlsElement);
+		doc.head.append(base, style);
 		doc.body.append(root);
 		this.installControlVisibility(root, pipWindow);
 		let coverUrl: string | undefined;
@@ -68,7 +72,7 @@ export class DocumentPipController {
 		const applySettings = (nextSettings: ExtensionSettings) => {
 			currentSettings = nextSettings;
 			this.applyRootSettings(root, nextSettings);
-			cover.toggleAttribute("hidden", !coverUrl || !nextSettings.backgroundEnabled);
+			this.applyCoverState(root, coverUrl, nextSettings);
 		};
 		let currentPlaying: boolean | undefined;
 		const session: PipSession = {
@@ -76,9 +80,9 @@ export class DocumentPipController {
 			root: content,
 			setCover: (url) => {
 				coverUrl = url;
-				cover.toggleAttribute("hidden", !url || !currentSettings.backgroundEnabled);
+				this.applyCoverState(root, coverUrl, currentSettings);
 				if (url) {
-					cover.src = url;
+					cover.src = new URL(url, window.location.href).href;
 				}
 			},
 			setPlaying: (isPlaying) => {
@@ -86,8 +90,10 @@ export class DocumentPipController {
 					return;
 				}
 				currentPlaying = isPlaying;
+				root.classList.toggle("is-playing", isPlaying);
 				this.updatePlayControl(controlsElement, isPlaying);
 			},
+			setAccentColor: (color) => this.applyAccentColor(root, color),
 			applySettings,
 		};
 		session.applySettings(settings);
@@ -114,6 +120,25 @@ export class DocumentPipController {
 			this.createControlButton(doc, "next", this.icon("next"), "Next track", () => controls?.onNext())
 		);
 		return wrapper;
+	}
+
+	private createBorderFrame(doc: Document): HTMLElement {
+		const frame = doc.createElement("div");
+		frame.className = "pip-border-frame";
+		frame.setAttribute("aria-hidden", "true");
+		const surface = doc.createElement("div");
+		surface.className = "pip-frame-surface";
+		const innerShadow = doc.createElement("div");
+		innerShadow.className = "pip-frame-inner-shadow";
+		const progress = doc.createElement("div");
+		progress.className = "pip-frame-progress";
+		for (const side of ["top", "right", "bottom", "left"] as const) {
+			const segment = doc.createElement("div");
+			segment.className = `pip-frame-progress-segment pip-frame-progress-${side}`;
+			progress.append(segment);
+		}
+		frame.append(surface, progress, innerShadow);
+		return frame;
 	}
 
 	private createControlButton(doc: Document, control: string, icon: string, label: string, onClick: () => void): HTMLButtonElement {
@@ -169,6 +194,27 @@ export class DocumentPipController {
 		root.style.setProperty("--vignette-strength", String(settings.vignetteStrength));
 		root.style.setProperty("--inactive-blur", `${settings.inactiveBlurPx}px`);
 		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
+		root.classList.toggle("reduce-motion", settings.reduceMotion || !settings.motionEnabled);
+		root.classList.toggle("interlude-style-frame", settings.interludeStyle === "frame");
+		root.classList.toggle("interlude-style-dots", settings.interludeStyle === "dots");
+		root.classList.toggle("interlude-style-wave", settings.interludeStyle === "wave");
+	}
+
+	private applyCoverState(root: HTMLElement, coverUrl: string | undefined, settings: ExtensionSettings): void {
+		root.classList.toggle("cover-missing", !coverUrl);
+		root.classList.toggle("background-disabled", !settings.backgroundEnabled);
+	}
+
+	private applyAccentColor(root: HTMLElement, color: string | undefined): void {
+		const normalized = color ? normalizeHexColor(color) : undefined;
+		const rgb = normalized ? hexToRgb(normalized) : undefined;
+		if (!normalized || !rgb) {
+			root.style.removeProperty("--pip-accent-color");
+			root.style.removeProperty("--pip-accent-rgb");
+			return;
+		}
+		root.style.setProperty("--pip-accent-color", normalized);
+		root.style.setProperty("--pip-accent-rgb", `${rgb.red}, ${rgb.green}, ${rgb.blue}`);
 	}
 
 	private icon(name: "close" | "next" | "pause" | "play" | "previous"): string {
@@ -182,3 +228,23 @@ export class DocumentPipController {
 		return icons[name];
 	}
 }
+
+const normalizeHexColor = (hex: string): string | undefined => {
+	const normalized = hex.trim().replace(/^#/, "");
+	if (!/^[\da-f]{6}$/i.test(normalized)) {
+		return undefined;
+	}
+	return `#${normalized.toLowerCase()}`;
+};
+
+const hexToRgb = (hex: string): { red: number; green: number; blue: number } | undefined => {
+	const normalized = hex.trim().replace(/^#/, "");
+	if (!/^[\da-f]{6}$/i.test(normalized)) {
+		return undefined;
+	}
+	return {
+		red: Number.parseInt(normalized.slice(0, 2), 16),
+		green: Number.parseInt(normalized.slice(2, 4), 16),
+		blue: Number.parseInt(normalized.slice(4, 6), 16),
+	};
+};

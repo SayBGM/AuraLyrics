@@ -1,0 +1,42 @@
+import { describe, expect, test } from "vitest";
+import { DEFAULT_SETTINGS, normalizeLoadedSettings } from "../../src/settings/settingsSchema";
+
+describe("settingsSchema", () => {
+	test("defines dots as the default interlude style", () => {
+		expect(DEFAULT_SETTINGS.interludeStyle).toBe("dots");
+	});
+
+	test("defaults settings menu language to English", () => {
+		expect(DEFAULT_SETTINGS.language).toBe("en");
+	});
+
+	test("normalizes invalid interlude style and removed providers without storage concerns", () => {
+		const settings = normalizeLoadedSettings({
+			interludeStyle: "sparkles" as never,
+			providers: {
+				order: ["netease", "musixmatch", "spotify", "musixmatch"] as never,
+				enabled: {
+					musixmatch: false,
+				},
+			},
+		});
+
+		expect(settings.interludeStyle).toBe("dots");
+		expect(settings.providers.order).toEqual(["musixmatch", "spotify", "lrclib"]);
+		expect(settings.providers.enabled).toEqual({
+			spotify: true,
+			lrclib: true,
+			musixmatch: false,
+		});
+	});
+
+	test("normalizes removed album background and invalid language values", () => {
+		const settings = normalizeLoadedSettings({
+			backgroundEnabled: false,
+			language: "fr" as never,
+		});
+
+		expect(settings.backgroundEnabled).toBe(true);
+		expect(settings.language).toBe("en");
+	});
+});

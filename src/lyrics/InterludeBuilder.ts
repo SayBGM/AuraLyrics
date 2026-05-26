@@ -21,8 +21,16 @@ export const stripInterludes = (lyrics: LyricsDocument): LyricsDocument => {
 
 export const rebuildInterludes = (lyrics: LyricsDocument): LyricsDocument => addInterludes(stripInterludes(lyrics));
 
+const removeTrailingInterludes = <T extends { type: string }>(content: T[]): T[] => {
+	const next = [...content];
+	while (next.at(-1)?.type === "interlude") {
+		next.pop();
+	}
+	return next;
+};
+
 const addLineInterludes = (lyrics: LineLyrics): LineLyrics => {
-	const content = [...lyrics.content];
+	const content = removeTrailingInterludes(lyrics.content);
 	for (let index = content.length - 1; index > 0; index -= 1) {
 		const current = content[index];
 		const previous = content[index - 1];
@@ -43,7 +51,7 @@ const addLineInterludes = (lyrics: LineLyrics): LineLyrics => {
 };
 
 const addSyllableInterludes = (lyrics: SyllableLyrics): SyllableLyrics => {
-	const content = [...lyrics.content];
+	const content = removeTrailingInterludes(lyrics.content);
 	for (let index = content.length - 1; index > 0; index -= 1) {
 		const current = content[index];
 		const previous = content[index - 1];

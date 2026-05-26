@@ -20,9 +20,23 @@ describe("SettingsStore", () => {
 		expect(store.get().preset).toBe("immersive");
 		expect(store.get().fontScale).toBe(1);
 		expect(store.get().backgroundEnabled).toBe(true);
+		expect(store.get().backgroundBlurPx).toBeLessThanOrEqual(12);
+		expect(store.get().backgroundDim).toBeLessThanOrEqual(0.4);
+		expect(store.get().vignetteStrength).toBeLessThanOrEqual(0.3);
 		expect(store.get().inactiveBlurPx).toBeGreaterThan(0);
 		expect(store.get().lyricsVerticalPosition).toBe(0.5);
 		expect(store.get().syncPreference).toBe("prefer-syllable");
+		expect(store.get().interludeStyle).toBe("dots");
+	});
+
+	test("keeps the immersive preset close to the original album art", () => {
+		const store = new SettingsStore(new MemoryStorage());
+
+		const settings = store.applyPreset("immersive");
+
+		expect(settings.backgroundBlurPx).toBeLessThanOrEqual(12);
+		expect(settings.backgroundDim).toBeLessThanOrEqual(0.4);
+		expect(settings.vignetteStrength).toBeLessThanOrEqual(0.3);
 	});
 
 	test("migrates legacy popup lyrics keys once", () => {
@@ -36,7 +50,7 @@ describe("SettingsStore", () => {
 
 		expect(store.get().fontScale).toBeCloseTo(54 / 25);
 		expect(store.get().lyricsDelayMs).toBe(125);
-		expect(store.get().backgroundEnabled).toBe(false);
+		expect(store.get().backgroundEnabled).toBe(true);
 		expect(store.get().providers.order.slice(0, 2)).toEqual(["lrclib", "spotify"]);
 	});
 
@@ -57,12 +71,26 @@ describe("SettingsStore", () => {
 
 		const settings = new SettingsStore(storage).get();
 
-		expect(settings.providers.order).toEqual(["musixmatch", "spotify", "lrclib", "netease"]);
+		expect(settings.providers.order).toEqual(["musixmatch", "spotify", "lrclib"]);
 		expect(settings.providers.enabled).toEqual({
 			...DEFAULT_SETTINGS.providers.enabled,
 			musixmatch: false,
 		});
 		expect(settings.providers.musixmatchToken).toBe("token");
+	});
+
+	test("normalizes invalid interlude styles back to the default dots style", () => {
+		const storage = new MemoryStorage();
+		storage.set(
+			"aura-lyrics:settings",
+			JSON.stringify({
+				interludeStyle: "sparkles",
+			})
+		);
+
+		const settings = new SettingsStore(storage).get();
+
+		expect(settings.interludeStyle).toBe("dots");
 	});
 
 	test("migrates saved settings from the previous dynamic popup key", () => {

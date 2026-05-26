@@ -48,7 +48,7 @@ describe("LyricsService", () => {
 			...DEFAULT_SETTINGS,
 			providers: {
 				...DEFAULT_SETTINGS.providers,
-				order: ["musixmatch", "lrclib", "spotify", "netease"] satisfies ProviderId[],
+				order: ["musixmatch", "lrclib", "spotify"] satisfies ProviderId[],
 			},
 		};
 		const service = new LyricsService(new ProviderRegistry([blockedProvider, fallbackProvider]), new LyricsCache(), () => context, {

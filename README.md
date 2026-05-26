@@ -15,7 +15,7 @@ AuraLyrics turns the current album art into a soft blurred backdrop and renders 
 - Clean line-mode fallback that animates whole lines without fake text-fill progress.
 - Three-line focus layout: previous, current, next.
 - Final lyric scroll handling for seek-to-ending cases.
-- Provider fallback across Spotify, Musixmatch, LRCLIB, and Netease.
+- Provider fallback across Spotify, Musixmatch, and LRCLIB.
 - Musixmatch richsync support for word timing when available.
 - Musixmatch captcha/rate-limit cooldown fallback.
 - Desktop-to-mobile Musixmatch token generation fallback.
@@ -61,12 +61,11 @@ Document Picture-in-Picture does not allow extensions to programmatically set th
 
 ## Providers
 
-AuraLyrics supports four lyric providers:
+AuraLyrics supports three lyric providers:
 
 - Spotify
 - Musixmatch
 - LRCLIB
-- Netease
 
 Provider order and enabled state are configurable in settings.
 
@@ -143,4 +142,4 @@ AuraLyrics currently focuses on lyrics display, provider fallback, cache behavio
 
 ## Disclaimer
 
-AuraLyrics is an unofficial Spicetify extension and is not affiliated with Spotify, Spicetify, Musixmatch, LRCLIB, or Netease.
+AuraLyrics is an unofficial Spicetify extension and is not affiliated with Spotify, Spicetify, Musixmatch, or LRCLIB.

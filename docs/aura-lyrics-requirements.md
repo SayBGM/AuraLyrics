@@ -30,7 +30,7 @@
 - 마지막 가사 아래에는 작은 출처 표시를 붙인다. 예: `Source: lrclib`.
 
 ## 4. 가사 Provider와 동기화
-- Provider는 Spotify, Musixmatch, Netease, LRCLIB 4종을 지원한다.
+- Provider는 Spotify, Musixmatch, LRCLIB 3종을 지원한다.
 - 설정된 provider 우선순서와 enabled 상태에 따라 fallback한다.
 - 설정 화면에서 provider별 on/off와 우선순서 변경을 지원한다.
 - Musixmatch token은 사용자가 직접 입력할 수 있고, `spicetify/cli`의 `token.get` 방식으로 생성 버튼도 제공한다.

@@ -1,34 +1,49 @@
 import type { Interlude as InterludeMetadata } from "../../lyrics/types";
+import type { InterludeStyle } from "../../settings/SettingsStore";
 import type { InterludeWaveform } from "../AudioAnalysisWaveformService";
 
 export class InterludeView {
 	public readonly element: HTMLDivElement;
 	public readonly startTime: number;
 	public readonly endTime: number;
+	public isActive = false;
+	public progress = 0;
 	private readonly bars: HTMLSpanElement[] = [];
 
 	public constructor(
 		private readonly interlude: InterludeMetadata,
+		private readonly style: InterludeStyle,
 		waveform?: InterludeWaveform
 	) {
 		this.startTime = interlude.startTime;
 		this.endTime = interlude.endTime;
 		this.element = document.createElement("div");
-		this.element.className = "vocals-group interlude";
+		this.element.className = `vocals-group interlude interlude-style-${style}`;
 		this.element.setAttribute("aria-label", "Instrumental break");
-		this.element.dataset.waveformSource = waveform?.source ?? "seeded";
-		this.element.append(this.createWaveform(waveform?.bars ?? fallbackBars()));
+		this.element.dataset.interludeStyle = style;
+		if (style === "dots") {
+			this.element.innerHTML =
+				'<span class="interlude-pill"><span class="interlude-dot"></span><span class="interlude-dot"></span><span class="interlude-dot"></span></span>';
+		}
+		if (style === "wave") {
+			this.element.dataset.waveformSource = waveform?.source ?? "seeded";
+			this.element.append(this.createWaveform(waveform?.bars ?? fallbackBars()));
+		}
 	}
 
 	public animate(timestamp: number): void {
 		const active = timestamp >= this.interlude.startTime && timestamp <= this.interlude.endTime;
+		this.isActive = active;
 		this.element.classList.toggle("active", active);
 		this.element.classList.toggle("sung", timestamp > this.interlude.endTime);
 		this.element.classList.toggle("idle", timestamp < this.interlude.startTime);
 		const duration = Math.max(0.001, this.interlude.endTime - this.interlude.startTime);
 		const progress = Math.min(1, Math.max(0, (timestamp - this.interlude.startTime) / duration));
+		this.progress = progress;
 		this.element.style.setProperty("--interlude-progress", `${Math.round(progress * 10000) / 100}%`);
-		this.updateBarProgress(progress);
+		if (this.style === "wave") {
+			this.updateBarProgress(progress);
+		}
 	}
 
 	private createWaveform(bars: number[]): HTMLSpanElement {

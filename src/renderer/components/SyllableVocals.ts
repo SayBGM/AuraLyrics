@@ -3,6 +3,12 @@ import type { ExtensionSettings } from "../../settings/SettingsStore";
 import { glowCurve, scaleCurve, yOffsetCurve } from "../animation/curves";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
+import {
+	type ParentheticalSegment,
+	parseWordLevelParentheticals,
+	type TimedParentheticalSegment,
+	withSegmentTiming,
+} from "../lyrics/parentheticalSegments";
 
 type LiveSyllable = {
 	metadata: Syllable;
@@ -12,9 +18,25 @@ type LiveSyllable = {
 	glow: Spring;
 };
 
+type LiveRow = {
+	element: HTMLSpanElement;
+	startTime: number;
+	endTime: number;
+	holdEndTime: number;
+};
+
+type SyllableRow = {
+	element: HTMLSpanElement;
+	main: HTMLSpanElement;
+	echo: HTMLSpanElement;
+	timing?: LiveRow;
+};
+
 export class SyllableVocals {
 	public readonly element: HTMLDivElement;
+	public hasParenthetical = false;
 	private readonly liveSyllables: LiveSyllable[] = [];
+	private readonly liveRows: LiveRow[] = [];
 
 	public constructor(
 		private readonly vocal: SyllableVocal,
@@ -32,6 +54,14 @@ export class SyllableVocals {
 		this.element.classList.toggle("active", active);
 		this.element.classList.toggle("sung", sung);
 		this.element.classList.toggle("idle", !active && !sung);
+
+		for (const row of this.liveRows) {
+			const rowActive = timestamp >= row.startTime && timestamp < row.holdEndTime;
+			const rowSung = timestamp >= row.holdEndTime;
+			row.element.classList.toggle("active", rowActive);
+			row.element.classList.toggle("sung", rowSung);
+			row.element.classList.toggle("idle", !rowActive && !rowSung);
+		}
 
 		for (const live of this.liveSyllables) {
 			const progress = clamp((timestamp - live.metadata.startTime) / Math.max(live.metadata.endTime - live.metadata.startTime, 0.001), 0, 1);
@@ -66,28 +96,102 @@ export class SyllableVocals {
 	}
 
 	private build(settings: ExtensionSettings): void {
+		let row: SyllableRow | undefined;
 		let word: HTMLSpanElement | undefined;
+		let wordIsParenthetical = false;
+		let isInsideParenthetical = false;
 		for (const syllable of this.vocal.syllables) {
-			if (!word) {
-				word = document.createElement("span");
-				word.className = "word";
-				this.element.append(word);
-			}
-			const span = document.createElement("span");
-			span.className = "lyric syllable synced";
-			span.textContent = syllable.romanizedText ?? syllable.text;
-			word.append(span);
-			this.liveSyllables.push({
-				metadata: syllable,
-				element: span,
-				scale: new Spring(1, 0.6, 0.7),
-				yOffset: new Spring(0, 0.4, 1.25),
-				glow: new Spring(0, 0.5, 1),
-			});
-			if (!syllable.isPartOfWord) {
+			const text = syllable.romanizedText ?? syllable.text;
+			const segments: ParentheticalSegment[] = syllable.isPartOfWord
+				? [{ text, isParenthetical: false, continues: false }]
+				: parseWordLevelParentheticals(text, isInsideParenthetical);
+			const timedSegments = withSegmentTiming(syllable, segments);
+			for (const segment of timedSegments) {
+				if (!row) {
+					row = createSyllableRow();
+					this.element.append(row.element);
+				}
+				this.markRowTiming(row, segment);
+				if (!word || wordIsParenthetical !== segment.isParenthetical) {
+					word = createWord(segment.isParenthetical);
+					wordIsParenthetical = segment.isParenthetical;
+					(segment.isParenthetical ? row.echo : row.main).append(word);
+				}
+				if (segment.isParenthetical && isTextEmpty(row.main)) {
+					row.element.classList.add("parenthetical-only");
+				}
+				if (segment.isParenthetical) {
+					row.element.classList.add("has-parenthetical-echo");
+				}
+				this.hasParenthetical = this.hasParenthetical || segment.isParenthetical;
+				this.element.classList.toggle("has-parenthetical", this.hasParenthetical);
+				const span = document.createElement("span");
+				span.className = "lyric syllable synced";
+				span.textContent = segment.text;
+				span.classList.toggle("parenthetical-syllable", segment.isParenthetical);
+				word.append(span);
+				this.liveSyllables.push({
+					metadata: { ...syllable, startTime: segment.startTime, endTime: segment.endTime },
+					element: span,
+					scale: new Spring(1, 0.6, 0.7),
+					yOffset: new Spring(0, 0.4, 1.25),
+					glow: new Spring(0, 0.5, 1),
+				});
 				word = undefined;
+				isInsideParenthetical = segment.continues;
+				if (segment.isParenthetical && !segment.continues) {
+					row = undefined;
+					word = undefined;
+				}
 			}
 		}
+		this.applyRowHoldTiming();
 		this.applySettings(settings);
 	}
+
+	private markRowTiming(row: SyllableRow, segment: TimedParentheticalSegment): void {
+		if (!row.timing) {
+			row.element.dataset.scrollRow = "true";
+			row.timing = {
+				element: row.element,
+				startTime: segment.startTime,
+				endTime: segment.endTime,
+				holdEndTime: segment.endTime,
+			};
+			this.liveRows.push(row.timing);
+			return;
+		}
+		row.timing.startTime = Math.min(row.timing.startTime, segment.startTime);
+		row.timing.endTime = Math.max(row.timing.endTime, segment.endTime);
+		row.timing.holdEndTime = row.timing.endTime;
+	}
+
+	private applyRowHoldTiming(): void {
+		for (let index = 0; index < this.liveRows.length; index += 1) {
+			const row = this.liveRows[index];
+			const next = this.liveRows.slice(index + 1).find((item) => item.startTime > row.startTime);
+			if (next) {
+				row.holdEndTime = Math.max(row.endTime, next.startTime);
+			}
+		}
+	}
 }
+
+const createSyllableRow = (): SyllableRow => {
+	const row = document.createElement("span");
+	row.className = "syllable-row";
+	const main = document.createElement("span");
+	main.className = "syllable-main";
+	const echo = document.createElement("span");
+	echo.className = "syllable-echo";
+	row.append(main, echo);
+	return { element: row, main, echo };
+};
+
+const createWord = (isParenthetical: boolean): HTMLSpanElement => {
+	const word = document.createElement("span");
+	word.className = `word${isParenthetical ? " parenthetical-word" : ""}`;
+	return word;
+};
+
+const isTextEmpty = (element: HTMLElement): boolean => (element.textContent ?? "").trim().length === 0;

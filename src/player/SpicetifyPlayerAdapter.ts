@@ -40,7 +40,7 @@ export class SpicetifyPlayerAdapter {
 			artist: metadata.artist_name ?? "",
 			album: metadata.album_title ?? "",
 			durationMs: Number(metadata.duration ?? this.spicetify.Player.getDuration()),
-			coverUrl: metadata.image_url,
+			coverUrl: findCoverUrl(item),
 			isLocal,
 		};
 	}
@@ -74,3 +74,49 @@ export class SpicetifyPlayerAdapter {
 		this.spicetify.Player.next?.();
 	}
 }
+
+const COVER_METADATA_KEYS = ["image_url", "image_xlarge_url", "image_large_url", "image_medium_url", "image_small_url"] as const;
+
+type PlayerItemWithCover = {
+	metadata?: Record<string, string>;
+	images?: Array<{ url?: string; uri?: string }>;
+	album?: {
+		images?: Array<{ url?: string; uri?: string }>;
+	};
+};
+
+const findCoverUrl = (item: PlayerItemWithCover): string | undefined => {
+	for (const candidate of getCoverCandidates(item)) {
+		const normalized = normalizeCoverUrl(candidate);
+		if (normalized) {
+			return normalized;
+		}
+	}
+	return undefined;
+};
+
+const getCoverCandidates = (item: PlayerItemWithCover): string[] =>
+	[
+		...COVER_METADATA_KEYS.map((key) => item.metadata?.[key]),
+		...(item.images ?? []).flatMap((image) => [image.url, image.uri]),
+		...(item.album?.images ?? []).flatMap((image) => [image.url, image.uri]),
+	].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+const normalizeCoverUrl = (url: string | undefined): string | undefined => {
+	if (!url) {
+		return undefined;
+	}
+	const trimmed = url.trim();
+	const spotifyImage = /^spotify:image:(?<imageId>[a-z0-9]+)$/i.exec(trimmed);
+	if (spotifyImage?.groups?.imageId) {
+		return `https://i.scdn.co/image/${spotifyImage.groups.imageId}`;
+	}
+	const internalImagePath = /^\/?image\/(?<imageId>[a-z0-9]+)$/i.exec(trimmed);
+	if (internalImagePath?.groups?.imageId) {
+		return `https://i.scdn.co/image/${internalImagePath.groups.imageId}`;
+	}
+	if (/^https?:\/\//i.test(trimmed)) {
+		return trimmed;
+	}
+	return undefined;
+};

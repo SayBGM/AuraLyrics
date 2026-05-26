@@ -1,11 +1,15 @@
 import type { Interlude, LyricsDocument } from "../lyrics/types";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import type { AnimatedGroup } from "./AnimatedGroup";
-import type { InterludeWaveform } from "./AudioAnalysisWaveformService";
 import { InterludeView } from "./components/Interlude";
 import { LineVocals } from "./components/LineVocals";
 import { SyllableVocals } from "./components/SyllableVocals";
+import { interludeKey, progressPercent, splitFrameProgress } from "./interludeProgress";
+import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { appendProviderSource, applyHoldTiming, scrollActiveIntoView, syllableToLine, updateContextVisibility } from "./lyricsTrackHelpers";
+
+export { interludeKey } from "./interludeProgress";
+export type { InterludeWaveformMap } from "./interludeWaveforms";
 
 export type StatusViewModel = {
 	title: string;
@@ -15,9 +19,8 @@ export type StatusViewModel = {
 	onAction?: () => void;
 };
 
-export type InterludeWaveformMap = Record<string, InterludeWaveform>;
-
 export class LyricsRenderer {
+	private hostRoot?: HTMLElement;
 	private container?: HTMLDivElement;
 	private lyricsViewport?: HTMLDivElement;
 	private lyricsTrack?: HTMLDivElement;
@@ -32,6 +35,7 @@ export class LyricsRenderer {
 		waveforms: InterludeWaveformMap = {}
 	): void {
 		this.destroy();
+		this.hostRoot = root;
 		this.container = document.createElement("div");
 		this.container.className = "aura-lyrics";
 		this.applyRootSettings(this.container, settings);
@@ -77,16 +81,19 @@ export class LyricsRenderer {
 		for (const group of this.groups) {
 			group.animate(timestamp, deltaTime);
 		}
+		this.applyInterludeProgress();
 		if (!this.lyricsTrack || !this.lyricsViewport) {
 			return;
 		}
-		updateContextVisibility(this.lyricsTrack, Math.max(0, Math.round(this.settings?.visibleContextLines ?? 1)));
-		scrollActiveIntoView(this.lyricsTrack, this.lyricsViewport, this.container, this.settings);
+		const interludePreviewRow = this.settings?.interludeStyle === "frame" ? this.getInterludePreviewRow() : undefined;
+		updateContextVisibility(this.lyricsTrack, Math.max(0, Math.round(this.settings?.visibleContextLines ?? 1)), interludePreviewRow);
+		scrollActiveIntoView(this.lyricsTrack, this.lyricsViewport, this.container, this.settings, interludePreviewRow);
 	}
 
 	public destroy(): void {
 		this.groups = [];
 		this.container?.remove();
+		this.hostRoot = undefined;
 		this.container = undefined;
 		this.lyricsViewport = undefined;
 		this.lyricsTrack = undefined;
@@ -133,6 +140,7 @@ export class LyricsRenderer {
 			const group = document.createElement("div");
 			group.className = "vocals-group syllable-group";
 			const lead = new SyllableVocals(item.lead, false, settings);
+			group.classList.toggle("has-parenthetical", lead.hasParenthetical);
 			group.append(lead.element);
 			const animated: AnimatedGroup = {
 				element: group,
@@ -156,12 +164,11 @@ export class LyricsRenderer {
 	}
 
 	private appendInterlude(item: Interlude, settings: ExtensionSettings, waveforms: InterludeWaveformMap): void {
-		if (!this.lyricsTrack || !settings.showInterludes) {
-			return;
-		}
-		const interlude = new InterludeView(item, waveforms[interludeKey(item)]);
+		const interlude = new InterludeView(item, settings.interludeStyle, waveforms[interludeKey(item)]);
 		this.groups.push(interlude);
-		this.lyricsTrack.append(interlude.element);
+		if (this.lyricsTrack && settings.showInterludes && settings.interludeStyle !== "frame") {
+			this.lyricsTrack.append(interlude.element);
+		}
 	}
 
 	private applyRootSettings(root: HTMLElement, settings: ExtensionSettings): void {
@@ -174,8 +181,49 @@ export class LyricsRenderer {
 		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
 		root.style.fontFamily = `${settings.fontFamily}, sans-serif`;
 	}
+
+	private getInterludePreviewRow(): HTMLElement | undefined {
+		const activeInterludeIndex = this.groups.findIndex(isActiveInterlude);
+		if (activeInterludeIndex < 0) {
+			return undefined;
+		}
+		const nextVocal = this.groups
+			.slice(activeInterludeIndex + 1)
+			.find((group) => !(group instanceof InterludeView) && group.element.parentElement === this.lyricsTrack);
+		return nextVocal?.element.querySelector<HTMLElement>("[data-scroll-row='true']") ?? nextVocal?.element;
+	}
+
+	private applyInterludeProgress(): void {
+		const activeInterlude = this.groups.find(isActiveInterlude);
+		const settings = this.settings;
+		const frameActive = activeInterlude !== undefined && settings?.interludeStyle === "frame";
+		this.container?.classList.toggle("interlude-active", frameActive);
+		for (const element of [this.hostRoot, this.hostRoot?.parentElement].filter(
+			(value): value is HTMLElement => value !== undefined && value !== null
+		)) {
+			element.classList.toggle("interlude-active", frameActive);
+			element.classList.toggle("interlude-style-frame", settings?.interludeStyle === "frame");
+			element.classList.toggle("interlude-style-dots", settings?.interludeStyle === "dots");
+			element.classList.toggle("interlude-style-wave", settings?.interludeStyle === "wave");
+			element.classList.toggle("interlude-frame-active", frameActive);
+			if (frameActive && activeInterlude) {
+				element.style.setProperty("--pip-interlude-progress", String(activeInterlude.progress));
+				element.style.setProperty("--pip-interlude-progress-percent", progressPercent(activeInterlude.progress));
+				const sides = splitFrameProgress(activeInterlude.progress);
+				element.style.setProperty("--pip-frame-progress-top", String(sides.top));
+				element.style.setProperty("--pip-frame-progress-right", String(sides.right));
+				element.style.setProperty("--pip-frame-progress-bottom", String(sides.bottom));
+				element.style.setProperty("--pip-frame-progress-left", String(sides.left));
+			} else {
+				element.style.removeProperty("--pip-interlude-progress");
+				element.style.removeProperty("--pip-interlude-progress-percent");
+				element.style.removeProperty("--pip-frame-progress-top");
+				element.style.removeProperty("--pip-frame-progress-right");
+				element.style.removeProperty("--pip-frame-progress-bottom");
+				element.style.removeProperty("--pip-frame-progress-left");
+			}
+		}
+	}
 }
 
-export const interludeKey = (interlude: Interlude): string => `${roundTime(interlude.startTime)}:${roundTime(interlude.endTime)}`;
-
-const roundTime = (value: number): number => Math.round(value * 1000) / 1000;
+const isActiveInterlude = (group: AnimatedGroup): group is InterludeView => group instanceof InterludeView && group.isActive;

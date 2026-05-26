@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1760" viewBox="0 0 1600 1760">
+	<defs>
+		<linearGradient id="pageBg" x1="0" x2="1" y1="0" y2="1">
+			<stop offset="0%" stop-color="#080908"/>
+			<stop offset="58%" stop-color="#1d2428"/>
+			<stop offset="100%" stop-color="#0b0b0a"/>
+		</linearGradient>
+		<radialGradient id="albumA" cx="50%" cy="38%" r="82%">
+			<stop offset="0%" stop-color="#587f91"/>
+			<stop offset="46%" stop-color="#25393d"/>
+			<stop offset="100%" stop-color="#0b0d0c"/>
+		</radialGradient>
+		<radialGradient id="albumB" cx="48%" cy="35%" r="86%">
+			<stop offset="0%" stop-color="#a37a58"/>
+			<stop offset="48%" stop-color="#3b2e26"/>
+			<stop offset="100%" stop-color="#0b0907"/>
+		</radialGradient>
+		<radialGradient id="albumC" cx="50%" cy="40%" r="88%">
+			<stop offset="0%" stop-color="#556e5f"/>
+			<stop offset="45%" stop-color="#26332d"/>
+			<stop offset="100%" stop-color="#090b0a"/>
+		</radialGradient>
+		<radialGradient id="albumD" cx="48%" cy="36%" r="88%">
+			<stop offset="0%" stop-color="#6d647c"/>
+			<stop offset="45%" stop-color="#302c3a"/>
+			<stop offset="100%" stop-color="#0b0a0d"/>
+		</radialGradient>
+		<filter id="softBlur">
+			<feGaussianBlur stdDeviation="18"/>
+		</filter>
+		<filter id="glow">
+			<feGaussianBlur stdDeviation="10" result="blur"/>
+			<feMerge>
+				<feMergeNode in="blur"/>
+				<feMergeNode in="SourceGraphic"/>
+			</feMerge>
+		</filter>
+		<filter id="deepShadow" x="-20%" y="-20%" width="140%" height="140%">
+			<feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#000" flood-opacity="0.45"/>
+		</filter>
+		<clipPath id="pipClip">
+			<rect x="0" y="0" width="660" height="430" rx="34"/>
+		</clipPath>
+		<style>
+			.title { font-family: "DM Sans", "Helvetica Neue", Arial, sans-serif; fill: #fff; font-size: 44px; font-weight: 700; letter-spacing: -1.6px; }
+			.subtitle { font-family: "DM Sans", "Helvetica Neue", Arial, sans-serif; fill: rgba(255,255,255,.62); font-size: 19px; font-weight: 500; }
+			.label { font-family: "DM Sans", "Helvetica Neue", Arial, sans-serif; fill: #fff; font-size: 24px; font-weight: 700; letter-spacing: -.4px; }
+			.note { font-family: "DM Sans", "Helvetica Neue", Arial, sans-serif; fill: rgba(255,255,255,.56); font-size: 15px; font-weight: 500; }
+			.lyricGhost { font-family: "DM Sans", "Helvetica Neue", Arial, sans-serif; fill: rgba(255,255,255,.20); font-size: 31px; font-weight: 700; letter-spacing: -1.2px; text-anchor: middle; }
+			.lyricNow { font-family: "DM Sans", "Helvetica Neue", Arial, sans-serif; fill: rgba(255,255,255,.92); font-size: 42px; font-weight: 760; letter-spacing: -1.8px; text-anchor: middle; }
+			.micro { font-family: "DM Sans", "Helvetica Neue", Arial, sans-serif; fill: rgba(255,255,255,.5); font-size: 13px; font-weight: 700; letter-spacing: 1.8px; text-anchor: middle; }
+		</style>
+	</defs>
+
+	<rect width="1600" height="1760" fill="url(#pageBg)"/>
+	<text x="90" y="92" class="title">AuraLyrics Interlude Interaction Concepts</text>
+	<text x="92" y="126" class="subtitle">테두리 진행도를 버리고, 인터루드를 “다음 가사로 넘어가는 장면 전환”으로 다루는 네 가지 방향</text>
+
+	<!-- Concept A -->
+	<g transform="translate(90 180)">
+		<text x="0" y="-28" class="label">A. Bottom Film Rail</text>
+		<text x="0" y="-5" class="note">가장 안정적. 테두리는 건드리지 않고 하단에 영화 자막 같은 진행 레일만 둔다.</text>
+		<g filter="url(#deepShadow)">
+			<rect width="660" height="430" rx="34" fill="#fff" opacity=".92"/>
+			<g clip-path="url(#pipClip)">
+				<rect width="660" height="430" fill="url(#albumA)"/>
+				<rect x="-30" y="-30" width="720" height="490" fill="url(#albumA)" filter="url(#softBlur)" opacity=".72"/>
+				<rect width="660" height="430" fill="rgba(0,0,0,.56)"/>
+				<text x="330" y="155" class="lyricGhost">먼지가 아름답고 차가워</text>
+				<text x="330" y="222" class="lyricNow">You and I</text>
+				<text x="330" y="287" class="lyricGhost">Everything is Ok Hoo</text>
+				<rect x="170" y="346" width="320" height="6" rx="3" fill="rgba(255,255,255,.18)"/>
+				<rect x="170" y="346" width="205" height="6" rx="3" fill="rgba(255,255,255,.94)" filter="url(#glow)"/>
+				<circle cx="375" cy="349" r="5" fill="#fff"/>
+				<text x="330" y="379" class="micro">INTERLUDE 03.2s</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- Concept B -->
+	<g transform="translate(850 180)">
+		<text x="0" y="-28" class="label">B. Breathing Center Glyph</text>
+		<text x="0" y="-5" class="note">중앙에 작은 호흡 글리프. 진행도보다는 “간주 중” 상태를 우아하게 보여준다.</text>
+		<g filter="url(#deepShadow)">
+			<rect width="660" height="430" rx="34" fill="#fff" opacity=".92"/>
+			<g clip-path="url(#pipClip)">
+				<rect width="660" height="430" fill="url(#albumB)"/>
+				<rect x="-30" y="-30" width="720" height="490" fill="url(#albumB)" filter="url(#softBlur)" opacity=".72"/>
+				<rect width="660" height="430" fill="rgba(0,0,0,.58)"/>
+				<text x="330" y="150" class="lyricGhost">가만히 머물렀던 밤</text>
+				<g transform="translate(330 220)" filter="url(#glow)">
+					<circle r="38" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>
+					<path d="M -22 0 C -10 -30, 12 -30, 22 0 C 10 30, -12 30, -22 0Z" fill="none" stroke="rgba(255,255,255,.88)" stroke-width="4" stroke-linecap="round"/>
+					<circle cx="-10" cy="0" r="3.8" fill="#fff"/>
+					<circle cx="0" cy="0" r="3.8" fill="#fff" opacity=".72"/>
+					<circle cx="10" cy="0" r="3.8" fill="#fff" opacity=".46"/>
+				</g>
+				<text x="330" y="300" class="lyricGhost">다음 가사로 다가가는 중</text>
+				<text x="330" y="379" class="micro">AURA BREATH</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- Concept C -->
+	<g transform="translate(90 700)">
+		<text x="0" y="-28" class="label">C. Next Lyric Reveal</text>
+		<text x="0" y="-5" class="note">진행도는 거의 숨기고, 다음 가사가 인터루드 동안 흐림에서 선명함으로 리빌된다.</text>
+		<g filter="url(#deepShadow)">
+			<rect width="660" height="430" rx="34" fill="#fff" opacity=".92"/>
+			<g clip-path="url(#pipClip)">
+				<rect width="660" height="430" fill="url(#albumC)"/>
+				<rect x="-30" y="-30" width="720" height="490" fill="url(#albumC)" filter="url(#softBlur)" opacity=".72"/>
+				<rect width="660" height="430" fill="rgba(0,0,0,.62)"/>
+				<text x="330" y="142" class="lyricGhost">지나간 가사는 멀어지고</text>
+				<text x="330" y="219" class="lyricNow" opacity=".82">바람아 내게 봄을 데려와줘</text>
+				<text x="330" y="270" class="note" text-anchor="middle">다음 줄이 이미 중앙에 있고, 점점 또렷해짐</text>
+				<rect x="238" y="326" width="184" height="3" rx="1.5" fill="rgba(255,255,255,.22)"/>
+				<rect x="238" y="326" width="122" height="3" rx="1.5" fill="rgba(255,255,255,.78)"/>
+				<text x="330" y="379" class="micro">NEXT LINE REVEAL</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- Concept D -->
+	<g transform="translate(850 700)">
+		<text x="0" y="-28" class="label">D. Corner Chapter Card</text>
+		<text x="0" y="-5" class="note">작은 카드 하나만 띄워 간주 길이와 다음 진입을 알려준다. 정보성이 제일 강하다.</text>
+		<g filter="url(#deepShadow)">
+			<rect width="660" height="430" rx="34" fill="#fff" opacity=".92"/>
+			<g clip-path="url(#pipClip)">
+				<rect width="660" height="430" fill="url(#albumD)"/>
+				<rect x="-30" y="-30" width="720" height="490" fill="url(#albumD)" filter="url(#softBlur)" opacity=".72"/>
+				<rect width="660" height="430" fill="rgba(0,0,0,.57)"/>
+				<text x="330" y="164" class="lyricGhost">소리 없이 지나가던 시간</text>
+				<text x="330" y="236" class="lyricNow" opacity=".55">Truly</text>
+				<g transform="translate(435 302)">
+					<rect width="158" height="58" rx="18" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.2)"/>
+					<text x="20" y="24" class="note" fill="rgba(255,255,255,.8)">INTERLUDE</text>
+					<rect x="20" y="38" width="118" height="4" rx="2" fill="rgba(255,255,255,.18)"/>
+					<rect x="20" y="38" width="76" height="4" rx="2" fill="rgba(255,255,255,.88)"/>
+				</g>
+				<text x="330" y="379" class="micro">SMALL STATUS CARD</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- Concept E -->
+	<g transform="translate(90 1220)">
+		<text x="0" y="-28" class="label">E. Rising Tide Interlude</text>
+		<text x="0" y="-5" class="note">인터루드 동안 하단에서 파도가 차오르고, 다음 가사 진입 직전에 물결이 아래로 빠지며 사라진다.</text>
+		<g filter="url(#deepShadow)">
+			<rect width="660" height="430" rx="34" fill="#fff" opacity=".92"/>
+			<g clip-path="url(#pipClip)">
+				<rect width="660" height="430" fill="url(#albumA)"/>
+				<rect x="-30" y="-30" width="720" height="490" fill="url(#albumA)" filter="url(#softBlur)" opacity=".72"/>
+				<rect width="660" height="430" fill="rgba(0,0,0,.58)"/>
+				<text x="330" y="132" class="lyricGhost">기억은 흐릿하게 멀어지고</text>
+				<text x="330" y="205" class="lyricNow" opacity=".68">바람아 내게 봄을 데려와줘</text>
+				<text x="330" y="266" class="lyricGhost">다음 줄이 물결 위로 떠오름</text>
+				<path d="M0 326 C60 306 104 347 168 326 C232 305 280 347 344 326 C408 305 458 347 522 326 C586 305 620 326 660 316 V430 H0 Z" fill="rgba(255,255,255,.16)"/>
+				<path d="M0 352 C70 332 112 371 178 352 C244 333 290 371 356 352 C422 333 472 371 538 352 C604 333 630 350 660 342 V430 H0 Z" fill="rgba(255,255,255,.12)"/>
+				<path d="M0 324 C60 304 104 345 168 324 C232 303 280 345 344 324 C408 303 458 345 522 324 C586 303 620 324 660 314" fill="none" stroke="rgba(255,255,255,.72)" stroke-width="3" filter="url(#glow)"/>
+				<text x="330" y="379" class="micro">RISING TIDE 64%</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- Concept F -->
+	<g transform="translate(850 1220)">
+		<text x="0" y="-28" class="label">F. Tide Exit Moment</text>
+		<text x="0" y="-5" class="note">인터루드 끝에서는 파도가 사라지고 다음 가사가 가까워지며 선명해진다.</text>
+		<g filter="url(#deepShadow)">
+			<rect width="660" height="430" rx="34" fill="#fff" opacity=".92"/>
+			<g clip-path="url(#pipClip)">
+				<rect width="660" height="430" fill="url(#albumC)"/>
+				<rect x="-30" y="-30" width="720" height="490" fill="url(#albumC)" filter="url(#softBlur)" opacity=".72"/>
+				<rect width="660" height="430" fill="rgba(0,0,0,.50)"/>
+				<text x="330" y="138" class="lyricGhost" opacity=".18">조금 전 가사는 물러나고</text>
+				<text x="330" y="218" class="lyricNow">시간아 나의 봄에 스며들어</text>
+				<path d="M0 384 C64 366 112 398 176 384 C240 366 288 398 352 384 C416 366 464 398 528 384 C592 366 628 382 660 376 V430 H0 Z" fill="rgba(255,255,255,.08)"/>
+				<path d="M0 382 C64 364 112 396 176 382 C240 364 288 396 352 382 C416 364 464 396 528 382 C592 364 628 380 660 374" fill="none" stroke="rgba(255,255,255,.44)" stroke-width="2"/>
+				<text x="330" y="379" class="micro">TIDE OUT 96%</text>
+			</g>
+		</g>
+	</g>
+</svg>

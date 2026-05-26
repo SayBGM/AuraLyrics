@@ -30,7 +30,17 @@ export const appendProviderSource = (lyricsTrack: HTMLElement, provider: string 
 	lyricsTrack.append(source);
 };
 
-const getFocusedRow = (rows: HTMLElement[]): { row: HTMLElement; index: number } | undefined => {
+const SCROLL_ROW_SELECTOR = ".vocals-group:not(.syllable-group), .syllable-row[data-scroll-row='true']";
+
+const getScrollRows = (lyricsTrack: HTMLElement): HTMLElement[] => Array.from(lyricsTrack.querySelectorAll<HTMLElement>(SCROLL_ROW_SELECTOR));
+
+const getFocusedRow = (rows: HTMLElement[], preferredRow?: HTMLElement): { row: HTMLElement; index: number } | undefined => {
+	if (preferredRow) {
+		const preferredIndex = rows.indexOf(preferredRow);
+		if (preferredIndex >= 0) {
+			return { row: preferredRow, index: preferredIndex };
+		}
+	}
 	const activeIndex = rows.findIndex((row) => row.classList.contains("active"));
 	if (activeIndex >= 0) {
 		return { row: rows[activeIndex], index: activeIndex };
@@ -44,9 +54,9 @@ const getFocusedRow = (rows: HTMLElement[]): { row: HTMLElement; index: number }
 	return undefined;
 };
 
-export const updateContextVisibility = (lyricsTrack: HTMLElement, contextLines: number): void => {
-	const rows = Array.from(lyricsTrack.querySelectorAll<HTMLElement>(".vocals-group"));
-	const focused = getFocusedRow(rows);
+export const updateContextVisibility = (lyricsTrack: HTMLElement, contextLines: number, preferredRow?: HTMLElement): void => {
+	const rows = getScrollRows(lyricsTrack);
+	const focused = getFocusedRow(rows, preferredRow);
 	if (!focused) {
 		for (const row of rows) {
 			row.classList.remove("out-of-context");
@@ -69,19 +79,35 @@ export const updateContextVisibility = (lyricsTrack: HTMLElement, contextLines: 
 	});
 };
 
+const getOffsetTopWithin = (element: HTMLElement, container: HTMLElement): number => {
+	let offset = 0;
+	let current: HTMLElement | null = element;
+	while (current && current !== container) {
+		offset += current.offsetTop;
+		current = current.parentElement;
+	}
+	if (current === container) {
+		return offset;
+	}
+	const elementRect = element.getBoundingClientRect();
+	const containerRect = container.getBoundingClientRect();
+	return elementRect.top - containerRect.top;
+};
+
 export const scrollActiveIntoView = (
 	lyricsTrack: HTMLElement,
 	lyricsViewport: HTMLElement,
 	container: HTMLElement | undefined,
-	settings: ExtensionSettings | undefined
+	settings: ExtensionSettings | undefined,
+	preferredRow?: HTMLElement
 ): void => {
-	const focused = getFocusedRow(Array.from(lyricsTrack.querySelectorAll<HTMLElement>(".vocals-group")));
+	const focused = getFocusedRow(getScrollRows(lyricsTrack), preferredRow);
 	if (!focused) {
 		return;
 	}
 	const viewportHeight = lyricsViewport.clientHeight || container?.clientHeight || 600;
 	const rowHeight = focused.row.clientHeight || focused.row.getBoundingClientRect().height || 64;
 	const targetY = viewportHeight * (settings?.lyricsVerticalPosition ?? 0.5);
-	const offset = focused.row.offsetTop + rowHeight / 2 - targetY;
+	const offset = getOffsetTopWithin(focused.row, lyricsTrack) + rowHeight / 2 - targetY;
 	lyricsTrack.style.transform = `translate3d(0, ${-Math.max(0, offset)}px, 0)`;
 };

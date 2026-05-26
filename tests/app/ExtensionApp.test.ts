@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
+import type { LineLyrics } from "../../src/lyrics/types";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 
 const createSpicetify = () => {
@@ -166,5 +167,188 @@ describe("ExtensionApp", () => {
 		expect(getProgress).toHaveBeenCalledTimes(1);
 		expect(update).toHaveBeenLastCalledWith(45, expect.any(Number));
 		app.destroy();
+	});
+
+	test("applies extracted track colors to the PiP accent without blocking lyrics loading", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:accent",
+				metadata: {
+					title: "Accent Track",
+					artist_name: "Aura",
+					album_title: "Palette",
+					duration: "180000",
+					image_url: "https://example.com/cover.jpg",
+				},
+			},
+		};
+		spicetify.URI = {
+			isTrack: () => true,
+			isLocalTrack: () => false,
+		};
+		spicetify.colorExtractor = vi.fn(async () => ({
+			DARK_VIBRANT: "#101010",
+			DESATURATED: "#777777",
+			LIGHT_VIBRANT: "#eeeeee",
+			PROMINENT: "#abcdef",
+			VIBRANT: "#ff00aa",
+			VIBRANT_NON_ALARMING: "#2d9cdb",
+		}));
+		const app = new ExtensionApp(spicetify);
+		const setAccentColor = vi.fn();
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			lyricsService: {
+				load: () => Promise<{ status: "empty"; reason: "no-synced-lyrics"; track: { title: string } }>;
+			};
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			setAccentColor,
+		};
+		internals.lyricsService = {
+			load: vi.fn(async () => ({ status: "empty", reason: "no-synced-lyrics", track: { title: "Accent Track" } }) as const),
+		};
+
+		await internals.loadCurrentTrack(false);
+
+		expect(spicetify.colorExtractor).toHaveBeenCalledWith("spotify:track:accent");
+		expect(setAccentColor).toHaveBeenCalledWith("#2d9cdb");
+	});
+
+	test("ignores invalid extracted colors and falls back to the next valid palette color", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:accent-fallback",
+				metadata: {
+					title: "Accent Fallback",
+					artist_name: "Aura",
+					album_title: "Palette",
+					duration: "180000",
+				},
+			},
+		};
+		spicetify.URI = {
+			isTrack: () => true,
+			isLocalTrack: () => false,
+		};
+		spicetify.colorExtractor = vi.fn(
+			async () =>
+				({
+					DARK_VIBRANT: "#101010",
+					DESATURATED: "#777777",
+					LIGHT_VIBRANT: "#eeeeee",
+					PROMINENT: "",
+					VIBRANT: "rgb(255, 0, 170)",
+					VIBRANT_NON_ALARMING: undefined,
+				}) as never
+		);
+		const app = new ExtensionApp(spicetify);
+		const setAccentColor = vi.fn();
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			lyricsService: {
+				load: () => Promise<{ status: "empty"; reason: "no-synced-lyrics"; track: { title: string } }>;
+			};
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			setAccentColor,
+		};
+		internals.lyricsService = {
+			load: vi.fn(async () => ({ status: "empty", reason: "no-synced-lyrics", track: { title: "Accent Fallback" } }) as const),
+		};
+
+		await internals.loadCurrentTrack(false);
+
+		expect(setAccentColor).toHaveBeenCalledWith("#101010");
+	});
+
+	test("renders interlude waveforms from Spicetify audio analysis when wave style is selected", async () => {
+		const { spicetify } = createSpicetify();
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 14,
+			content: [
+				{ type: "vocal", text: "Before", startTime: 0, endTime: 4, oppositeAligned: false },
+				{ type: "interlude", startTime: 4, endTime: 10 },
+				{ type: "vocal", text: "After", startTime: 10, endTime: 14, oppositeAligned: false },
+			],
+		};
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:wave",
+				metadata: {
+					title: "Wave Track",
+					artist_name: "Aura",
+					album_title: "Breaks",
+					duration: "180000",
+				},
+			},
+		};
+		spicetify.URI = {
+			isTrack: () => true,
+			isLocalTrack: () => false,
+		};
+		spicetify.getAudioData = vi.fn(async () => ({
+			segments: [
+				{ start: 4, duration: 1, loudness_max: -28 },
+				{ start: 5, duration: 1, loudness_max: -18 },
+				{ start: 6, duration: 1, loudness_max: -8 },
+				{ start: 7, duration: 1, loudness_max: -3 },
+			],
+		}));
+		const app = new ExtensionApp(spicetify);
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			settings: { update: (patch: unknown) => void };
+			lyricsService: {
+				load: () => Promise<{ status: "ready"; lyrics: LineLyrics; provider: "spotify"; track: { title: string } }>;
+			};
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root,
+			setCover: vi.fn(),
+			setAccentColor: vi.fn(),
+		};
+		internals.settings.update({ interludeStyle: "wave" });
+		internals.lyricsService = {
+			load: vi.fn(
+				async () =>
+					({
+						status: "ready",
+						lyrics,
+						provider: "spotify",
+						track: { title: "Wave Track" },
+					}) as const
+			),
+		};
+
+		await internals.loadCurrentTrack(false);
+
+		expect(spicetify.getAudioData).toHaveBeenCalledWith("spotify:track:wave");
+		expect(root.querySelector<HTMLElement>(".interlude")?.dataset.waveformSource).toBe("audio-analysis");
+		expect(root.querySelectorAll(".interlude-wave-bar").length).toBeGreaterThan(0);
 	});
 });

@@ -3,7 +3,6 @@ import { LyricsService } from "../lyrics/LyricsService";
 import { LrclibProvider } from "../lyrics/providers/LrclibProvider";
 import { MusixmatchProvider } from "../lyrics/providers/MusixmatchProvider";
 import { type MusixmatchTokenResponse, MusixmatchTokenService } from "../lyrics/providers/MusixmatchTokenService";
-import { NeteaseProvider } from "../lyrics/providers/NeteaseProvider";
 import { ProviderRegistry } from "../lyrics/providers/ProviderRegistry";
 import { SpotifyProvider } from "../lyrics/providers/SpotifyProvider";
 import type { LyricsDocument, LyricsLoadState, TrackIdentity } from "../lyrics/types";
@@ -12,13 +11,15 @@ import { SpicetifyStorageAdapter } from "../platform/SpicetifyStorageAdapter";
 import { PlaybackClock } from "../player/PlaybackClock";
 import { SpicetifyPlayerAdapter } from "../player/SpicetifyPlayerAdapter";
 import { AudioAnalysisWaveformService, type TrackWaveformProfile } from "../renderer/AudioAnalysisWaveformService";
-import { type InterludeWaveformMap, interludeKey, LyricsRenderer } from "../renderer/LyricsRenderer";
+import { buildInterludeWaveformMap, type InterludeWaveformMap } from "../renderer/interludeWaveforms";
+import { LyricsRenderer } from "../renderer/LyricsRenderer";
 import type { SpicetifyGlobal } from "../runtime/spicetify";
 import { SettingsStore } from "../settings/SettingsStore";
 import { SettingsView } from "../settings/SettingsView";
 import { pipStyles } from "../styles/pipStyles";
 import { MusicStateMachine } from "./MusicStateMachine";
 import { TopbarController } from "./TopbarController";
+import { TrackAccentService } from "./TrackAccentService";
 
 export class ExtensionApp {
 	private readonly storage: SpicetifyStorageAdapter;
@@ -28,10 +29,11 @@ export class ExtensionApp {
 	private readonly renderer = new LyricsRenderer();
 	private readonly stateMachine = new MusicStateMachine();
 	private readonly cache: LyricsCache;
-	private readonly registry = new ProviderRegistry([new SpotifyProvider(), new LrclibProvider(), new MusixmatchProvider(), new NeteaseProvider()]);
+	private readonly registry = new ProviderRegistry([new SpotifyProvider(), new LrclibProvider(), new MusixmatchProvider()]);
 	private readonly lyricsService: LyricsService;
 	private readonly musixmatchTokenService: MusixmatchTokenService;
 	private readonly waveformService: AudioAnalysisWaveformService;
+	private readonly trackAccentService: TrackAccentService;
 	private readonly settingsView: SettingsView;
 	private readonly topbar: TopbarController;
 	private readonly disposers: Array<() => void> = [];
@@ -55,6 +57,7 @@ export class ExtensionApp {
 		this.cache = new LyricsCache(this.storage);
 		this.player = new SpicetifyPlayerAdapter(spicetify);
 		this.waveformService = new AudioAnalysisWaveformService(async (uri) => this.spicetify.getAudioData?.(uri));
+		this.trackAccentService = new TrackAccentService(spicetify.colorExtractor);
 		this.musixmatchTokenService = new MusixmatchTokenService((url, body, headers) => {
 			if (!this.spicetify.CosmosAsync) {
 				throw new Error("Spicetify.CosmosAsync is not available.");
@@ -183,6 +186,7 @@ export class ExtensionApp {
 			return;
 		}
 		this.session.setCover(track.coverUrl);
+		void this.applyTrackAccent(track);
 		this.stateMachine.dispatch({ type: "validTrack" });
 		this.showStatus("Loading lyrics", track.title);
 		this.lastLoadState = await this.lyricsService.load(track, this.settings.get(), refresh);
@@ -240,6 +244,14 @@ export class ExtensionApp {
 		);
 	}
 
+	private async applyTrackAccent(track: TrackIdentity): Promise<void> {
+		const session = this.session;
+		if (!session) {
+			return;
+		}
+		await this.trackAccentService.apply(track, session, () => this.session === session && this.currentTrack?.uri === track.uri);
+	}
+
 	private tick(deltaTime: number): void {
 		if (!this.session || this.lastLoadState.status !== "ready") {
 			return;
@@ -291,16 +303,11 @@ export class ExtensionApp {
 	}
 
 	private waveformsForLyrics(lyrics: LyricsDocument): InterludeWaveformMap {
-		if (!this.waveformProfile) {
-			return {};
-		}
-		const waveforms: InterludeWaveformMap = {};
-		const items = lyrics.type === "static" ? [] : lyrics.content;
-		for (const item of items) {
-			if (item.type === "interlude") {
-				waveforms[interludeKey(item)] = this.waveformService.waveformForInterlude(this.waveformProfile, item);
-			}
-		}
-		return waveforms;
+		return buildInterludeWaveformMap({
+			lyrics,
+			profile: this.waveformProfile,
+			interludeStyle: this.settings.get().interludeStyle,
+			waveformForInterlude: (profile, interlude) => this.waveformService.waveformForInterlude(profile, interlude),
+		});
 	}
 }

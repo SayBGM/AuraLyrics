@@ -98,4 +98,110 @@ describe("SpicetifyPlayerAdapter", () => {
 
 		expect(togglePlay).toHaveBeenCalledOnce();
 	});
+
+	test("normalizes Spotify image URIs into CDN cover URLs", () => {
+		const player = new SpicetifyPlayerAdapter(
+			createSpicetify({
+				data: {
+					item: {
+						uri: "spotify:track:abc123",
+						metadata: {
+							title: "Title",
+							artist_name: "Artist",
+							album_title: "Album",
+							duration: "1000",
+							image_url: "spotify:image:ab67616d00001e02feedface",
+						},
+					},
+				},
+			})
+		);
+
+		expect(player.getCurrentTrack()?.coverUrl).toBe("https://i.scdn.co/image/ab67616d00001e02feedface");
+	});
+
+	test("falls back to alternate image metadata when image_url is missing", () => {
+		const player = new SpicetifyPlayerAdapter(
+			createSpicetify({
+				data: {
+					item: {
+						uri: "spotify:track:def456",
+						metadata: {
+							title: "Title",
+							artist_name: "Artist",
+							album_title: "Album",
+							duration: "1000",
+							image_xlarge_url: "spotify:image:ab67616d0000b273cafe",
+						},
+					},
+				},
+			})
+		);
+
+		expect(player.getCurrentTrack()?.coverUrl).toBe("https://i.scdn.co/image/ab67616d0000b273cafe");
+	});
+
+	test("normalizes internal Spotify image paths into CDN cover URLs", () => {
+		const player = new SpicetifyPlayerAdapter(
+			createSpicetify({
+				data: {
+					item: {
+						uri: "spotify:track:pathcover",
+						metadata: {
+							title: "Title",
+							artist_name: "Artist",
+							album_title: "Album",
+							duration: "1000",
+							image_url: "/image/ab67616d0000b273path",
+						},
+					},
+				},
+			})
+		);
+
+		expect(player.getCurrentTrack()?.coverUrl).toBe("https://i.scdn.co/image/ab67616d0000b273path");
+	});
+
+	test("skips non-renderable metadata image values before falling back", () => {
+		const player = new SpicetifyPlayerAdapter(
+			createSpicetify({
+				data: {
+					item: {
+						uri: "spotify:track:badcover",
+						metadata: {
+							title: "Title",
+							artist_name: "Artist",
+							album_title: "Album",
+							duration: "1000",
+							image_url: "spotify:image:",
+							image_large_url: "spotify:image:ab67616d0000b273valid",
+						},
+					},
+				},
+			})
+		);
+
+		expect(player.getCurrentTrack()?.coverUrl).toBe("https://i.scdn.co/image/ab67616d0000b273valid");
+	});
+
+	test("extracts album art from player item image arrays when metadata images are absent", () => {
+		const player = new SpicetifyPlayerAdapter(
+			createSpicetify({
+				data: {
+					item: {
+						uri: "spotify:track:itemimages",
+						metadata: {
+							title: "Title",
+							artist_name: "Artist",
+							album_title: "Album",
+							duration: "1000",
+						},
+						images: [{ url: "" }, { url: "spotify:image:ab67616d0000b273array" }],
+					},
+				},
+			})
+		);
+
+		expect(player.getCurrentTrack()?.coverUrl).toBe("https://i.scdn.co/image/ab67616d0000b273array");
+	});
 });

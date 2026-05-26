@@ -1,4 +1,4 @@
-export type ProviderId = "spotify" | "musixmatch" | "netease" | "lrclib";
+export type ProviderId = "spotify" | "musixmatch" | "lrclib";
 
 export type TimeRange = {
 	startTime: number;

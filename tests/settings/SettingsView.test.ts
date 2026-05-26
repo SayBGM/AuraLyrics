@@ -31,11 +31,6 @@ const providers: LyricsProvider[] = [
 		supports: () => true,
 		fetch: async () => ({ ok: false, reason: "no-lyrics" }),
 	},
-	{
-		id: "netease",
-		supports: () => true,
-		fetch: async () => ({ ok: false, reason: "no-lyrics" }),
-	},
 ];
 
 describe("SettingsView", () => {
@@ -129,5 +124,99 @@ describe("SettingsView", () => {
 		expect(store.get().providers.order.slice(0, 2)).toEqual(["lrclib", "spotify"]);
 		expect(content?.textContent).toContain("lrclib");
 		expect(bubbled).not.toHaveBeenCalled();
+	});
+
+	test("updates the interlude style from the settings UI", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		let content: HTMLElement | undefined;
+		window.Spicetify = {
+			PopupModal: {
+				display: (options) => {
+					content = options.content;
+				},
+			},
+		} as typeof window.Spicetify;
+		new SettingsView(store, providers, {
+			onRefreshLyrics: vi.fn(),
+			onClearCache: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+		}).open();
+
+		const select = Array.from(content?.querySelectorAll("select") ?? []).find((item) =>
+			Array.from(item.options).some((option) => option.value === "wave")
+		);
+		if (!select) {
+			throw new Error("Interlude style select was not rendered.");
+		}
+		select.value = "wave";
+		select.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get().interludeStyle).toBe("wave");
+	});
+
+	test("removes the album background toggle from settings", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		let content: HTMLElement | undefined;
+		window.Spicetify = {
+			PopupModal: {
+				display: (options) => {
+					content = options.content;
+				},
+			},
+		} as typeof window.Spicetify;
+		new SettingsView(store, providers, {
+			onRefreshLyrics: vi.fn(),
+			onClearCache: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+		}).open();
+
+		expect(content?.textContent).not.toContain("Album background");
+		expect(content?.textContent).toContain("Blur");
+	});
+
+	test("renders settings menus in Korean and Japanese", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		let content: HTMLElement | undefined;
+		window.Spicetify = {
+			PopupModal: {
+				display: (options) => {
+					content = options.content;
+				},
+			},
+		} as typeof window.Spicetify;
+		new SettingsView(store, providers, {
+			onRefreshLyrics: vi.fn(),
+			onClearCache: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+		}).open();
+
+		const languageSelect = Array.from(content?.querySelectorAll("select") ?? []).find((item) =>
+			Array.from(item.options).some((option) => option.value === "ko")
+		);
+		if (!languageSelect) {
+			throw new Error("Language select was not rendered.");
+		}
+		languageSelect.value = "ko";
+		languageSelect.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get().language).toBe("ko");
+		expect(content?.textContent).toContain("일반");
+		expect(content?.textContent).toContain("배경");
+		expect(content?.textContent).toContain("현재 가사 새로고침");
+		expect(content?.textContent).not.toContain("Album background");
+
+		const japaneseSelect = Array.from(content?.querySelectorAll("select") ?? []).find((item) =>
+			Array.from(item.options).some((option) => option.value === "ja")
+		);
+		if (!japaneseSelect) {
+			throw new Error("Japanese language option was not rendered.");
+		}
+		japaneseSelect.value = "ja";
+		japaneseSelect.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get().language).toBe("ja");
+		expect(content?.textContent).toContain("一般");
+		expect(content?.textContent).toContain("背景");
+		expect(content?.textContent).toContain("現在の歌詞を更新");
 	});
 });
