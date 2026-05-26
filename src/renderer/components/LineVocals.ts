@@ -20,7 +20,7 @@ export class LineVocals {
 		this.element.dataset.endTime = String(line.endTime);
 		const span = document.createElement("span");
 		span.className = "lyric line";
-		span.textContent = line.romanizedText ?? line.text;
+		appendLineTokens(span, line.romanizedText ?? line.text);
 		this.element.append(span);
 		this.applySettings(settings);
 	}
@@ -41,3 +41,20 @@ export class LineVocals {
 		this.element.style.setProperty("--font-scale", String(settings.fontScale));
 	}
 }
+
+const appendLineTokens = (line: HTMLSpanElement, text: string): void => {
+	const parts = text.match(/\S+|\s+/gu) ?? [];
+	for (const part of parts) {
+		if (/^\s+$/u.test(part)) {
+			line.append(document.createTextNode(part));
+			continue;
+		}
+		const word = document.createElement("span");
+		word.className = "word";
+		const token = document.createElement("span");
+		token.className = "lyric line-token";
+		token.textContent = part;
+		word.append(token);
+		line.append(word);
+	}
+};

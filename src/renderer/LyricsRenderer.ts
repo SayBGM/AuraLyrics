@@ -22,6 +22,14 @@ export type StatusViewModel = {
 	onAction?: () => void;
 };
 
+export type LyricsRendererMountOptions = {
+	lyrics: LyricsDocument;
+	settings: ExtensionSettings;
+	provider?: string;
+	waveforms?: InterludeWaveformMap;
+	rhythm?: RhythmProfile;
+};
+
 export class LyricsRenderer {
 	private hostRoot?: HTMLElement;
 	private container?: HTMLDivElement;
@@ -30,14 +38,7 @@ export class LyricsRenderer {
 	private groups: AnimatedGroup[] = [];
 	private settings?: ExtensionSettings;
 
-	public mount(
-		root: HTMLElement,
-		lyrics: LyricsDocument,
-		settings: ExtensionSettings,
-		provider?: string,
-		waveforms: InterludeWaveformMap = {},
-		rhythm?: RhythmProfile
-	): void {
+	public mount(root: HTMLElement, { lyrics, settings, provider, waveforms = {}, rhythm }: LyricsRendererMountOptions): void {
 		this.destroy();
 		this.hostRoot = root;
 		this.container = document.createElement("div");

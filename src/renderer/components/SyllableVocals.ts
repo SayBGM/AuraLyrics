@@ -4,13 +4,8 @@ import type { RhythmProfile } from "../AudioAnalysisWaveformService";
 import { glowCurve, scaleCurve, yOffsetCurve } from "../animation/curves";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
-import { koreanTailSplitForSegment, melismaBoostForProgress } from "../lyrics/koreanTail";
-import {
-	type ParentheticalSegment,
-	parseWordLevelParentheticals,
-	type TimedParentheticalSegment,
-	withSegmentTiming,
-} from "../lyrics/parentheticalSegments";
+import { melismaBoostForProgress } from "../lyrics/koreanTail";
+import { buildSyllableRows, type SyllableVisualGroup } from "../lyrics/syllableRows";
 
 type LiveSyllable = {
 	metadata: Syllable;
@@ -31,7 +26,6 @@ type SyllableRow = {
 	element: HTMLSpanElement;
 	main: HTMLSpanElement;
 	echo: HTMLSpanElement;
-	timing?: LiveRow;
 };
 
 export class SyllableVocals {
@@ -106,76 +100,39 @@ export class SyllableVocals {
 	}
 
 	private build(settings: ExtensionSettings): void {
-		let row: SyllableRow | undefined;
-		let word: HTMLSpanElement | undefined;
-		let wordIsParenthetical = false;
-		let isInsideParenthetical = false;
-		for (const syllable of this.vocal.syllables) {
-			const text = syllable.romanizedText ?? syllable.text;
-			const segments: ParentheticalSegment[] = syllable.isPartOfWord
-				? [{ text, isParenthetical: false, continues: false }]
-				: parseWordLevelParentheticals(text, isInsideParenthetical);
-			const stackParentheticals = shouldStackAdLibParentheticals(segments);
-			const timedSegments = withSegmentTiming(syllable, stackParentheticals ? stripStandaloneSeparators(segments) : segments);
-			for (const segment of timedSegments) {
-				if (stackParentheticals && segment.isParenthetical && row && !isTextEmpty(row.main)) {
-					row = undefined;
-					word = undefined;
-				}
-				if (!row) {
-					row = createSyllableRow();
-					this.element.append(row.element);
-				}
-				this.markRowTiming(row, segment);
-				if (!word || wordIsParenthetical !== segment.isParenthetical) {
-					word = createWord(segment.isParenthetical);
-					wordIsParenthetical = segment.isParenthetical;
-					(segment.isParenthetical && !stackParentheticals ? row.echo : row.main).append(word);
-				}
-				if (segment.isParenthetical && (stackParentheticals || isTextEmpty(row.main))) {
-					row.element.classList.add("parenthetical-only");
-				}
-				if (segment.isParenthetical && !stackParentheticals) {
-					row.element.classList.add("has-parenthetical-echo");
-				}
-				this.hasParenthetical = this.hasParenthetical || segment.isParenthetical;
-				this.element.classList.toggle("has-parenthetical", this.hasParenthetical);
-				const koreanTail = segment.isParenthetical ? undefined : koreanTailSplitForSegment(segment, syllable, this.vocal.syllables, this.rhythm);
-				if (koreanTail) {
-					word.classList.add("korean-tail-word");
-					word.classList.toggle("korean-melisma-word", koreanTail.melisma);
-					this.appendLiveSyllable(
-						word,
-						koreanTail.baseText,
-						{ ...syllable, startTime: segment.startTime, endTime: koreanTail.tailStartTime },
-						false,
-						["korean-tail-base"]
-					);
-					this.appendLiveSyllable(
-						word,
-						koreanTail.tailText,
-						{ ...syllable, startTime: koreanTail.tailStartTime, endTime: segment.endTime },
-						false,
-						koreanTail.melisma ? ["korean-tail-sustain", "korean-melisma-sustain"] : ["korean-tail-sustain"]
-					);
-				} else {
-					this.appendLiveSyllable(
-						word,
-						segment.text,
-						{ ...syllable, startTime: segment.startTime, endTime: segment.endTime },
-						segment.isParenthetical
-					);
-				}
-				word = undefined;
-				isInsideParenthetical = segment.continues;
-				if (segment.isParenthetical && !segment.continues) {
-					row = undefined;
-					word = undefined;
-				}
+		const model = buildSyllableRows(this.vocal, this.rhythm);
+		this.hasParenthetical = model.hasParenthetical;
+		this.element.classList.toggle("has-parenthetical", this.hasParenthetical);
+		for (const rowModel of model.rows) {
+			const row = createSyllableRow();
+			row.element.dataset.scrollRow = "true";
+			for (const className of rowModel.rowClasses) {
+				row.element.classList.add(className);
 			}
+			this.appendGroup(row.main, rowModel.main);
+			this.appendGroup(row.echo, rowModel.echo);
+			this.liveRows.push({
+				element: row.element,
+				startTime: rowModel.startTime,
+				endTime: rowModel.endTime,
+				holdEndTime: rowModel.holdEndTime,
+			});
+			this.element.append(row.element);
 		}
-		this.applyRowHoldTiming();
 		this.applySettings(settings);
+	}
+
+	private appendGroup(parent: HTMLSpanElement, group: SyllableVisualGroup): void {
+		for (const wordModel of group.words) {
+			const word = createWord(wordModel.isParenthetical);
+			for (const className of wordModel.extraClasses) {
+				word.classList.add(className);
+			}
+			for (const token of wordModel.tokens) {
+				this.appendLiveSyllable(word, token.text, token.metadata, token.isParenthetical, token.extraClasses);
+			}
+			parent.append(word);
+		}
 	}
 
 	private appendLiveSyllable(word: HTMLSpanElement, text: string, metadata: Syllable, isParenthetical: boolean, extraClasses: string[] = []): void {
@@ -195,33 +152,6 @@ export class SyllableVocals {
 			glow: new Spring(0, 0.5, 1),
 		});
 	}
-
-	private markRowTiming(row: SyllableRow, segment: TimedParentheticalSegment): void {
-		if (!row.timing) {
-			row.element.dataset.scrollRow = "true";
-			row.timing = {
-				element: row.element,
-				startTime: segment.startTime,
-				endTime: segment.endTime,
-				holdEndTime: segment.endTime,
-			};
-			this.liveRows.push(row.timing);
-			return;
-		}
-		row.timing.startTime = Math.min(row.timing.startTime, segment.startTime);
-		row.timing.endTime = Math.max(row.timing.endTime, segment.endTime);
-		row.timing.holdEndTime = row.timing.endTime;
-	}
-
-	private applyRowHoldTiming(): void {
-		for (let index = 0; index < this.liveRows.length; index += 1) {
-			const row = this.liveRows[index];
-			const next = this.liveRows.slice(index + 1).find((item) => item.startTime > row.startTime);
-			if (next) {
-				row.holdEndTime = Math.max(row.endTime, next.startTime);
-			}
-		}
-	}
 }
 
 const createSyllableRow = (): SyllableRow => {
@@ -240,26 +170,3 @@ const createWord = (isParenthetical: boolean): HTMLSpanElement => {
 	word.className = `word${isParenthetical ? " parenthetical-word" : ""}`;
 	return word;
 };
-
-const isTextEmpty = (element: HTMLElement): boolean => (element.textContent ?? "").trim().length === 0;
-
-const shouldStackAdLibParentheticals = (segments: ParentheticalSegment[]): boolean => {
-	const hasShortAdLib = segments.some((segment) => segment.isParenthetical && isShortAdLib(segment.text));
-	const hasTrailingLyricAfterFinalParenthetical = segments.at(-1)?.isParenthetical === false;
-	if (!hasShortAdLib || !hasTrailingLyricAfterFinalParenthetical) {
-		return false;
-	}
-	return true;
-};
-
-const stripStandaloneSeparators = (segments: ParentheticalSegment[]): ParentheticalSegment[] =>
-	segments.map((segment) =>
-		segment.isParenthetical
-			? segment
-			: {
-					...segment,
-					text: segment.text.replace(/[,，、]\s*$/u, "").trim(),
-				}
-	);
-
-const isShortAdLib = (text: string): boolean => /^[a-z]{1,5}$/i.test(text.trim());

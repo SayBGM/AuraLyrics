@@ -1,7 +1,25 @@
 import { describe, expect, test } from "vitest";
-import { pipStyles } from "../../src/styles/pipStyles";
+import { baseStyles, controlsStyles, interludeStyles, lyricsStyles, pipStyleModules, pipStyles, statusStyles } from "../../src/styles/pipStyles";
 
 describe("pipStyles", () => {
+	test("assembles the final CSS from focused style modules in display order", () => {
+		expect(pipStyleModules).toEqual([baseStyles, controlsStyles, lyricsStyles, interludeStyles, statusStyles]);
+		expect(pipStyles).toBe(pipStyleModules.join("\n"));
+		expect(baseStyles).toContain("#aura-lyrics-root");
+		expect(controlsStyles).toContain(".pip-controls");
+		expect(lyricsStyles).toContain(".lyrics-viewport");
+		expect(interludeStyles).toContain(".interlude");
+		expect(statusStyles).toContain(".status-card");
+	});
+
+	test("keeps focused module boundaries free of unrelated selectors", () => {
+		expect(baseStyles).not.toContain(".pip-controls");
+		expect(baseStyles).not.toContain(".lyrics-viewport");
+		expect(controlsStyles).not.toContain(".lyrics-viewport");
+		expect(lyricsStyles).not.toContain(".interlude-pill");
+		expect(interludeStyles).not.toContain(".status-card");
+	});
+
 	test("keeps album art unscaled by default and pulls it inward during interludes", () => {
 		expect(pipStyles).toContain("inset: 0");
 		expect(pipStyles).toContain("width: 100%");
@@ -51,20 +69,25 @@ describe("pipStyles", () => {
 	test("keeps lyric tracking stable between inactive and active states", () => {
 		const lyricRule = pipStyles.match(/\.lyric \{[^}]+\}/)?.[0] ?? "";
 		const lineRule = pipStyles.match(/\.line \{[^}]+\}/)?.[0] ?? "";
-		const syllableRule = pipStyles.match(/\.syllable \{[^}]+\}/)?.[0] ?? "";
+		const wordRule = pipStyles.match(/\.word \{[^}]+\}/)?.[0] ?? "";
+		const syllableRule = pipStyles.match(/(?:^|\n)\.syllable \{[^}]+\}/)?.[0] ?? "";
 		const activeLineRule = pipStyles.match(/\.line-group\.active \.line \{[^}]+\}/)?.[0] ?? "";
 		const activeGroupLyricRule = pipStyles.match(/\.vocals-group\.active \.lyric \{[^}]+\}/)?.[0] ?? "";
 
-		expect(lyricRule).toContain("letter-spacing: -0.018em");
-		expect(lyricRule).toContain("word-spacing: 0.14em");
-		expect(lineRule).toContain("letter-spacing: -0.018em");
-		expect(lineRule).toContain("word-spacing: 0.04em");
-		expect(syllableRule).not.toContain("letter-spacing");
-		expect(syllableRule).not.toContain("word-spacing");
+		expect(lyricRule).toContain("letter-spacing: var(--lyric-letter-spacing)");
+		expect(lyricRule).toContain("word-spacing: var(--lyric-word-spacing)");
+		expect(lineRule).toContain("--lyric-letter-spacing: -0.018em");
+		expect(lineRule).toContain("--lyric-word-spacing: 0.08em");
+		expect(lineRule).toContain("letter-spacing: var(--lyric-letter-spacing)");
+		expect(lineRule).toContain("word-spacing: var(--lyric-word-spacing)");
+		expect(wordRule).toContain("letter-spacing: var(--lyric-letter-spacing)");
+		expect(wordRule).toContain("word-spacing: var(--lyric-word-spacing)");
+		expect(syllableRule).toContain("letter-spacing: var(--lyric-letter-spacing)");
+		expect(syllableRule).toContain("word-spacing: var(--lyric-word-spacing)");
 		expect(lineRule).not.toContain("letter-spacing 360ms ease");
 		expect(lineRule).not.toContain("word-spacing 360ms ease");
 		expect(activeLineRule).not.toContain("letter-spacing");
-		expect(activeLineRule).toContain("word-spacing: 0.04em");
+		expect(activeLineRule).not.toContain("word-spacing");
 		expect(activeLineRule).toContain("--text-shadow-opacity: 34%");
 		expect(activeLineRule).toContain("--text-shadow-blur-radius: calc(12px * var(--motion-intensity, 1))");
 		expect(activeGroupLyricRule).not.toContain("letter-spacing");
@@ -76,10 +99,22 @@ describe("pipStyles", () => {
 		const activeGroupLyricRule = pipStyles.match(/\.vocals-group\.active \.lyric \{[^}]+\}/)?.[0] ?? "";
 		const syllableWordRowRule = pipStyles.match(/\.syllable-main,\n\.syllable-echo \{[^}]+\}/)?.[0] ?? "";
 
-		expect(lyricRule).toContain("word-spacing: 0.14em");
+		expect(lyricRule).toContain("word-spacing: var(--lyric-word-spacing)");
 		expect(activeGroupLyricRule).toBe("");
 		expect(syllableWordRowRule).toContain("column-gap: 0.24em");
 		expect(syllableWordRowRule).toContain("row-gap: 0.08em");
+	});
+
+	test("supports nested line word lyric tokens without active spacing overrides", () => {
+		const tokenRule = pipStyles.match(/\.line \.word \.lyric,\n\.line \.word \.syllable \{[^}]+\}/)?.[0] ?? "";
+		const activeSpacingRules = [...pipStyles.matchAll(/([^{}]+)\{([^{}]+)\}/g)]
+			.filter(([, selector, body]) => selector.includes(".active") && /(?:letter|word)-spacing:/.test(body))
+			.map(([, selector]) => selector.trim());
+
+		expect(tokenRule).toContain("letter-spacing: inherit");
+		expect(tokenRule).toContain("word-spacing: inherit");
+		expect(tokenRule).toContain("text-shadow: inherit");
+		expect(activeSpacingRules).toEqual([]);
 	});
 
 	test("anchors left and natural aligned active lyric scaling away from the clipped edge", () => {

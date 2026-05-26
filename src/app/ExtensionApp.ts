@@ -213,14 +213,13 @@ export class ExtensionApp {
 		}
 		if (state.status === "ready") {
 			this.stateMachine.dispatch({ type: "lyricsReady" });
-			this.renderer.mount(
-				this.session.root,
-				state.lyrics,
-				this.settings.get(),
-				state.provider,
-				this.waveformsForLyrics(state.lyrics),
-				this.waveformProfile
-			);
+			this.renderer.mount(this.session.root, {
+				lyrics: state.lyrics,
+				settings: this.settings.get(),
+				provider: state.provider,
+				waveforms: this.waveformsForLyrics(state.lyrics),
+				rhythm: this.waveformProfile,
+			});
 			return;
 		}
 		if (state.status === "empty") {
@@ -303,14 +302,13 @@ export class ExtensionApp {
 		this.session?.applySettings(this.settings.get());
 		this.resyncPlaybackTimestamp();
 		if (this.session && this.lastLoadState.status === "ready") {
-			this.renderer.mount(
-				this.session.root,
-				this.lastLoadState.lyrics,
-				this.settings.get(),
-				this.lastLoadState.provider,
-				this.waveformsForLyrics(this.lastLoadState.lyrics),
-				this.waveformProfile
-			);
+			this.renderer.mount(this.session.root, {
+				lyrics: this.lastLoadState.lyrics,
+				settings: this.settings.get(),
+				provider: this.lastLoadState.provider,
+				waveforms: this.waveformsForLyrics(this.lastLoadState.lyrics),
+				rhythm: this.waveformProfile,
+			});
 		}
 	}
 

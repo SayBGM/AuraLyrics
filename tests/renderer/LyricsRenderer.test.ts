@@ -3,6 +3,20 @@ import type { LineLyrics, SyllableLyrics } from "../../src/lyrics/types";
 import { interludeKey, LyricsRenderer } from "../../src/renderer/LyricsRenderer";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
 
+type RendererMountOptions = Parameters<LyricsRenderer["mount"]>[1];
+
+const mountRenderer = (
+	renderer: LyricsRenderer,
+	root: HTMLElement,
+	lyrics: RendererMountOptions["lyrics"],
+	settings: RendererMountOptions["settings"],
+	provider?: RendererMountOptions["provider"],
+	waveforms?: RendererMountOptions["waveforms"],
+	rhythm?: RendererMountOptions["rhythm"]
+): void => {
+	renderer.mount(root, { lyrics, settings, provider, waveforms, rhythm });
+};
+
 describe("LyricsRenderer", () => {
 	test("shows album art mode without lyric or status content", () => {
 		const pipRoot = document.createElement("div");
@@ -36,7 +50,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 		renderer.update(6, 1 / 60);
 
 		expect(root.querySelector(".aura-lyrics")).not.toBeNull();
@@ -57,7 +71,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 		renderer.update(7, 1 / 60);
 
 		expect(root.querySelector(".vocals-group.active")?.textContent).toContain("Hold highlight");
@@ -74,7 +88,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 		renderer.update(5, 1 / 60);
 
 		const activeLine = root.querySelector<HTMLElement>(".vocals-group.active");
@@ -92,12 +106,34 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const line = root.querySelector<HTMLElement>(".line");
 		expect(line?.querySelector(".lyric-parenthetical-break")).toBeNull();
 		expect(line?.querySelector(".lyric-parenthetical")).toBeNull();
 		expect(line?.textContent).toBe("바람아 내게 봄을 데려와 줘 (벚꽃잎이 흩날리듯이)");
+	});
+
+	test("renders line lyrics as word and token spans while preserving text content", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 10,
+			content: [{ type: "vocal", text: "바람아 내게 봄", startTime: 0, endTime: 10, oppositeAligned: false }],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
+
+		const line = root.querySelector<HTMLElement>(".line");
+		const words = Array.from(line?.querySelectorAll<HTMLElement>(":scope > .word") ?? []);
+		const tokens = Array.from(line?.querySelectorAll<HTMLElement>(":scope > .word > .lyric.line-token") ?? []);
+		expect(line?.classList.contains("lyric")).toBe(true);
+		expect(line?.textContent).toBe("바람아 내게 봄");
+		expect(words).toHaveLength(3);
+		expect(tokens.map((token) => token.textContent)).toEqual(["바람아", "내게", "봄"]);
+		expect(root.querySelector(".line-group")?.textContent).toBe("바람아 내게 봄");
 	});
 
 	test("formats parenthetical word-synced lyrics as smaller right-aligned lowered echoes in the same visual row", () => {
@@ -128,7 +164,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const lead = root.querySelector<HTMLElement>(".vocals.lead");
 		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
@@ -163,7 +199,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const lead = root.querySelector<HTMLElement>(".vocals.lead");
 		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
@@ -194,7 +230,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const lead = root.querySelector<HTMLElement>(".vocals.lead");
 		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
@@ -226,7 +262,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const lead = root.querySelector<HTMLElement>(".vocals.lead");
 		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
@@ -278,7 +314,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 } as typeof DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 } as typeof DEFAULT_SETTINGS);
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const groups = root.querySelectorAll<HTMLElement>(".vocals-group");
 		const rows = root.querySelectorAll<HTMLElement>(".syllable-row");
@@ -321,7 +357,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const lead = root.querySelector<HTMLElement>(".vocals.lead");
 		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
@@ -352,7 +388,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const row = root.querySelector<HTMLElement>(".syllable-row");
 		expect(row?.classList.contains("parenthetical-only")).toBe(true);
@@ -386,7 +422,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 		renderer.update(3.2, 1 / 60);
 
 		const tailWord = root.querySelector<HTMLElement>(".word.korean-tail-word");
@@ -426,7 +462,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		expect(root.querySelector(".korean-tail-word")).toBeNull();
 		expect(root.querySelector(".korean-tail-sustain")).toBeNull();
@@ -455,7 +491,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS, undefined, {}, { tempo: 150, beatDurationSec: 0.4, tempoSource: "track" });
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS, undefined, {}, { tempo: 150, beatDurationSec: 0.4, tempoSource: "track" });
 
 		expect(root.querySelector(".korean-tail-word")?.textContent).toBe("사랑해");
 		expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s");
@@ -481,7 +517,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS, undefined, {}, { tempo: 120, beatDurationSec: 0.5, tempoSource: "beats" });
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS, undefined, {}, { tempo: 120, beatDurationSec: 0.5, tempoSource: "beats" });
 		renderer.update(187, 1 / 60);
 
 		const tailWord = root.querySelector<HTMLElement>(".word.korean-melisma-word");
@@ -503,7 +539,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		expect(root.querySelector(".vocals-group")?.tagName).toBe("DIV");
 		expect(root.querySelector("button.vocals-group")).toBeNull();
@@ -523,7 +559,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 } as typeof DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 } as typeof DEFAULT_SETTINGS);
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
 		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
@@ -557,7 +593,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
 		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
@@ -587,7 +623,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS, "lrclib");
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS, "lrclib");
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
 		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
@@ -618,7 +654,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, visibleContextLines: 1 });
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, visibleContextLines: 1 });
 		renderer.update(11, 1 / 60);
 
 		const rows = Array.from(root.querySelectorAll<HTMLElement>(".vocals-group"));
@@ -638,7 +674,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, DEFAULT_SETTINGS, "lrclib");
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS, "lrclib");
 
 		const rows = Array.from(root.querySelectorAll(".lyrics-track > *"));
 		expect(rows.at(-1)?.classList.contains("provider-source")).toBe(true);
@@ -661,7 +697,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "frame", showInterludes: false }, "spotify");
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "frame", showInterludes: false }, "spotify");
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
 		Object.defineProperty(pipRoot, "clientWidth", { configurable: true, value: 300 });
@@ -724,7 +760,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "dots", showInterludes: true }, "spotify");
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "dots", showInterludes: true }, "spotify");
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
 		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
@@ -763,7 +799,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "wave", showInterludes: true }, "spotify", {
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "wave", showInterludes: true }, "spotify", {
 			[interludeKey(interlude)]: { bars: [0.2, 0.6, 1], source: "audio-analysis" },
 		});
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");

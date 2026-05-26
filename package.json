@@ -1,6 +1,6 @@
 {
 	"name": "aura-lyrics",
-	"version": "0.1.7",
+	"version": "0.1.8",
 	"description": "A Document Picture-in-Picture Spicetify lyrics extension with album-art ambience and spring animations.",
 	"type": "module",
 	"private": true,
@@ -8,13 +8,16 @@
 		"dev": "vite build --watch",
 		"build": "vite build",
 		"test": "vitest run",
+		"test:visual": "playwright test --project=chromium",
+		"test:visual:update": "playwright test --project=chromium --update-snapshots",
 		"typecheck": "tsc --noEmit",
-		"lint": "biome check package.json tsconfig.json vite.config.ts biome.json src tests scripts install .github/workflows",
-		"format": "biome check --write package.json tsconfig.json vite.config.ts biome.json src tests scripts install .github/workflows",
+		"lint": "biome check package.json tsconfig.json vite.config.ts playwright.config.ts biome.json src tests scripts install .github/workflows",
+		"format": "biome check --write package.json tsconfig.json vite.config.ts playwright.config.ts biome.json src tests scripts install .github/workflows",
 		"package": "npm run build && node scripts/package-release.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.0",
+		"@playwright/test": "^1.60.0",
 		"@types/node": "^24.0.0",
 		"jsdom": "^25.0.0",
 		"typescript": "^5.9.0",
