@@ -174,6 +174,26 @@ describe("SettingsView", () => {
 		expect(content?.textContent).toContain("Blur");
 	});
 
+	test("removes the lyrics vertical position control from settings", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		let content: HTMLElement | undefined;
+		window.Spicetify = {
+			PopupModal: {
+				display: (options) => {
+					content = options.content;
+				},
+			},
+		} as typeof window.Spicetify;
+		new SettingsView(store, providers, {
+			onRefreshLyrics: vi.fn(),
+			onClearCache: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+		}).open();
+
+		expect(content?.textContent).not.toContain("Vertical position");
+		expect(content?.textContent).toContain("Context lines");
+	});
+
 	test("renders settings menus in Korean and Japanese", () => {
 		const store = new SettingsStore(new MemoryStorage());
 		let content: HTMLElement | undefined;

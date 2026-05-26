@@ -24,7 +24,6 @@ describe("SettingsStore", () => {
 		expect(store.get().backgroundDim).toBeLessThanOrEqual(0.4);
 		expect(store.get().vignetteStrength).toBeLessThanOrEqual(0.3);
 		expect(store.get().inactiveBlurPx).toBeGreaterThan(0);
-		expect(store.get().lyricsVerticalPosition).toBe(0.5);
 		expect(store.get().syncPreference).toBe("prefer-syllable");
 		expect(store.get().interludeStyle).toBe("dots");
 	});

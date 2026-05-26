@@ -47,7 +47,6 @@ type TranslationKey =
 	| "sync"
 	| "tokenMissing"
 	| "tokenUpdated"
-	| "verticalPosition"
 	| "vignette";
 
 type OptionGroup = "alignment" | "interlude" | "language" | "preset" | "sync";
@@ -92,7 +91,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		sync: "Sync",
 		tokenMissing: "Musixmatch token was not returned.",
 		tokenUpdated: "Musixmatch token updated.",
-		verticalPosition: "Vertical position",
 		vignette: "Vignette",
 	},
 	ko: {
@@ -134,7 +132,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		sync: "싱크",
 		tokenMissing: "Musixmatch 토큰이 반환되지 않았습니다.",
 		tokenUpdated: "Musixmatch 토큰이 업데이트되었습니다.",
-		verticalPosition: "세로 위치",
 		vignette: "비네트",
 	},
 	ja: {
@@ -176,7 +173,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		sync: "同期",
 		tokenMissing: "Musixmatch トークンが返されませんでした。",
 		tokenUpdated: "Musixmatch トークンを更新しました。",
-		verticalPosition: "縦位置",
 		vignette: "ビネット",
 	},
 };
@@ -298,9 +294,6 @@ export class SettingsView {
 					["natural", "center", "left"],
 					(value) => this.update({ alignmentMode: value as ExtensionSettings["alignmentMode"] }),
 					(value) => this.optionLabel("alignment", value, language)
-				),
-				this.range(t("verticalPosition"), settings.lyricsVerticalPosition, 0.32, 0.68, 0.01, (value) =>
-					this.update({ lyricsVerticalPosition: value })
 				),
 				this.number(t("contextLines"), settings.visibleContextLines, (value) => this.update({ visibleContextLines: value })),
 				this.toggle(t("showInterludes"), settings.showInterludes, (value) => this.update({ showInterludes: value })),

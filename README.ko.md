@@ -86,7 +86,7 @@ Token 생성은 두 단계로 시도합니다.
 
 - General: preset, lyrics delay, font scale.
 - Background: album background, blur, dim, saturation, vignette, inactive blur.
-- Lyrics: sync preference, alignment, vertical position, context lines, interludes.
+- Lyrics: sync preference, alignment, centered active-line scroll, context lines, interludes.
 - Motion: animation, intensity, glow, reduced motion.
 - Providers: provider order, enabled state, Musixmatch token.
 - Advanced: debug mode, refresh lyrics, clear cache, reset settings.

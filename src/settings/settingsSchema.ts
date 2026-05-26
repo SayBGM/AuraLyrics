@@ -20,7 +20,6 @@ export type ExtensionSettings = {
 	inactiveBlurPx: number;
 	syncPreference: SyncPreference;
 	alignmentMode: AlignmentMode;
-	lyricsVerticalPosition: number;
 	visibleContextLines: number;
 	showInterludes: boolean;
 	interludeStyle: InterludeStyle;
@@ -61,7 +60,6 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 	inactiveBlurPx: 0.85,
 	syncPreference: "prefer-syllable",
 	alignmentMode: "center",
-	lyricsVerticalPosition: 0.5,
 	visibleContextLines: 1,
 	showInterludes: true,
 	interludeStyle: "dots",
@@ -143,7 +141,14 @@ export const normalizeProviderOrder = (value: unknown): ProviderId[] => {
 
 export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettings => {
 	const defaults = structuredClone(DEFAULT_SETTINGS);
-	const { aspectRatio: _ignoredAspectRatio, fontSizePx, ...settings } = raw;
+	const {
+		aspectRatio: _ignoredAspectRatio,
+		fontSizePx,
+		lyricsVerticalPosition: _ignoredLyricsVerticalPosition,
+		...settings
+	} = raw as PersistedSettings & {
+		lyricsVerticalPosition?: unknown;
+	};
 	const fontScale = settings.fontScale ?? (typeof fontSizePx === "number" ? fontSizePx / 25 : defaults.fontScale);
 	const providers = settings.providers ?? {};
 	const enabled: Partial<Record<ProviderId, boolean>> = providers.enabled ?? {};
@@ -159,7 +164,6 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		backgroundSaturation: clampNumber(settings.backgroundSaturation, defaults.backgroundSaturation, 0, 2),
 		vignetteStrength: clampNumber(settings.vignetteStrength, defaults.vignetteStrength, 0, 1),
 		inactiveBlurPx: clampNumber(settings.inactiveBlurPx, defaults.inactiveBlurPx, 0, 4),
-		lyricsVerticalPosition: clampNumber(settings.lyricsVerticalPosition, defaults.lyricsVerticalPosition, 0.25, 0.75),
 		visibleContextLines: Math.round(clampNumber(settings.visibleContextLines, defaults.visibleContextLines, 0, 2)),
 		interludeStyle: isInterludeStyle(settings.interludeStyle) ? settings.interludeStyle : defaults.interludeStyle,
 		motionIntensity: clampNumber(settings.motionIntensity, defaults.motionIntensity, 0, 2),

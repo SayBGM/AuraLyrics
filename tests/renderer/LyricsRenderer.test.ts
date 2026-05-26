@@ -229,7 +229,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 });
+		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 } as typeof DEFAULT_SETTINGS);
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const groups = root.querySelectorAll<HTMLElement>(".vocals-group");
 		const rows = root.querySelectorAll<HTMLElement>(".syllable-row");
@@ -246,7 +246,7 @@ describe("LyricsRenderer", () => {
 		renderer.update(3, 1 / 60);
 
 		expect(root.querySelector<HTMLElement>(".syllable-row.active")?.textContent ?? "").toContain("꽃이피고꽃이 피고");
-		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -60px, 0)");
+		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -20px, 0)");
 	});
 
 	test("does not split parentheticals inside syllable-level continuation tokens", () => {
@@ -330,7 +330,7 @@ describe("LyricsRenderer", () => {
 		expect(root.querySelector("button.vocals-group")).toBeNull();
 	});
 
-	test("moves the lyrics track to keep the active line near the configured position", () => {
+	test("moves the lyrics track to keep the active line centered regardless of saved vertical position", () => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {
 			type: "line",
@@ -344,7 +344,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 });
+		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, lyricsVerticalPosition: 0.4 } as typeof DEFAULT_SETTINGS);
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
 		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
@@ -355,7 +355,7 @@ describe("LyricsRenderer", () => {
 
 		renderer.update(11, 1 / 60);
 
-		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -240px, 0)");
+		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -200px, 0)");
 	});
 
 	test("scrolls to the final lyric when playback seeks past the last lyric", () => {

@@ -10,6 +10,15 @@ describe("settingsSchema", () => {
 		expect(DEFAULT_SETTINGS.language).toBe("en");
 	});
 
+	test("does not expose a configurable lyrics vertical position", () => {
+		const settings = normalizeLoadedSettings({
+			lyricsVerticalPosition: 0.25,
+		} as Parameters<typeof normalizeLoadedSettings>[0]);
+
+		expect("lyricsVerticalPosition" in DEFAULT_SETTINGS).toBe(false);
+		expect("lyricsVerticalPosition" in settings).toBe(false);
+	});
+
 	test("normalizes invalid interlude style and removed providers without storage concerns", () => {
 		const settings = normalizeLoadedSettings({
 			interludeStyle: "sparkles" as never,

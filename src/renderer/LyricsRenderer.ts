@@ -88,7 +88,7 @@ export class LyricsRenderer {
 		}
 		const interludePreviewRow = this.settings?.interludeStyle === "frame" ? this.getInterludePreviewRow() : undefined;
 		updateContextVisibility(this.lyricsTrack, Math.max(0, Math.round(this.settings?.visibleContextLines ?? 1)), interludePreviewRow);
-		scrollActiveIntoView(this.lyricsTrack, this.lyricsViewport, this.container, this.settings, interludePreviewRow);
+		scrollActiveIntoView(this.lyricsTrack, this.lyricsViewport, this.container, interludePreviewRow);
 	}
 
 	public destroy(): void {

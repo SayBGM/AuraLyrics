@@ -1,5 +1,4 @@
 import type { SyllableVocalSet } from "../lyrics/types";
-import type { ExtensionSettings } from "../settings/SettingsStore";
 import type { AnimatedGroup } from "./AnimatedGroup";
 
 export const applyHoldTiming = (groups: AnimatedGroup[]): void => {
@@ -98,7 +97,6 @@ export const scrollActiveIntoView = (
 	lyricsTrack: HTMLElement,
 	lyricsViewport: HTMLElement,
 	container: HTMLElement | undefined,
-	settings: ExtensionSettings | undefined,
 	preferredRow?: HTMLElement
 ): void => {
 	const focused = getFocusedRow(getScrollRows(lyricsTrack), preferredRow);
@@ -107,7 +105,7 @@ export const scrollActiveIntoView = (
 	}
 	const viewportHeight = lyricsViewport.clientHeight || container?.clientHeight || 600;
 	const rowHeight = focused.row.clientHeight || focused.row.getBoundingClientRect().height || 64;
-	const targetY = viewportHeight * (settings?.lyricsVerticalPosition ?? 0.5);
+	const targetY = viewportHeight * 0.5;
 	const offset = getOffsetTopWithin(focused.row, lyricsTrack) + rowHeight / 2 - targetY;
 	lyricsTrack.style.transform = `translate3d(0, ${-Math.max(0, offset)}px, 0)`;
 };
