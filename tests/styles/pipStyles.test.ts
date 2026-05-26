@@ -31,7 +31,24 @@ describe("pipStyles", () => {
 		expect(lyricsTrackRule).toContain("margin: 0 12px");
 	});
 
-	test("relaxes active lyric tracking without changing base wrapping density", () => {
+	test("shows instrumental album art in its original framing", () => {
+		const albumCoverRule = pipStyles.match(/#aura-lyrics-root\.album-art-mode \.pip-cover \{[^}]+\}/)?.[0] ?? "";
+		const albumScrimRule =
+			pipStyles.match(
+				/#aura-lyrics-root\.album-art-mode \.pip-scrim,\n#aura-lyrics-root\.album-art-mode \.pip-vignette,\n#aura-lyrics-root\.album-art-mode \.pip-border-frame \{[^}]+\}/
+			)?.[0] ?? "";
+		const albumContentRule = pipStyles.match(/#aura-lyrics-root\.album-art-mode \.pip-content \{[^}]+\}/)?.[0] ?? "";
+
+		expect(albumCoverRule).toContain("object-fit: contain");
+		expect(albumCoverRule).toContain("filter: none");
+		expect(albumCoverRule).toContain("opacity: 1");
+		expect(albumCoverRule).toContain("transform: scale(1)");
+		expect(albumScrimRule).toContain("opacity: 0");
+		expect(albumContentRule).toContain("opacity: 0");
+		expect(albumContentRule).toContain("pointer-events: none");
+	});
+
+	test("keeps lyric tracking stable between inactive and active states", () => {
 		const lyricRule = pipStyles.match(/\.lyric \{[^}]+\}/)?.[0] ?? "";
 		const lineRule = pipStyles.match(/\.line \{[^}]+\}/)?.[0] ?? "";
 		const syllableRule = pipStyles.match(/\.syllable \{[^}]+\}/)?.[0] ?? "";
@@ -40,15 +57,18 @@ describe("pipStyles", () => {
 
 		expect(lyricRule).toContain("letter-spacing: -0.018em");
 		expect(lyricRule).toContain("word-spacing: 0.14em");
-		expect(lineRule).not.toContain("letter-spacing");
-		expect(lineRule).not.toContain("word-spacing");
+		expect(lineRule).toContain("letter-spacing: -0.018em");
+		expect(lineRule).toContain("word-spacing: 0.04em");
 		expect(syllableRule).not.toContain("letter-spacing");
 		expect(syllableRule).not.toContain("word-spacing");
-		expect(lineRule).not.toContain("letter-spacing 520ms");
+		expect(lineRule).not.toContain("letter-spacing 360ms ease");
+		expect(lineRule).not.toContain("word-spacing 360ms ease");
 		expect(activeLineRule).not.toContain("letter-spacing");
-		expect(activeLineRule).not.toContain("word-spacing");
-		expect(activeGroupLyricRule).toContain("letter-spacing: -0.004em");
-		expect(activeGroupLyricRule).toContain("word-spacing: 0.18em");
+		expect(activeLineRule).toContain("word-spacing: 0.04em");
+		expect(activeLineRule).toContain("--text-shadow-opacity: 34%");
+		expect(activeLineRule).toContain("--text-shadow-blur-radius: calc(12px * var(--motion-intensity, 1))");
+		expect(activeGroupLyricRule).not.toContain("letter-spacing");
+		expect(activeGroupLyricRule).not.toContain("word-spacing");
 	});
 
 	test("keeps visible spacing between lyric words", () => {
@@ -57,7 +77,7 @@ describe("pipStyles", () => {
 		const syllableWordRowRule = pipStyles.match(/\.syllable-main,\n\.syllable-echo \{[^}]+\}/)?.[0] ?? "";
 
 		expect(lyricRule).toContain("word-spacing: 0.14em");
-		expect(activeGroupLyricRule).toContain("word-spacing: 0.18em");
+		expect(activeGroupLyricRule).toBe("");
 		expect(syllableWordRowRule).toContain("column-gap: 0.24em");
 		expect(syllableWordRowRule).toContain("row-gap: 0.08em");
 	});
@@ -140,6 +160,20 @@ describe("pipStyles", () => {
 		expect(pipStyles).toContain("font-size: var(--lyrics-size)");
 	});
 
+	test("styles Korean long-tail syllables without changing word layout", () => {
+		const wordRule = pipStyles.match(/\.korean-tail-word \{[^}]+\}/)?.[0] ?? "";
+		const sustainRule = pipStyles.match(/\.korean-tail-sustain \{[^}]+\}/)?.[0] ?? "";
+		const activeRule = pipStyles.match(/\.korean-tail-sustain\.active \{[^}]+\}/)?.[0] ?? "";
+		const melismaActiveRule = pipStyles.match(/\.korean-melisma-sustain\.active \{[^}]+\}/)?.[0] ?? "";
+
+		expect(wordRule).toContain("column-gap: 0");
+		expect(sustainRule).toContain("transform-origin: center");
+		expect(activeRule).toContain("filter: saturate(1.08)");
+		expect(activeRule).toContain("text-shadow");
+		expect(melismaActiveRule).toContain("filter: saturate(calc(1.08 + var(--melisma-step, 0) * 0.025))");
+		expect(melismaActiveRule).toContain("text-shadow");
+	});
+
 	test("styles a colored interlude frame and soft lyric blur", () => {
 		expect(pipStyles).toContain(".pip-border-frame");
 		expect(pipStyles).toContain(".pip-frame-surface");
@@ -187,10 +221,10 @@ describe("pipStyles", () => {
 
 		expect(activePillRule).not.toContain("animation: interlude-breathe");
 		expect(activeDotRule).not.toContain("animation: interlude-dot");
-		expect(activePlayingPillRule).toContain("animation: interlude-breathe 1.45s ease-in-out infinite");
-		expect(activePlayingDotRule).toContain("animation: interlude-dot 1.1s ease-in-out infinite");
+		expect(activePlayingPillRule).toContain("animation: interlude-breathe var(--interlude-pill-cycle, 1.45s) ease-in-out infinite");
+		expect(activePlayingDotRule).toContain("animation: interlude-dot var(--interlude-dot-cycle, 1.1s) ease-in-out infinite");
 		expect(waveBarRule).not.toContain("animation: interlude-wave-live");
-		expect(activePlayingRule).toContain("animation: interlude-wave-live 1.32s ease-in-out infinite");
+		expect(activePlayingRule).toContain("animation: interlude-wave-live var(--interlude-wave-cycle, 1.32s) ease-in-out infinite");
 		expect(activePlayingRule).toContain("animation-delay: calc(var(--bar-index, 0) * 62ms)");
 	});
 });

@@ -4,6 +4,25 @@ import { interludeKey, LyricsRenderer } from "../../src/renderer/LyricsRenderer"
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
 
 describe("LyricsRenderer", () => {
+	test("shows album art mode without lyric or status content", () => {
+		const pipRoot = document.createElement("div");
+		const root = document.createElement("main");
+		pipRoot.append(root);
+
+		const renderer = new LyricsRenderer();
+		renderer.showStatus(root, { title: "Loading lyrics" }, DEFAULT_SETTINGS);
+
+		renderer.showAlbumArt(root);
+
+		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
+		expect(root.children).toHaveLength(0);
+
+		renderer.showStatus(root, { title: "No synced lyrics" }, DEFAULT_SETTINGS);
+
+		expect(pipRoot.classList.contains("album-art-mode")).toBe(false);
+		expect(root.querySelector(".status-card")?.textContent).toContain("No synced lyrics");
+	});
+
 	test("renders active line state into the provided root", () => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {
@@ -187,6 +206,36 @@ describe("LyricsRenderer", () => {
 		expect(lead?.textContent).not.toContain(")");
 	});
 
+	test("stacks short ad-lib parentheticals between lyric phrases as their own visual rows", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 5,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 5,
+						syllables: [{ text: "내버려 둬 (hey), 터지게 둬 (hey) 유일한 지금일 테니", startTime: 0, endTime: 5, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+
+		const lead = root.querySelector<HTMLElement>(".vocals.lead");
+		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
+		expect(rows).toHaveLength(5);
+		expect(rows.map((row) => row.textContent)).toEqual(["내버려 둬", "hey", "터지게 둬", "hey", "유일한 지금일 테니"]);
+		expect(rows.map((row) => row.classList.contains("parenthetical-only"))).toEqual([false, true, false, true, false]);
+		expect(rows.every((row) => row.querySelector(".syllable-echo")?.textContent === "")).toBe(true);
+	});
+
 	test("scrolls word-synced parenthetical lyrics by visual rows instead of original provider lines", () => {
 		const root = document.createElement("div");
 		const lyrics: SyllableLyrics = {
@@ -314,6 +363,136 @@ describe("LyricsRenderer", () => {
 		expect(root.textContent).not.toContain(")");
 	});
 
+	test("splits a long final Korean word into a sustained tail syllable", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [
+							{ text: "널", startTime: 0, endTime: 0.45, isPartOfWord: false },
+							{ text: "사랑해", startTime: 0.45, endTime: 4, isPartOfWord: false },
+						],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		renderer.update(3.2, 1 / 60);
+
+		const tailWord = root.querySelector<HTMLElement>(".word.korean-tail-word");
+		expect(tailWord?.textContent).toBe("사랑해");
+		expect(tailWord?.querySelector(".korean-tail-base")?.textContent).toBe("사랑");
+		expect(tailWord?.querySelector(".korean-tail-sustain")?.textContent).toBe("해");
+		expect(tailWord?.querySelector(".korean-tail-base")?.classList.contains("sung")).toBe(true);
+		expect(tailWord?.querySelector(".korean-tail-sustain")?.classList.contains("active")).toBe(true);
+	});
+
+	test("does not split short Korean tokens or non-Korean long final words", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 7,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 3,
+						syllables: [{ text: "좋아", startTime: 0, endTime: 0.75, isPartOfWord: false }],
+					},
+				},
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 3,
+						endTime: 7,
+						syllables: [{ text: "forever", startTime: 3, endTime: 7, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+
+		expect(root.querySelector(".korean-tail-word")).toBeNull();
+		expect(root.querySelector(".korean-tail-sustain")).toBeNull();
+	});
+
+	test("uses BPM rhythm to split shorter Korean final tails on fast tracks", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 1.75,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 1.75,
+						syllables: [
+							{ text: "널", startTime: 0, endTime: 0.25, isPartOfWord: false },
+							{ text: "사랑해", startTime: 0.25, endTime: 1.35, isPartOfWord: false },
+						],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS, undefined, {}, { tempo: 150, beatDurationSec: 0.4, tempoSource: "track" });
+
+		expect(root.querySelector(".korean-tail-word")?.textContent).toBe("사랑해");
+		expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s");
+	});
+
+	test("keeps very long final Korean notes in melisma sustain mode", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 180.905,
+			endTime: 191.279,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 180.905,
+						endTime: 191.279,
+						syllables: [{ text: "전체관람가", startTime: 180.905, endTime: 191.279, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS, undefined, {}, { tempo: 120, beatDurationSec: 0.5, tempoSource: "beats" });
+		renderer.update(187, 1 / 60);
+
+		const tailWord = root.querySelector<HTMLElement>(".word.korean-melisma-word");
+		const sustain = tailWord?.querySelector<HTMLElement>(".korean-melisma-sustain");
+		expect(tailWord?.textContent).toBe("전체관람가");
+		expect(tailWord?.querySelector(".korean-tail-base")?.textContent).toBe("전체관람");
+		expect(sustain?.textContent).toBe("가");
+		expect(sustain?.classList.contains("active")).toBe(true);
+		expect(sustain?.style.getPropertyValue("--melisma-step")).toBe("3");
+	});
+
 	test("renders lyrics as non-button drag surface content", () => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {
@@ -356,6 +535,42 @@ describe("LyricsRenderer", () => {
 		renderer.update(11, 1 / 60);
 
 		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -200px, 0)");
+	});
+
+	test("centers the full active lyric row when the active line wraps to multiple visual lines", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 20,
+			content: [
+				{ type: "vocal", text: "First", startTime: 0, endTime: 5, oppositeAligned: false },
+				{
+					type: "vocal",
+					text: "Second lyric wraps across two visual lines",
+					startTime: 5,
+					endTime: 10,
+					oppositeAligned: false,
+				},
+				{ type: "vocal", text: "Third", startTime: 10, endTime: 15, oppositeAligned: false },
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
+		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
+		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
+		Object.defineProperty(rows[0], "offsetTop", { configurable: true, value: 0 });
+		Object.defineProperty(rows[0], "clientHeight", { configurable: true, value: 80 });
+		Object.defineProperty(rows[1], "offsetTop", { configurable: true, value: 180 });
+		Object.defineProperty(rows[1], "clientHeight", { configurable: true, value: 160 });
+		Object.defineProperty(rows[2], "offsetTop", { configurable: true, value: 420 });
+		Object.defineProperty(rows[2], "clientHeight", { configurable: true, value: 80 });
+
+		renderer.update(7, 1 / 60);
+
+		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -60px, 0)");
 	});
 
 	test("scrolls to the final lyric when playback seeks past the last lyric", () => {

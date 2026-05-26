@@ -12,6 +12,42 @@ const track: TrackIdentity = {
 };
 
 describe("AudioAnalysisWaveformService", () => {
+	test("extracts a rhythm profile from track tempo", async () => {
+		const service = new AudioAnalysisWaveformService(
+			vi.fn(async () => ({
+				track: { tempo: 150, tempo_confidence: 0.88 },
+				segments: [{ start: 0, duration: 1, loudness_max: -12 }],
+			}))
+		);
+
+		const profile = await service.loadProfile(track);
+
+		expect(profile.tempo).toBe(150);
+		expect(profile.beatDurationSec).toBe(0.4);
+		expect(profile.tempoConfidence).toBe(0.88);
+		expect(profile.tempoSource).toBe("track");
+	});
+
+	test("derives rhythm from beat starts when track tempo is unavailable", async () => {
+		const service = new AudioAnalysisWaveformService(
+			vi.fn(async () => ({
+				beats: [
+					{ start: 0, duration: 0.48 },
+					{ start: 0.5, duration: 0.48 },
+					{ start: 1, duration: 0.48 },
+					{ start: 1.5, duration: 0.48 },
+				],
+			}))
+		);
+
+		const profile = await service.loadProfile(track);
+
+		expect(profile.source).toBe("seeded");
+		expect(profile.tempo).toBe(120);
+		expect(profile.beatDurationSec).toBe(0.5);
+		expect(profile.tempoSource).toBe("beats");
+	});
+
 	test("builds interlude waveform bars from overlapping audio analysis segments", async () => {
 		const service = new AudioAnalysisWaveformService(
 			vi.fn(async () => ({

@@ -8,8 +8,37 @@ export type AudioAnalysisSegment = {
 	confidence?: number;
 };
 
+export type AudioAnalysisBeat = {
+	start: number;
+	duration?: number;
+	confidence?: number;
+};
+
+export type AudioAnalysisSection = {
+	start?: number;
+	duration?: number;
+	tempo?: number;
+	tempo_confidence?: number;
+	confidence?: number;
+};
+
+export type AudioAnalysisTrack = {
+	tempo?: number;
+	tempo_confidence?: number;
+};
+
 export type AudioAnalysisData = {
+	track?: AudioAnalysisTrack;
+	sections?: AudioAnalysisSection[];
+	beats?: AudioAnalysisBeat[];
 	segments?: AudioAnalysisSegment[];
+};
+
+export type RhythmProfile = {
+	tempo?: number;
+	beatDurationSec?: number;
+	tempoConfidence?: number;
+	tempoSource?: "track" | "section" | "beats";
 };
 
 export type InterludeWaveform = {
@@ -22,7 +51,7 @@ export type TrackWaveformProfile = {
 	seed: number;
 	segments: AudioAnalysisSegment[];
 	source: "audio-analysis" | "seeded";
-};
+} & RhythmProfile;
 
 type GetAudioData = (uri?: string) => Promise<AudioAnalysisData | undefined>;
 
@@ -35,6 +64,7 @@ export class AudioAnalysisWaveformService {
 	public async loadProfile(track: TrackIdentity): Promise<TrackWaveformProfile> {
 		try {
 			const data = await this.getAudioData?.(track.uri);
+			const rhythm = rhythmProfileFromAnalysis(data);
 			const segments = (data?.segments ?? []).filter(isUsableSegment);
 			if (segments.length > 0) {
 				return {
@@ -42,8 +72,16 @@ export class AudioAnalysisWaveformService {
 					seed: hashString(track.uri),
 					segments,
 					source: "audio-analysis",
+					...rhythm,
 				};
 			}
+			return {
+				trackUri: track.uri,
+				seed: hashString(`${track.uri}:${track.title}:${track.artist}`),
+				segments: [],
+				source: "seeded",
+				...rhythm,
+			};
 		} catch {
 			// Audio analysis is best-effort. The seeded fallback keeps the UI stable.
 		}
@@ -97,6 +135,61 @@ export class AudioAnalysisWaveformService {
 	}
 }
 
+const MIN_TEMPO = 40;
+const MAX_TEMPO = 240;
+
+const rhythmProfileFromAnalysis = (data: AudioAnalysisData | undefined): RhythmProfile => {
+	const trackTempo = tempoProfile(data?.track?.tempo, data?.track?.tempo_confidence, "track");
+	if (trackTempo) {
+		return trackTempo;
+	}
+	const sectionTempo = bestSectionTempo(data?.sections);
+	if (sectionTempo) {
+		return sectionTempo;
+	}
+	return tempoFromBeats(data?.beats) ?? {};
+};
+
+const tempoProfile = (tempo: number | undefined, confidence: number | undefined, source: RhythmProfile["tempoSource"]): RhythmProfile | undefined => {
+	if (!tempo || !Number.isFinite(tempo) || tempo < MIN_TEMPO || tempo > MAX_TEMPO) {
+		return undefined;
+	}
+	return {
+		tempo,
+		beatDurationSec: Number((60 / tempo).toFixed(4)),
+		tempoConfidence: confidence,
+		tempoSource: source,
+	};
+};
+
+const bestSectionTempo = (sections: AudioAnalysisSection[] | undefined): RhythmProfile | undefined => {
+	const section = (sections ?? [])
+		.filter((item) => item.tempo !== undefined)
+		.sort((a, b) => (b.tempo_confidence ?? b.confidence ?? 0) - (a.tempo_confidence ?? a.confidence ?? 0))[0];
+	return section ? tempoProfile(section.tempo, section.tempo_confidence ?? section.confidence, "section") : undefined;
+};
+
+const tempoFromBeats = (beats: AudioAnalysisBeat[] | undefined): RhythmProfile | undefined => {
+	const starts = (beats ?? [])
+		.map((beat) => beat.start)
+		.filter((start) => Number.isFinite(start))
+		.sort((a, b) => a - b);
+	if (starts.length < 2) {
+		return undefined;
+	}
+	const intervals = starts
+		.slice(1)
+		.map((start, index) => start - starts[index])
+		.filter((duration) => duration > 0.2 && duration < 2);
+	if (intervals.length === 0) {
+		return undefined;
+	}
+	const beatDurationSec = median(intervals);
+	const tempo = Number((60 / beatDurationSec).toFixed(2));
+	const profile = tempoProfile(tempo, undefined, "beats");
+	return profile ? { ...profile, beatDurationSec: Number(beatDurationSec.toFixed(4)) } : undefined;
+};
+
 const isUsableSegment = (segment: AudioAnalysisSegment): boolean =>
 	Number.isFinite(segment.start) && Number.isFinite(segment.duration) && segment.duration > 0;
 
@@ -119,6 +212,12 @@ const normalizeInterludeWindow = (values: number[]): number[] => {
 };
 
 const clampBar = (value: number): number => Math.min(1, Math.max(MIN_BAR_HEIGHT, value));
+
+const median = (values: number[]): number => {
+	const sorted = [...values].sort((a, b) => a - b);
+	const middle = Math.floor(sorted.length / 2);
+	return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+};
 
 const hashString = (value: string): number => {
 	let hash = 2166136261;

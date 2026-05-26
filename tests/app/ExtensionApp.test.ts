@@ -278,6 +278,64 @@ describe("ExtensionApp", () => {
 		expect(setAccentColor).toHaveBeenCalledWith("#101010");
 	});
 
+	test("shows instrumental tracks as plain album art instead of a status card", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:instrumental",
+				metadata: {
+					title: "Instrumental Track",
+					artist_name: "Aura",
+					album_title: "Still Cover",
+					duration: "180000",
+					image_url: "https://i.scdn.co/image/cover",
+				},
+			},
+		};
+		spicetify.URI = {
+			isTrack: () => true,
+			isLocalTrack: () => false,
+		};
+		const app = new ExtensionApp(spicetify);
+		const pipRoot = document.createElement("div");
+		const content = document.createElement("main");
+		pipRoot.append(content);
+		const setCover = vi.fn();
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			lyricsService: {
+				load: () => Promise<{ status: "empty"; reason: "instrumental"; track: { title: string; coverUrl?: string } }>;
+			};
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root: content,
+			setCover,
+			setAccentColor: vi.fn(),
+		};
+		internals.lyricsService = {
+			load: vi.fn(
+				async () =>
+					({
+						status: "empty",
+						reason: "instrumental",
+						track: { title: "Instrumental Track", coverUrl: "https://i.scdn.co/image/cover" },
+					}) as const
+			),
+		};
+
+		await internals.loadCurrentTrack(false);
+
+		expect(setCover).toHaveBeenCalledWith("https://i.scdn.co/image/cover");
+		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
+		expect(content.children).toHaveLength(0);
+		expect(content.textContent).not.toContain("Instrumental");
+	});
+
 	test("renders interlude waveforms from Spicetify audio analysis when wave style is selected", async () => {
 		const { spicetify } = createSpicetify();
 		const lyrics: LineLyrics = {
@@ -306,6 +364,7 @@ describe("ExtensionApp", () => {
 			isLocalTrack: () => false,
 		};
 		spicetify.getAudioData = vi.fn(async () => ({
+			track: { tempo: 150, tempo_confidence: 0.92 },
 			segments: [
 				{ start: 4, duration: 1, loudness_max: -28 },
 				{ start: 5, duration: 1, loudness_max: -18 },
@@ -348,6 +407,7 @@ describe("ExtensionApp", () => {
 		await internals.loadCurrentTrack(false);
 
 		expect(spicetify.getAudioData).toHaveBeenCalledWith("spotify:track:wave");
+		expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s");
 		expect(root.querySelector<HTMLElement>(".interlude")?.dataset.waveformSource).toBe("audio-analysis");
 		expect(root.querySelectorAll(".interlude-wave-bar").length).toBeGreaterThan(0);
 	});

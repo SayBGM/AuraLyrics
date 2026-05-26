@@ -213,12 +213,23 @@ export class ExtensionApp {
 		}
 		if (state.status === "ready") {
 			this.stateMachine.dispatch({ type: "lyricsReady" });
-			this.renderer.mount(this.session.root, state.lyrics, this.settings.get(), state.provider, this.waveformsForLyrics(state.lyrics));
+			this.renderer.mount(
+				this.session.root,
+				state.lyrics,
+				this.settings.get(),
+				state.provider,
+				this.waveformsForLyrics(state.lyrics),
+				this.waveformProfile
+			);
 			return;
 		}
 		if (state.status === "empty") {
 			this.stateMachine.dispatch({ type: "noLyrics", message: state.reason });
-			this.showStatus(state.reason === "instrumental" ? "Instrumental" : "No synced lyrics", state.track.title, "Retry current track");
+			if (state.reason === "instrumental") {
+				this.renderer.showAlbumArt(this.session.root);
+				return;
+			}
+			this.showStatus("No synced lyrics", state.track.title, "Retry current track");
 			return;
 		}
 		if (state.status === "error") {
@@ -297,7 +308,8 @@ export class ExtensionApp {
 				this.lastLoadState.lyrics,
 				this.settings.get(),
 				this.lastLoadState.provider,
-				this.waveformsForLyrics(this.lastLoadState.lyrics)
+				this.waveformsForLyrics(this.lastLoadState.lyrics),
+				this.waveformProfile
 			);
 		}
 	}

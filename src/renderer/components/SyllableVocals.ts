@@ -1,8 +1,10 @@
 import type { Syllable, SyllableVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
+import type { RhythmProfile } from "../AudioAnalysisWaveformService";
 import { glowCurve, scaleCurve, yOffsetCurve } from "../animation/curves";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
+import { koreanTailSplitForSegment, melismaBoostForProgress } from "../lyrics/koreanTail";
 import {
 	type ParentheticalSegment,
 	parseWordLevelParentheticals,
@@ -41,7 +43,8 @@ export class SyllableVocals {
 	public constructor(
 		private readonly vocal: SyllableVocal,
 		isBackground: boolean,
-		settings: ExtensionSettings
+		settings: ExtensionSettings,
+		private readonly rhythm?: RhythmProfile
 	) {
 		this.element = document.createElement("div");
 		this.element.className = `vocals ${isBackground ? "background" : "lead"}`;
@@ -77,9 +80,16 @@ export class SyllableVocals {
 				live.yOffset.setTarget(yOffset);
 				live.glow.setTarget(glow);
 			}
-			const nextScale = live.scale.update(deltaTime);
-			const nextYOffset = live.yOffset.update(deltaTime);
-			const nextGlow = live.glow.update(deltaTime);
+			let nextScale = live.scale.update(deltaTime);
+			let nextYOffset = live.yOffset.update(deltaTime);
+			let nextGlow = live.glow.update(deltaTime);
+			if (live.element.classList.contains("korean-melisma-sustain")) {
+				const melisma = melismaBoostForProgress(progress);
+				nextScale += melisma.scale;
+				nextYOffset += melisma.yOffset;
+				nextGlow = Math.max(nextGlow, melisma.glow);
+				live.element.style.setProperty("--melisma-step", String(melisma.step));
+			}
 			live.element.classList.toggle("active", progress > 0 && progress < 1);
 			live.element.classList.toggle("sung", timestamp > live.metadata.endTime);
 			live.element.style.scale = nextScale.toString();
@@ -105,8 +115,13 @@ export class SyllableVocals {
 			const segments: ParentheticalSegment[] = syllable.isPartOfWord
 				? [{ text, isParenthetical: false, continues: false }]
 				: parseWordLevelParentheticals(text, isInsideParenthetical);
-			const timedSegments = withSegmentTiming(syllable, segments);
+			const stackParentheticals = shouldStackAdLibParentheticals(segments);
+			const timedSegments = withSegmentTiming(syllable, stackParentheticals ? stripStandaloneSeparators(segments) : segments);
 			for (const segment of timedSegments) {
+				if (stackParentheticals && segment.isParenthetical && row && !isTextEmpty(row.main)) {
+					row = undefined;
+					word = undefined;
+				}
 				if (!row) {
 					row = createSyllableRow();
 					this.element.append(row.element);
@@ -115,28 +130,42 @@ export class SyllableVocals {
 				if (!word || wordIsParenthetical !== segment.isParenthetical) {
 					word = createWord(segment.isParenthetical);
 					wordIsParenthetical = segment.isParenthetical;
-					(segment.isParenthetical ? row.echo : row.main).append(word);
+					(segment.isParenthetical && !stackParentheticals ? row.echo : row.main).append(word);
 				}
-				if (segment.isParenthetical && isTextEmpty(row.main)) {
+				if (segment.isParenthetical && (stackParentheticals || isTextEmpty(row.main))) {
 					row.element.classList.add("parenthetical-only");
 				}
-				if (segment.isParenthetical) {
+				if (segment.isParenthetical && !stackParentheticals) {
 					row.element.classList.add("has-parenthetical-echo");
 				}
 				this.hasParenthetical = this.hasParenthetical || segment.isParenthetical;
 				this.element.classList.toggle("has-parenthetical", this.hasParenthetical);
-				const span = document.createElement("span");
-				span.className = "lyric syllable synced";
-				span.textContent = segment.text;
-				span.classList.toggle("parenthetical-syllable", segment.isParenthetical);
-				word.append(span);
-				this.liveSyllables.push({
-					metadata: { ...syllable, startTime: segment.startTime, endTime: segment.endTime },
-					element: span,
-					scale: new Spring(1, 0.6, 0.7),
-					yOffset: new Spring(0, 0.4, 1.25),
-					glow: new Spring(0, 0.5, 1),
-				});
+				const koreanTail = segment.isParenthetical ? undefined : koreanTailSplitForSegment(segment, syllable, this.vocal.syllables, this.rhythm);
+				if (koreanTail) {
+					word.classList.add("korean-tail-word");
+					word.classList.toggle("korean-melisma-word", koreanTail.melisma);
+					this.appendLiveSyllable(
+						word,
+						koreanTail.baseText,
+						{ ...syllable, startTime: segment.startTime, endTime: koreanTail.tailStartTime },
+						false,
+						["korean-tail-base"]
+					);
+					this.appendLiveSyllable(
+						word,
+						koreanTail.tailText,
+						{ ...syllable, startTime: koreanTail.tailStartTime, endTime: segment.endTime },
+						false,
+						koreanTail.melisma ? ["korean-tail-sustain", "korean-melisma-sustain"] : ["korean-tail-sustain"]
+					);
+				} else {
+					this.appendLiveSyllable(
+						word,
+						segment.text,
+						{ ...syllable, startTime: segment.startTime, endTime: segment.endTime },
+						segment.isParenthetical
+					);
+				}
 				word = undefined;
 				isInsideParenthetical = segment.continues;
 				if (segment.isParenthetical && !segment.continues) {
@@ -147,6 +176,24 @@ export class SyllableVocals {
 		}
 		this.applyRowHoldTiming();
 		this.applySettings(settings);
+	}
+
+	private appendLiveSyllable(word: HTMLSpanElement, text: string, metadata: Syllable, isParenthetical: boolean, extraClasses: string[] = []): void {
+		const span = document.createElement("span");
+		span.className = "lyric syllable synced";
+		span.textContent = text;
+		span.classList.toggle("parenthetical-syllable", isParenthetical);
+		for (const className of extraClasses) {
+			span.classList.add(className);
+		}
+		word.append(span);
+		this.liveSyllables.push({
+			metadata,
+			element: span,
+			scale: new Spring(1, 0.6, 0.7),
+			yOffset: new Spring(0, 0.4, 1.25),
+			glow: new Spring(0, 0.5, 1),
+		});
 	}
 
 	private markRowTiming(row: SyllableRow, segment: TimedParentheticalSegment): void {
@@ -195,3 +242,24 @@ const createWord = (isParenthetical: boolean): HTMLSpanElement => {
 };
 
 const isTextEmpty = (element: HTMLElement): boolean => (element.textContent ?? "").trim().length === 0;
+
+const shouldStackAdLibParentheticals = (segments: ParentheticalSegment[]): boolean => {
+	const hasShortAdLib = segments.some((segment) => segment.isParenthetical && isShortAdLib(segment.text));
+	const hasTrailingLyricAfterFinalParenthetical = segments.at(-1)?.isParenthetical === false;
+	if (!hasShortAdLib || !hasTrailingLyricAfterFinalParenthetical) {
+		return false;
+	}
+	return true;
+};
+
+const stripStandaloneSeparators = (segments: ParentheticalSegment[]): ParentheticalSegment[] =>
+	segments.map((segment) =>
+		segment.isParenthetical
+			? segment
+			: {
+					...segment,
+					text: segment.text.replace(/[,，、]\s*$/u, "").trim(),
+				}
+	);
+
+const isShortAdLib = (text: string): boolean => /^[a-z]{1,5}$/i.test(text.trim());

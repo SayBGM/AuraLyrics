@@ -1,6 +1,8 @@
 import type { Interlude, LyricsDocument } from "../lyrics/types";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import type { AnimatedGroup } from "./AnimatedGroup";
+import type { RhythmProfile } from "./AudioAnalysisWaveformService";
+import { clamp } from "./animation/Spline";
 import { InterludeView } from "./components/Interlude";
 import { LineVocals } from "./components/LineVocals";
 import { SyllableVocals } from "./components/SyllableVocals";
@@ -33,13 +35,15 @@ export class LyricsRenderer {
 		lyrics: LyricsDocument,
 		settings: ExtensionSettings,
 		provider?: string,
-		waveforms: InterludeWaveformMap = {}
+		waveforms: InterludeWaveformMap = {},
+		rhythm?: RhythmProfile
 	): void {
 		this.destroy();
 		this.hostRoot = root;
 		this.container = document.createElement("div");
 		this.container.className = "aura-lyrics";
 		this.applyRootSettings(this.container, settings);
+		this.applyRhythmProfile(this.container, rhythm);
 		this.settings = settings;
 		this.lyricsViewport = document.createElement("div");
 		this.lyricsViewport.className = "lyrics-viewport";
@@ -48,12 +52,13 @@ export class LyricsRenderer {
 		this.lyricsViewport.append(this.lyricsTrack);
 		this.container.append(this.lyricsViewport);
 		root.replaceChildren(this.container);
-		this.buildLyrics(lyrics, settings, waveforms);
+		this.buildLyrics(lyrics, settings, waveforms, rhythm);
 		appendProviderSource(this.lyricsTrack, provider);
 	}
 
 	public showStatus(root: HTMLElement, status: StatusViewModel, settings: ExtensionSettings): void {
 		this.destroy();
+		this.setAlbumArtMode(root, false);
 		this.container = document.createElement("div");
 		this.container.className = `aura-lyrics status ${status.tone ?? "neutral"}`;
 		this.applyRootSettings(this.container, settings);
@@ -78,6 +83,13 @@ export class LyricsRenderer {
 		root.replaceChildren(this.container);
 	}
 
+	public showAlbumArt(root: HTMLElement): void {
+		this.destroy();
+		this.hostRoot = root;
+		this.setAlbumArtMode(root, true);
+		root.replaceChildren();
+	}
+
 	public update(timestamp: number, deltaTime: number): void {
 		for (const group of this.groups) {
 			group.animate(timestamp, deltaTime);
@@ -92,6 +104,7 @@ export class LyricsRenderer {
 	}
 
 	public destroy(): void {
+		this.setAlbumArtMode(this.hostRoot, false);
 		this.groups = [];
 		this.container?.remove();
 		this.hostRoot = undefined;
@@ -101,7 +114,7 @@ export class LyricsRenderer {
 		this.settings = undefined;
 	}
 
-	private buildLyrics(lyrics: LyricsDocument, settings: ExtensionSettings, waveforms: InterludeWaveformMap): void {
+	private buildLyrics(lyrics: LyricsDocument, settings: ExtensionSettings, waveforms: InterludeWaveformMap, rhythm?: RhythmProfile): void {
 		if (!this.lyricsTrack) {
 			return;
 		}
@@ -140,7 +153,7 @@ export class LyricsRenderer {
 			}
 			const group = document.createElement("div");
 			group.className = "vocals-group syllable-group";
-			const lead = new SyllableVocals(item.lead, false, settings);
+			const lead = new SyllableVocals(item.lead, false, settings, rhythm);
 			group.classList.toggle("has-parenthetical", lead.hasParenthetical);
 			group.append(lead.element);
 			const animated: AnimatedGroup = {
@@ -181,6 +194,24 @@ export class LyricsRenderer {
 		root.style.setProperty("--inactive-blur", `${settings.inactiveBlurPx}px`);
 		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
 		root.style.fontFamily = `${settings.fontFamily}, sans-serif`;
+	}
+
+	private applyRhythmProfile(root: HTMLElement, rhythm: RhythmProfile | undefined): void {
+		const beatDuration = rhythm?.beatDurationSec;
+		if (!beatDuration || !Number.isFinite(beatDuration)) {
+			return;
+		}
+		root.style.setProperty("--interlude-wave-cycle", `${roundSeconds(clamp(beatDuration * 2.64, 0.84, 1.9))}s`);
+		root.style.setProperty("--interlude-dot-cycle", `${roundSeconds(clamp(beatDuration * 2.2, 0.72, 1.55))}s`);
+		root.style.setProperty("--interlude-pill-cycle", `${roundSeconds(clamp(beatDuration * 2.9, 0.95, 2.05))}s`);
+	}
+
+	private setAlbumArtMode(root: HTMLElement | undefined, enabled: boolean): void {
+		if (!root) {
+			return;
+		}
+		root.classList.toggle("album-art-mode", enabled);
+		root.parentElement?.classList.toggle("album-art-mode", enabled);
 	}
 
 	private getInterludePreviewRow(): HTMLElement | undefined {
@@ -228,6 +259,8 @@ export class LyricsRenderer {
 }
 
 const isActiveInterlude = (group: AnimatedGroup): group is InterludeView => group instanceof InterludeView && group.isActive;
+
+const roundSeconds = (value: number): number => Number(value.toFixed(3));
 
 const measureFrameProgressDimensions = (element: HTMLElement): FrameProgressDimensions | undefined => {
 	const rect = element.getBoundingClientRect();
