@@ -11,6 +11,15 @@ describe("parentheticalSegments", () => {
 		]);
 	});
 
+	test("keeps punctuation after a parenthetical with the preceding main lyric", () => {
+		expect(parseWordLevelParentheticals("피땀으로 (hey), 눈물로 (hey)", false)).toEqual([
+			{ text: "피땀으로,", isParenthetical: false, continues: false },
+			{ text: "hey", isParenthetical: true, continues: false },
+			{ text: "눈물로", isParenthetical: false, continues: false },
+			{ text: "hey", isParenthetical: true, continues: false },
+		]);
+	});
+
 	test("keeps unclosed parenthetical state for the next syllable token", () => {
 		expect(parseWordLevelParentheticals("(벚꽃", false)).toEqual([{ text: "벚꽃", isParenthetical: true, continues: true }]);
 		expect(parseWordLevelParentheticals("잎이)", true)).toEqual([{ text: "잎이", isParenthetical: true, continues: false }]);

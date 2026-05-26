@@ -155,6 +155,38 @@ describe("LyricsRenderer", () => {
 		expect(lead?.textContent).not.toContain(")");
 	});
 
+	test("keeps punctuation between word-synced parentheticals out of the next visual row", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [{ text: "피땀으로 (hey), 눈물로 (hey)", startTime: 0, endTime: 4, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, lyrics, DEFAULT_SETTINGS);
+
+		const lead = root.querySelector<HTMLElement>(".vocals.lead");
+		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
+		expect(rows).toHaveLength(2);
+		expect(rows.map((row) => row.querySelector(".syllable-main")?.textContent)).toEqual(["피땀으로,", "눈물로"]);
+		expect(rows.map((row) => row.querySelector(".syllable-echo")?.textContent)).toEqual(["hey", "hey"]);
+		expect(rows[1].querySelector(".syllable-main")?.textContent?.startsWith(",")).toBe(false);
+		expect(lead?.textContent).not.toContain("(");
+		expect(lead?.textContent).not.toContain(")");
+	});
+
 	test("scrolls word-synced parenthetical lyrics by visual rows instead of original provider lines", () => {
 		const root = document.createElement("div");
 		const lyrics: SyllableLyrics = {
