@@ -417,11 +417,19 @@ describe("LyricsRenderer", () => {
 		renderer.mount(root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "frame", showInterludes: false }, "spotify");
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
+		Object.defineProperty(pipRoot, "clientWidth", { configurable: true, value: 300 });
+		Object.defineProperty(pipRoot, "clientHeight", { configurable: true, value: 100 });
 		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
 		rows.forEach((row, index) => {
 			Object.defineProperty(row, "offsetTop", { configurable: true, value: index * 180 });
 			Object.defineProperty(row, "clientHeight", { configurable: true, value: 80 });
 		});
+		renderer.update(5.5, 1 / 60);
+
+		expect(pipRoot.style.getPropertyValue("--pip-interlude-progress")).toBe("0.25");
+		expect(Number(pipRoot.style.getPropertyValue("--pip-frame-progress-top"))).toBeCloseTo(188 / 300);
+		expect(pipRoot.style.getPropertyValue("--pip-frame-progress-right")).toBe("0");
+
 		renderer.update(7, 1 / 60);
 
 		const container = root.querySelector<HTMLElement>(".aura-lyrics");

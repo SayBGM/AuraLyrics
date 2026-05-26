@@ -4,7 +4,8 @@ import type { AnimatedGroup } from "./AnimatedGroup";
 import { InterludeView } from "./components/Interlude";
 import { LineVocals } from "./components/LineVocals";
 import { SyllableVocals } from "./components/SyllableVocals";
-import { interludeKey, progressPercent, splitFrameProgress } from "./interludeProgress";
+import type { FrameProgressDimensions } from "./interludeProgress";
+import { frameSizeForViewport, interludeKey, progressPercent, splitFrameProgress } from "./interludeProgress";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { appendProviderSource, applyHoldTiming, scrollActiveIntoView, syllableToLine, updateContextVisibility } from "./lyricsTrackHelpers";
 
@@ -209,7 +210,7 @@ export class LyricsRenderer {
 			if (frameActive && activeInterlude) {
 				element.style.setProperty("--pip-interlude-progress", String(activeInterlude.progress));
 				element.style.setProperty("--pip-interlude-progress-percent", progressPercent(activeInterlude.progress));
-				const sides = splitFrameProgress(activeInterlude.progress);
+				const sides = splitFrameProgress(activeInterlude.progress, measureFrameProgressDimensions(element));
 				element.style.setProperty("--pip-frame-progress-top", String(sides.top));
 				element.style.setProperty("--pip-frame-progress-right", String(sides.right));
 				element.style.setProperty("--pip-frame-progress-bottom", String(sides.bottom));
@@ -227,3 +228,17 @@ export class LyricsRenderer {
 }
 
 const isActiveInterlude = (group: AnimatedGroup): group is InterludeView => group instanceof InterludeView && group.isActive;
+
+const measureFrameProgressDimensions = (element: HTMLElement): FrameProgressDimensions | undefined => {
+	const rect = element.getBoundingClientRect();
+	const width = element.clientWidth || rect.width;
+	const height = element.clientHeight || rect.height;
+	if (width <= 0 || height <= 0) {
+		return undefined;
+	}
+	return {
+		width,
+		height,
+		frameSize: frameSizeForViewport({ width, height }),
+	};
+};
