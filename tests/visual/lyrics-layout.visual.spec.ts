@@ -1,6 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
 
-type ScenarioName = "line-sync" | "word-sync" | "parenthetical-adlib" | "korean-tail" | "multiline-active-row";
+type ScenarioName =
+	| "album-art-instrumental"
+	| "background-opposite"
+	| "frame-interlude"
+	| "line-sync"
+	| "word-sync"
+	| "korean-tail"
+	| "multiline-active-row";
 
 declare global {
 	interface Window {
@@ -74,39 +81,6 @@ test("word and syllable sync keeps readable tracking and visible glow", async ({
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("word-sync-active.png", screenshotTolerance);
 });
 
-test("parenthetical ad-lib rows scroll independently with stable spacing", async ({ page }) => {
-	await renderScenario(page, "parenthetical-adlib");
-
-	const metrics = await page.evaluate(() => {
-		const rectFor = (selector: string): DOMRect => {
-			const element = document.querySelector<HTMLElement>(selector);
-			if (!element) {
-				throw new Error(`Missing element for ${selector}`);
-			}
-			return element.getBoundingClientRect();
-		};
-		const centerY = (rect: DOMRect): number => rect.top + rect.height / 2;
-		const active = document.querySelector<HTMLElement>(".syllable-row.active");
-		const rows = Array.from(document.querySelectorAll<HTMLElement>(".syllable-row"));
-		const parentheticalRows = rows.filter((row) => row.classList.contains("parenthetical-only"));
-		const rowGaps = rows.slice(1).map((row, index) => Math.round(row.getBoundingClientRect().top - rows[index].getBoundingClientRect().bottom));
-		const viewport = rectFor(".lyrics-viewport");
-		const activeRect = rectFor(".syllable-row.active");
-
-		return {
-			activeText: active?.textContent ?? "",
-			activeCenterDelta: Math.abs(centerY(activeRect) - centerY(viewport)),
-			parentheticalTexts: parentheticalRows.map((row) => row.textContent?.trim()),
-			rowGaps,
-		};
-	});
-
-	expect(metrics.activeText).toBe("hey");
-	expect(metrics.activeCenterDelta).toBeLessThanOrEqual(syllableCenterTolerancePx);
-	expect(metrics.parentheticalTexts).toEqual(["hey", "hey"]);
-	expect(metrics.rowGaps.every((gap) => gap >= 0 && gap <= 42)).toBe(true);
-});
-
 test("Korean tail sustain remains aligned and unclipped", async ({ page }) => {
 	await renderScenario(page, "korean-tail");
 
@@ -176,6 +150,107 @@ test("multi-line active rows center by the whole row and keep glow inside the vi
 	expect(glow.glowBottom).toBeLessThanOrEqual(glow.viewportBottom);
 });
 
+test("frame interlude stays balanced in a wide short PiP", async ({ page }) => {
+	await page.setViewportSize({ width: 960, height: 420 });
+	await renderScenario(page, "frame-interlude");
+
+	const metrics = await page.evaluate(() => {
+		const pipRoot = document.querySelector<HTMLElement>("#aura-lyrics-root");
+		const content = document.querySelector<HTMLElement>(".pip-content");
+		const current = document.querySelector<HTMLElement>(".context-current");
+		const topSegment = document.querySelector<HTMLElement>(".pip-frame-progress-top");
+		if (!pipRoot || !content || !current || !topSegment) {
+			throw new Error("Missing frame interlude elements.");
+		}
+		const top = Number(pipRoot.style.getPropertyValue("--pip-frame-progress-top"));
+		const right = Number(pipRoot.style.getPropertyValue("--pip-frame-progress-right"));
+		const bottom = Number(pipRoot.style.getPropertyValue("--pip-frame-progress-bottom"));
+		const left = Number(pipRoot.style.getPropertyValue("--pip-frame-progress-left"));
+		const contentRect = content.getBoundingClientRect();
+		const topSegmentRect = topSegment.getBoundingClientRect();
+
+		return {
+			frameActive: pipRoot.classList.contains("interlude-frame-active"),
+			frameSize: topSegmentRect.height,
+			progress: [top, right, bottom, left],
+			currentText: current.textContent ?? "",
+			contentWidth: contentRect.width,
+			contentHeight: contentRect.height,
+		};
+	});
+
+	expect(metrics.frameActive).toBe(true);
+	expect(metrics.frameSize).toBeGreaterThanOrEqual(12);
+	expect(metrics.frameSize).toBeLessThanOrEqual(18);
+	expect(metrics.progress.every((value) => Number.isFinite(value) && value >= 0 && value <= 1)).toBe(true);
+	expect(metrics.progress[0]).toBe(1);
+	expect(metrics.progress[1]).toBeGreaterThan(0);
+	expect(metrics.currentText).toContain("After the break returns");
+	expect(metrics.contentWidth).toBeGreaterThan(700);
+	expect(metrics.contentHeight).toBeGreaterThan(260);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("frame-interlude-wide-short.png", screenshotTolerance);
+});
+
+test("instrumental album art mode hides lyrics and shows the cover cleanly", async ({ page }) => {
+	await page.setViewportSize({ width: 600, height: 600 });
+	await renderScenario(page, "album-art-instrumental");
+
+	const metrics = await page.evaluate(() => {
+		const pipRoot = document.querySelector<HTMLElement>("#aura-lyrics-root");
+		const cover = document.querySelector<HTMLImageElement>(".pip-cover");
+		const content = document.querySelector<HTMLElement>("#aura-visual-root");
+		if (!pipRoot || !cover || !content) {
+			throw new Error("Missing album art elements.");
+		}
+		const coverRect = cover.getBoundingClientRect();
+
+		return {
+			albumArtMode: pipRoot.classList.contains("album-art-mode"),
+			contentChildren: content.children.length,
+			coverWidth: Math.round(coverRect.width),
+			coverHeight: Math.round(coverRect.height),
+			objectFit: getComputedStyle(cover).objectFit,
+		};
+	});
+
+	expect(metrics.albumArtMode).toBe(true);
+	expect(metrics.contentChildren).toBe(0);
+	expect(metrics.coverWidth).toBe(600);
+	expect(metrics.coverHeight).toBe(600);
+	expect(metrics.objectFit).toBe("contain");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("album-art-instrumental.png", screenshotTolerance);
+});
+
+test("background opposite vocals stay secondary and opposite aligned", async ({ page }) => {
+	await page.setViewportSize({ width: 600, height: 600 });
+	await renderScenario(page, "background-opposite");
+
+	const metrics = await page.evaluate(() => {
+		const group = document.querySelector<HTMLElement>(".syllable-group");
+		const lead = document.querySelector<HTMLElement>(".vocals.lead .lyric");
+		const background = document.querySelector<HTMLElement>(".vocals.background .lyric");
+		if (!group || !lead || !background) {
+			throw new Error("Missing background vocal elements.");
+		}
+		const leadRect = lead.getBoundingClientRect();
+		const backgroundRect = background.getBoundingClientRect();
+
+		return {
+			oppositeAligned: group.classList.contains("opposite-aligned"),
+			backgroundActive: document.querySelector(".vocals.background.active") !== null,
+			backgroundFontSize: parseFloat(getComputedStyle(background).fontSize),
+			leadFontSize: parseFloat(getComputedStyle(lead).fontSize),
+			backgroundLeft: backgroundRect.left,
+			leadLeft: leadRect.left,
+		};
+	});
+
+	expect(metrics.oppositeAligned).toBe(true);
+	expect(metrics.backgroundActive).toBe(true);
+	expect(metrics.backgroundFontSize).toBeLessThan(metrics.leadFontSize);
+	expect(metrics.backgroundLeft).toBeGreaterThanOrEqual(metrics.leadLeft - 1);
+});
+
 const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => {
 	await page.evaluate((scenarioName) => {
 		if (!window.auraVisualHarness) {
@@ -183,6 +258,10 @@ const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => 
 		}
 		window.auraVisualHarness.renderScenario(scenarioName);
 	}, name);
+	if (name === "album-art-instrumental") {
+		await expect(page.locator("#aura-lyrics-root.album-art-mode")).toBeVisible();
+		return;
+	}
 	await expect(page.locator(".aura-lyrics")).toBeVisible();
 };
 

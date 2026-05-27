@@ -16,6 +16,7 @@ export class LineVocals {
 		this.holdEndTime = line.endTime;
 		this.element = document.createElement("div");
 		this.element.className = "vocals-group line-group";
+		this.element.classList.toggle("opposite-aligned", line.oppositeAligned);
 		this.element.dataset.startTime = String(line.startTime);
 		this.element.dataset.endTime = String(line.endTime);
 		const span = document.createElement("span");

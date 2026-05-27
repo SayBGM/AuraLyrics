@@ -411,4 +411,76 @@ describe("ExtensionApp", () => {
 		expect(root.querySelector<HTMLElement>(".interlude")?.dataset.waveformSource).toBe("audio-analysis");
 		expect(root.querySelectorAll(".interlude-wave-bar").length).toBeGreaterThan(0);
 	});
+
+	test("starts audio analysis while lyrics are still loading", async () => {
+		const { spicetify } = createSpicetify();
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 4,
+			content: [{ type: "vocal", text: "Parallel", startTime: 0, endTime: 4, oppositeAligned: false }],
+		};
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:parallel",
+				metadata: {
+					title: "Parallel Track",
+					artist_name: "Aura",
+					album_title: "Fast",
+					duration: "180000",
+				},
+			},
+		};
+		spicetify.URI = {
+			isTrack: () => true,
+			isLocalTrack: () => false,
+		};
+		spicetify.getAudioData = vi.fn(async () => ({
+			track: { tempo: 120, tempo_confidence: 1 },
+			segments: [{ start: 0, duration: 1, loudness_max: -8 }],
+		}));
+		let resolveLyrics: (() => void) | undefined;
+		const lyricsReady = new Promise<void>((resolve) => {
+			resolveLyrics = resolve;
+		});
+		const app = new ExtensionApp(spicetify);
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			settings: { update: (patch: unknown) => void };
+			lyricsService: {
+				load: () => Promise<{ status: "ready"; lyrics: LineLyrics; provider: "spotify"; track: { title: string } }>;
+			};
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root,
+			setCover: vi.fn(),
+			setAccentColor: vi.fn(),
+		};
+		internals.settings.update({ interludeStyle: "wave" });
+		internals.lyricsService = {
+			load: vi.fn(async () => {
+				await lyricsReady;
+				return {
+					status: "ready",
+					lyrics,
+					provider: "spotify",
+					track: { title: "Parallel Track" },
+				} as const;
+			}),
+		};
+
+		const loadPromise = internals.loadCurrentTrack(false);
+		await Promise.resolve();
+
+		expect(spicetify.getAudioData).toHaveBeenCalledWith("spotify:track:parallel");
+
+		resolveLyrics?.();
+		await loadPromise;
+	});
 });

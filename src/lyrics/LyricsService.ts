@@ -3,7 +3,7 @@ import { addInterludes, rebuildInterludes } from "./InterludeBuilder";
 import type { LyricsCache } from "./LyricsCache";
 import { normalizeLyrics } from "./LyricsNormalizer";
 import type { ProviderRegistry } from "./providers/ProviderRegistry";
-import type { LyricsLoadState, LyricsProvider, ProviderContext, ProviderId, TrackIdentity } from "./types";
+import type { LyricsCacheStatus, LyricsLoadDiagnostics, LyricsLoadState, LyricsProvider, ProviderContext, ProviderId, TrackIdentity } from "./types";
 
 type LyricsServiceOptions = {
 	maxAttempts: number;
@@ -42,20 +42,36 @@ export class LyricsService {
 		const providers = this.registry.ordered(settings);
 		const primaryProvider = providers.find((provider) => provider.supports(track));
 		const cached = !refresh ? this.cache.get(track.uri) : undefined;
+		const diagnostics: LyricsLoadDiagnostics = {
+			cache: cacheStatus(refresh, cached?.provider, primaryProvider?.id),
+			attempts: [],
+		};
 		if (cached && cached.provider === primaryProvider?.id) {
 			const lyrics = rebuildInterludes(cached.lyrics);
-			return { status: "ready", track, lyrics, provider: cached.provider };
+			return {
+				status: "ready",
+				track,
+				lyrics,
+				provider: cached.provider,
+				source: "cache",
+				diagnostics,
+			};
 		}
 
 		const options = { ...DEFAULT_OPTIONS, ...this.options };
 		for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
-			const state = await this.tryLoadOnce(track, settings, currentRequest, providers, primaryProvider);
+			const state = await this.tryLoadOnce(track, settings, currentRequest, providers, primaryProvider, diagnostics);
 			if (state.status !== "error" || attempt === options.maxAttempts || currentRequest !== this.requestId) {
 				return state;
 			}
 			await this.delay(options.retryDelayMs * attempt);
 		}
-		return { status: "error", track, message: "Lyrics failed after retries." };
+		return {
+			status: "error",
+			track,
+			message: "Lyrics failed after retries.",
+			diagnostics,
+		};
 	}
 
 	private async tryLoadOnce(
@@ -63,7 +79,8 @@ export class LyricsService {
 		settings: ExtensionSettings,
 		currentRequest: number,
 		providers: LyricsProvider[],
-		primaryProvider: LyricsProvider | undefined
+		primaryProvider: LyricsProvider | undefined,
+		diagnostics: LyricsLoadDiagnostics
 	): Promise<LyricsLoadState> {
 		const errors: string[] = [];
 		const options = { ...DEFAULT_OPTIONS, ...this.options };
@@ -72,6 +89,10 @@ export class LyricsService {
 				continue;
 			}
 			if (this.isCoolingDown(provider.id, options.now())) {
+				diagnostics.attempts.push({
+					provider: provider.id,
+					status: "cooldown",
+				});
 				continue;
 			}
 			try {
@@ -84,27 +105,69 @@ export class LyricsService {
 					if (provider.id === primaryProvider?.id) {
 						this.cache.set(track.uri, lyrics, provider.id);
 					}
-					return { status: "ready", track, lyrics, provider: provider.id };
+					diagnostics.attempts.push({
+						provider: provider.id,
+						status: "success",
+					});
+					return {
+						status: "ready",
+						track,
+						lyrics,
+						provider: provider.id,
+						source: "network",
+						diagnostics,
+					};
 				}
 				if (result.reason === "temporarily-unavailable") {
 					this.cooldownUntil.set(provider.id, options.now() + (result.cooldownMs ?? options.temporaryUnavailableCooldownMs));
+					diagnostics.attempts.push({
+						provider: provider.id,
+						status: "temporarily-unavailable",
+						message: result.message,
+					});
 					continue;
 				}
 				if (result.reason === "instrumental") {
-					return { status: "empty", track, reason: "instrumental" };
+					diagnostics.attempts.push({
+						provider: provider.id,
+						status: "instrumental",
+						message: result.message,
+					});
+					return {
+						status: "empty",
+						track,
+						reason: "instrumental",
+						diagnostics,
+					};
 				}
+				diagnostics.attempts.push({
+					provider: provider.id,
+					status: result.reason === "no-lyrics" ? "no-lyrics" : "error",
+					message: result.message,
+				});
 				if (result.message) {
 					errors.push(`${provider.id}: ${result.message}`);
 				}
 			} catch (error) {
-				errors.push(`${provider.id}: ${error instanceof Error ? error.message : String(error)}`);
+				const message = error instanceof Error ? error.message : String(error);
+				diagnostics.attempts.push({
+					provider: provider.id,
+					status: "error",
+					message,
+				});
+				errors.push(`${provider.id}: ${message}`);
 			}
 		}
 
 		if (errors.length > 0) {
-			return { status: "error", track, message: errors.join("\n") };
+			return {
+				status: "error",
+				track,
+				message: errors.join("\n"),
+				diagnostics,
+			};
 		}
-		return { status: "empty", track, reason: "no-lyrics" };
+		return { status: "empty", track, reason: "no-lyrics", diagnostics };
 	}
 
 	private isCoolingDown(providerId: ProviderId, now: number): boolean {
@@ -126,3 +189,20 @@ export class LyricsService {
 		return new Promise((resolve) => window.setTimeout(resolve, ms));
 	}
 }
+
+const cacheStatus = (refresh: boolean, cachedProvider: ProviderId | undefined, primaryProvider: ProviderId | undefined): LyricsCacheStatus => {
+	if (refresh) {
+		return { status: "bypassed", primaryProvider };
+	}
+	if (!cachedProvider) {
+		return { status: "miss", primaryProvider };
+	}
+	if (cachedProvider === primaryProvider) {
+		return { status: "hit", provider: cachedProvider, primaryProvider };
+	}
+	return {
+		status: "provider-mismatch",
+		provider: cachedProvider,
+		primaryProvider,
+	};
+};

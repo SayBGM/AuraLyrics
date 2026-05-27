@@ -181,7 +181,7 @@ describe("pipStyles", () => {
 		expect(pipStyles).toContain(".syllable-main");
 		expect(pipStyles).toContain(".syllable-echo");
 		expect(pipStyles).toContain(".parenthetical-word");
-		expect(pipStyles).toContain(".syllable-row.parenthetical-only .parenthetical-word .lyric");
+		expect(pipStyles).toContain(".syllable-row.standalone-parenthetical .parenthetical-word .lyric");
 		expect(pipStyles).toContain("grid-template-columns: minmax(0, 1fr)");
 		expect(pipStyles).toContain("grid-area: 1 / 1");
 		expect(pipStyles).not.toContain("minmax(28%, auto)");

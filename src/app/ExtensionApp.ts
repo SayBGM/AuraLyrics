@@ -189,8 +189,9 @@ export class ExtensionApp {
 		void this.applyTrackAccent(track);
 		this.stateMachine.dispatch({ type: "validTrack" });
 		this.showStatus("Loading lyrics", track.title);
+		const waveformProfilePromise = this.waveformService.loadProfile(track);
 		this.lastLoadState = await this.lyricsService.load(track, this.settings.get(), refresh);
-		this.waveformProfile = this.lastLoadState.status === "ready" ? await this.waveformService.loadProfile(track) : undefined;
+		this.waveformProfile = this.lastLoadState.status === "ready" ? await waveformProfilePromise : undefined;
 		this.resyncPlaybackTimestamp();
 		this.renderLoadState(this.lastLoadState);
 	}
@@ -217,6 +218,8 @@ export class ExtensionApp {
 				lyrics: state.lyrics,
 				settings: this.settings.get(),
 				provider: state.provider,
+				source: state.source,
+				diagnostics: state.diagnostics,
 				waveforms: this.waveformsForLyrics(state.lyrics),
 				rhythm: this.waveformProfile,
 			});
@@ -306,6 +309,8 @@ export class ExtensionApp {
 				lyrics: this.lastLoadState.lyrics,
 				settings: this.settings.get(),
 				provider: this.lastLoadState.provider,
+				source: this.lastLoadState.source,
+				diagnostics: this.lastLoadState.diagnostics,
 				waveforms: this.waveformsForLyrics(this.lastLoadState.lyrics),
 				rhythm: this.waveformProfile,
 			});

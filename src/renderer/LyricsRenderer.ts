@@ -1,4 +1,4 @@
-import type { Interlude, LyricsDocument } from "../lyrics/types";
+import type { Interlude, LyricsDocument, LyricsLoadDiagnostics } from "../lyrics/types";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import type { AnimatedGroup } from "./AnimatedGroup";
 import type { RhythmProfile } from "./AudioAnalysisWaveformService";
@@ -26,6 +26,8 @@ export type LyricsRendererMountOptions = {
 	lyrics: LyricsDocument;
 	settings: ExtensionSettings;
 	provider?: string;
+	source?: "cache" | "network";
+	diagnostics?: LyricsLoadDiagnostics;
 	waveforms?: InterludeWaveformMap;
 	rhythm?: RhythmProfile;
 };
@@ -38,7 +40,7 @@ export class LyricsRenderer {
 	private groups: AnimatedGroup[] = [];
 	private settings?: ExtensionSettings;
 
-	public mount(root: HTMLElement, { lyrics, settings, provider, waveforms = {}, rhythm }: LyricsRendererMountOptions): void {
+	public mount(root: HTMLElement, { lyrics, settings, provider, source, diagnostics, waveforms = {}, rhythm }: LyricsRendererMountOptions): void {
 		this.destroy();
 		this.hostRoot = root;
 		this.container = document.createElement("div");
@@ -54,7 +56,7 @@ export class LyricsRenderer {
 		this.container.append(this.lyricsViewport);
 		root.replaceChildren(this.container);
 		this.buildLyrics(lyrics, settings, waveforms, rhythm);
-		appendProviderSource(this.lyricsTrack, provider);
+		appendProviderSource(this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
 	}
 
 	public showStatus(root: HTMLElement, status: StatusViewModel, settings: ExtensionSettings): void {
@@ -154,22 +156,30 @@ export class LyricsRenderer {
 			}
 			const group = document.createElement("div");
 			group.className = "vocals-group syllable-group";
+			group.classList.toggle("opposite-aligned", item.oppositeAligned);
 			const lead = new SyllableVocals(item.lead, false, settings, rhythm);
+			const backgrounds = (item.background ?? []).map((background) => new SyllableVocals(background, true, settings, rhythm));
+			const vocalRanges = [item.lead, ...(item.background ?? [])];
+			const startTime = Math.min(...vocalRanges.map((vocal) => vocal.startTime));
+			const endTime = Math.max(...vocalRanges.map((vocal) => vocal.endTime));
 			group.classList.toggle("has-parenthetical", lead.hasParenthetical);
-			group.append(lead.element);
+			group.append(lead.element, ...backgrounds.map((background) => background.element));
 			const animated: AnimatedGroup = {
 				element: group,
-				startTime: item.lead.startTime,
-				endTime: item.lead.endTime,
+				startTime,
+				endTime,
 				setHoldEndTime: (endTime) => {
-					animated.endTime = Math.max(item.lead.endTime, endTime);
+					animated.endTime = Math.max(endTime, ...vocalRanges.map((vocal) => vocal.endTime));
 				},
 				animate: (timestamp, deltaTime) => {
 					lead.animate(timestamp, deltaTime, settings.reduceMotion);
-					const active = timestamp >= item.lead.startTime && timestamp < animated.endTime;
+					for (const background of backgrounds) {
+						background.animate(timestamp, deltaTime, settings.reduceMotion);
+					}
+					const active = timestamp >= startTime && timestamp < animated.endTime;
 					group.classList.toggle("active", active);
 					group.classList.toggle("sung", timestamp >= animated.endTime);
-					group.classList.toggle("idle", timestamp < item.lead.startTime);
+					group.classList.toggle("idle", timestamp < startTime);
 				},
 			};
 			this.groups.push(animated);

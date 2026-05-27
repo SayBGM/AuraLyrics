@@ -210,52 +210,20 @@ describe("LyricsRenderer", () => {
 		expect(lead?.textContent).not.toContain(")");
 	});
 
-	test("keeps punctuation between word-synced parentheticals out of the next visual row", () => {
+	test("renders short parenthetical ad-libs as separate rows before following lyrics", () => {
 		const root = document.createElement("div");
 		const lyrics: SyllableLyrics = {
 			type: "syllable",
 			startTime: 0,
-			endTime: 4,
+			endTime: 6,
 			content: [
 				{
 					type: "vocal",
 					oppositeAligned: false,
 					lead: {
 						startTime: 0,
-						endTime: 4,
-						syllables: [{ text: "피땀으로 (hey), 눈물로 (hey)", startTime: 0, endTime: 4, isPartOfWord: false }],
-					},
-				},
-			],
-		};
-
-		const renderer = new LyricsRenderer();
-		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
-
-		const lead = root.querySelector<HTMLElement>(".vocals.lead");
-		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
-		expect(rows).toHaveLength(2);
-		expect(rows.map((row) => row.querySelector(".syllable-main")?.textContent)).toEqual(["피땀으로,", "눈물로"]);
-		expect(rows.map((row) => row.querySelector(".syllable-echo")?.textContent)).toEqual(["hey", "hey"]);
-		expect(rows[1].querySelector(".syllable-main")?.textContent?.startsWith(",")).toBe(false);
-		expect(lead?.textContent).not.toContain("(");
-		expect(lead?.textContent).not.toContain(")");
-	});
-
-	test("stacks short ad-lib parentheticals between lyric phrases as their own visual rows", () => {
-		const root = document.createElement("div");
-		const lyrics: SyllableLyrics = {
-			type: "syllable",
-			startTime: 0,
-			endTime: 5,
-			content: [
-				{
-					type: "vocal",
-					oppositeAligned: false,
-					lead: {
-						startTime: 0,
-						endTime: 5,
-						syllables: [{ text: "내버려 둬 (hey), 터지게 둬 (hey) 유일한 지금일 테니", startTime: 0, endTime: 5, isPartOfWord: false }],
+						endTime: 6,
+						syllables: [{ text: "피땀으로 (hey), 눈물로 (hey) 채운게 미련하다고", startTime: 0, endTime: 6, isPartOfWord: false }],
 					},
 				},
 			],
@@ -267,9 +235,13 @@ describe("LyricsRenderer", () => {
 		const lead = root.querySelector<HTMLElement>(".vocals.lead");
 		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
 		expect(rows).toHaveLength(5);
-		expect(rows.map((row) => row.textContent)).toEqual(["내버려 둬", "hey", "터지게 둬", "hey", "유일한 지금일 테니"]);
-		expect(rows.map((row) => row.classList.contains("parenthetical-only"))).toEqual([false, true, false, true, false]);
-		expect(rows.every((row) => row.querySelector(".syllable-echo")?.textContent === "")).toBe(true);
+		expect(rows.map((row) => row.querySelector(".syllable-main")?.textContent)).toEqual(["피땀으로", "", "눈물로", "", "채운게 미련하다고"]);
+		expect(rows.map((row) => row.querySelector(".syllable-echo")?.textContent)).toEqual(["", "hey", "", "hey", ""]);
+		expect(rows[1].classList.contains("standalone-parenthetical")).toBe(false);
+		expect(rows[3].classList.contains("standalone-parenthetical")).toBe(false);
+		expect(rows[2].querySelector(".syllable-main")?.textContent?.startsWith(",")).toBe(false);
+		expect(lead?.textContent).not.toContain("(");
+		expect(lead?.textContent).not.toContain(")");
 	});
 
 	test("scrolls word-synced parenthetical lyrics by visual rows instead of original provider lines", () => {
@@ -392,6 +364,7 @@ describe("LyricsRenderer", () => {
 
 		const row = root.querySelector<HTMLElement>(".syllable-row");
 		expect(row?.classList.contains("parenthetical-only")).toBe(true);
+		expect(row?.classList.contains("standalone-parenthetical")).toBe(true);
 		expect(row?.querySelector(".syllable-main")?.textContent).toBe("");
 		expect(row?.querySelector(".syllable-echo")?.textContent).toBe("괜찮아");
 		expect(row?.querySelector(".parenthetical-word")).not.toBeNull();
@@ -679,6 +652,84 @@ describe("LyricsRenderer", () => {
 		const rows = Array.from(root.querySelectorAll(".lyrics-track > *"));
 		expect(rows.at(-1)?.classList.contains("provider-source")).toBe(true);
 		expect(rows.at(-1)?.textContent).toContain("lrclib");
+	});
+
+	test("shows provider diagnostics only when debug mode is enabled", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 100,
+			content: [{ type: "vocal", text: "Ending", startTime: 0, endTime: 100, oppositeAligned: false }],
+		};
+		const diagnostics = {
+			cache: { status: "miss" as const, primaryProvider: "spotify" as const },
+			attempts: [
+				{ provider: "spotify" as const, status: "no-lyrics" as const, message: "No synced lyrics." },
+				{ provider: "lrclib" as const, status: "success" as const },
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, {
+			lyrics,
+			settings: { ...DEFAULT_SETTINGS, debugMode: false },
+			provider: "lrclib",
+			diagnostics,
+		});
+		expect(root.querySelector(".provider-diagnostics")).toBeNull();
+
+		renderer.mount(root, {
+			lyrics,
+			settings: { ...DEFAULT_SETTINGS, debugMode: true },
+			provider: "lrclib",
+			source: "network",
+			diagnostics,
+		});
+
+		const source = root.querySelector(".provider-source");
+		const detail = root.querySelector(".provider-diagnostics");
+		expect(source?.textContent).toContain("network");
+		expect(detail?.textContent).toContain("cache miss");
+		expect(detail?.textContent).toContain("spotify: no lyrics");
+		expect(detail?.textContent).toContain("lrclib: success");
+	});
+
+	test("renders background vocals and opposite alignment for syllable vocals", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 5,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: true,
+					lead: {
+						startTime: 0,
+						endTime: 5,
+						syllables: [{ text: "Lead", startTime: 0, endTime: 5, isPartOfWord: false }],
+					},
+					background: [
+						{
+							startTime: 1,
+							endTime: 4,
+							syllables: [{ text: "Echo", startTime: 1, endTime: 4, isPartOfWord: false }],
+						},
+					],
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
+		renderer.update(2, 1 / 60);
+
+		const group = root.querySelector<HTMLElement>(".syllable-group");
+		expect(group?.classList.contains("opposite-aligned")).toBe(true);
+		expect(group?.querySelector(".vocals.lead")?.textContent).toBe("Lead");
+		expect(group?.querySelector(".vocals.background")?.textContent).toBe("Echo");
+		expect(group?.querySelector(".vocals.background.active")).not.toBeNull();
 	});
 
 	test("exposes interlude progress to the PiP frame and softens the lyric scene while active", () => {

@@ -3,12 +3,20 @@ import { LyricsRenderer } from "../../../src/renderer/LyricsRenderer";
 import { DEFAULT_SETTINGS, type ExtensionSettings } from "../../../src/settings/SettingsStore";
 import { pipStyles } from "../../../src/styles/pipStyles";
 
-type ScenarioName = "line-sync" | "word-sync" | "parenthetical-adlib" | "korean-tail" | "multiline-active-row";
+type ScenarioName =
+	| "album-art-instrumental"
+	| "background-opposite"
+	| "frame-interlude"
+	| "line-sync"
+	| "word-sync"
+	| "korean-tail"
+	| "multiline-active-row";
 
 type Scenario = {
-	lyrics: LyricsDocument;
+	lyrics?: LyricsDocument;
 	settings?: Partial<ExtensionSettings>;
 	timestamp: number;
+	mode?: "album-art" | "lyrics";
 };
 
 declare global {
@@ -58,6 +66,64 @@ const settingsForVisuals: Partial<ExtensionSettings> = {
 };
 
 const scenarios: Record<ScenarioName, Scenario> = {
+	"album-art-instrumental": {
+		timestamp: 0,
+		mode: "album-art",
+	},
+	"background-opposite": {
+		timestamp: 2.4,
+		settings: {
+			...settingsForVisuals,
+			alignmentMode: "left",
+		},
+		lyrics: {
+			type: "syllable",
+			startTime: 0,
+			endTime: 6,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: true,
+					lead: {
+						startTime: 0,
+						endTime: 5,
+						syllables: [
+							{ text: "Lead", startTime: 0, endTime: 1.8, isPartOfWord: false },
+							{ text: "line", startTime: 1.8, endTime: 5, isPartOfWord: false },
+						],
+					},
+					background: [
+						{
+							startTime: 1.1,
+							endTime: 4.6,
+							syllables: [
+								{ text: "soft", startTime: 1.1, endTime: 2.4, isPartOfWord: false },
+								{ text: "echo", startTime: 2.4, endTime: 4.6, isPartOfWord: false },
+							],
+						},
+					],
+				},
+			],
+		},
+	},
+	"frame-interlude": {
+		timestamp: 7,
+		settings: {
+			...settingsForVisuals,
+			interludeStyle: "frame",
+			showInterludes: false,
+		},
+		lyrics: {
+			type: "line",
+			startTime: 0,
+			endTime: 14,
+			content: [
+				{ type: "vocal", text: "Before the break", startTime: 0, endTime: 4, oppositeAligned: false },
+				{ type: "interlude", startTime: 4, endTime: 10 },
+				{ type: "vocal", text: "After the break returns", startTime: 10, endTime: 14, oppositeAligned: false },
+			],
+		},
+	},
 	"line-sync": {
 		timestamp: 5,
 		settings: {
@@ -91,11 +157,6 @@ const scenarios: Record<ScenarioName, Scenario> = {
 				["돌아와", 6.8, 8],
 			],
 		]),
-	},
-	"parenthetical-adlib": {
-		timestamp: 1.35,
-		settings: settingsForVisuals,
-		lyrics: syllableLyrics([[["내버려 둬 (hey), 터지게 둬 (hey) 유일한 지금일 테니", 0, 5]], [["끝까지", 5.2, 6.2]]]),
 	},
 	"korean-tail": {
 		timestamp: 4.9,
@@ -131,6 +192,13 @@ window.auraVisualHarness = {
 			throw new Error(`Unknown visual scenario: ${name}`);
 		}
 		pipRoot.className = "is-playing";
+		if (scenario.mode === "album-art") {
+			renderer.showAlbumArt(mountRoot);
+			return;
+		}
+		if (!scenario.lyrics) {
+			throw new Error(`Scenario has no lyrics: ${name}`);
+		}
 		renderer.mount(mountRoot, {
 			lyrics: structuredClone(scenario.lyrics),
 			settings: {

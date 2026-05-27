@@ -67,6 +67,53 @@ describe("LyricsService", () => {
 		expect(blockedAttempts).toBe(2);
 	});
 
+	test("reports cache and provider attempt diagnostics for fallback loads", async () => {
+		const firstProvider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: false, reason: "no-lyrics", message: "Spotify has no synced lyrics." }),
+		};
+		const fallbackProvider: LyricsProvider = {
+			id: "lrclib",
+			supports: () => true,
+			fetch: async () => ({ ok: true, lyrics: lineLyrics("Fallback") }),
+		};
+		const service = new LyricsService(new ProviderRegistry([firstProvider, fallbackProvider]), new LyricsCache(), () => context, { retryDelayMs: 0 });
+
+		const state = await service.load(track, DEFAULT_SETTINGS, false);
+
+		expect(state.status).toBe("ready");
+		if (state.status !== "ready") {
+			throw new Error("expected ready");
+		}
+		expect(state.source).toBe("network");
+		expect(state.diagnostics.cache).toEqual({ status: "miss", primaryProvider: "spotify" });
+		expect(state.diagnostics.attempts.map((attempt) => `${attempt.provider}:${attempt.status}`)).toEqual(["spotify:no-lyrics", "lrclib:success"]);
+	});
+
+	test("reports cache hit diagnostics without fetching providers", async () => {
+		const cache = new LyricsCache();
+		cache.set(track.uri, lineLyrics("Cached"), "spotify");
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => {
+				throw new Error("should not fetch when cache is valid");
+			},
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { retryDelayMs: 0 });
+
+		const state = await service.load(track, DEFAULT_SETTINGS, false);
+
+		expect(state.status).toBe("ready");
+		if (state.status !== "ready") {
+			throw new Error("expected ready");
+		}
+		expect(state.source).toBe("cache");
+		expect(state.diagnostics.cache).toEqual({ status: "hit", provider: "spotify", primaryProvider: "spotify" });
+		expect(state.diagnostics.attempts).toEqual([]);
+	});
+
 	test("caches lyrics only when the first enabled provider succeeds", async () => {
 		const cache = new LyricsCache();
 		const firstProvider: LyricsProvider = {

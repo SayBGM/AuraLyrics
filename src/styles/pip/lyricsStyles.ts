@@ -59,6 +59,17 @@ export const lyricsStyles = `
 	transform-origin: left center;
 }
 
+.lyrics-track.align-center .vocals-group.opposite-aligned {
+	align-self: center;
+}
+
+.lyrics-track.align-left .vocals-group.opposite-aligned,
+.lyrics-track.align-natural .vocals-group.opposite-aligned {
+	align-self: flex-end;
+	text-align: right;
+	transform-origin: right center;
+}
+
 .vocals-group.active {
 	--lyric-glow-bleed: calc(var(--lyrics-size) * 0.58);
 	opacity: 1;
@@ -146,6 +157,21 @@ export const lyricsStyles = `
 	white-space: normal;
 	overflow-wrap: break-word;
 	word-break: keep-all;
+}
+
+.vocals.background {
+	margin-top: calc(var(--lyrics-size) * 0.12);
+	opacity: 0.64;
+	filter: saturate(0.92);
+}
+
+.vocals.background .lyric {
+	font-size: calc(var(--lyrics-size) * 0.74);
+	font-weight: 700;
+}
+
+.vocals-group.active .vocals.background {
+	opacity: 0.78;
 }
 
 .vocals.has-parenthetical {
@@ -274,7 +300,7 @@ export const lyricsStyles = `
 	letter-spacing: -0.035em;
 }
 
-.syllable-row.parenthetical-only .parenthetical-word .lyric {
+.syllable-row.standalone-parenthetical .parenthetical-word .lyric {
 	font-size: var(--lyrics-size);
 }
 
@@ -307,6 +333,17 @@ export const lyricsStyles = `
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: rgba(255, 255, 255, 0.42);
+	text-shadow: 0 1px 10px rgba(0, 0, 0, 0.28);
+}
+
+.provider-diagnostics {
+	margin-top: 4px;
+	max-width: min(74vw, 720px);
+	font-size: max(10px, calc(var(--lyrics-size) * 0.28));
+	font-weight: 650;
+	letter-spacing: 0.02em;
+	line-height: 1.35;
+	color: rgba(255, 255, 255, 0.36);
 	text-shadow: 0 1px 10px rgba(0, 0, 0, 0.28);
 }
 `;

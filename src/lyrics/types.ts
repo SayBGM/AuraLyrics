@@ -64,12 +64,38 @@ export type TrackIdentity = {
 	isLocal: boolean;
 };
 
+export type LyricsCacheStatus =
+	| { status: "bypassed"; primaryProvider?: ProviderId }
+	| { status: "hit"; provider: ProviderId; primaryProvider?: ProviderId }
+	| { status: "miss"; primaryProvider?: ProviderId }
+	| { status: "provider-mismatch"; provider: ProviderId; primaryProvider?: ProviderId };
+
+export type ProviderAttemptStatus = "success" | "no-lyrics" | "instrumental" | "temporarily-unavailable" | "cooldown" | "error";
+
+export type ProviderAttempt = {
+	provider: ProviderId;
+	status: ProviderAttemptStatus;
+	message?: string;
+};
+
+export type LyricsLoadDiagnostics = {
+	cache: LyricsCacheStatus;
+	attempts: ProviderAttempt[];
+};
+
 export type LyricsLoadState =
 	| { status: "idle" }
 	| { status: "loading"; track: TrackIdentity }
-	| { status: "ready"; track: TrackIdentity; lyrics: LyricsDocument; provider: ProviderId }
-	| { status: "empty"; track: TrackIdentity; reason: "no-lyrics" | "instrumental" | "unsupported-local" }
-	| { status: "error"; track: TrackIdentity; message: string };
+	| {
+			status: "ready";
+			track: TrackIdentity;
+			lyrics: LyricsDocument;
+			provider: ProviderId;
+			source: "cache" | "network";
+			diagnostics: LyricsLoadDiagnostics;
+	  }
+	| { status: "empty"; track: TrackIdentity; reason: "no-lyrics" | "instrumental" | "unsupported-local"; diagnostics?: LyricsLoadDiagnostics }
+	| { status: "error"; track: TrackIdentity; message: string; diagnostics?: LyricsLoadDiagnostics };
 
 export type ProviderResult =
 	| { ok: true; lyrics: LyricsDocument }
