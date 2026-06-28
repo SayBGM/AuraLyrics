@@ -24,18 +24,20 @@ type ProviderSourceOptions = {
 	source?: "cache" | "network";
 	diagnostics?: LyricsLoadDiagnostics;
 	showDiagnostics?: boolean;
+	synthInfo?: { averageConfidence: number };
 };
 
 export const appendProviderSource = (
 	lyricsTrack: HTMLElement,
-	{ provider, source: loadSource, diagnostics, showDiagnostics = false }: ProviderSourceOptions
+	{ provider, source: loadSource, diagnostics, showDiagnostics = false, synthInfo }: ProviderSourceOptions
 ): void => {
 	if (!provider) {
 		return;
 	}
 	const sourceElement = document.createElement("div");
 	sourceElement.className = "provider-source";
-	sourceElement.textContent = `Source: ${provider}${showDiagnostics && loadSource ? ` · ${loadSource}` : ""}`;
+	const synthLabel = showDiagnostics && synthInfo ? ` · pseudo-karaoke (conf ${synthInfo.averageConfidence.toFixed(2)})` : "";
+	sourceElement.textContent = `Source: ${provider}${showDiagnostics && loadSource ? ` · ${loadSource}` : ""}${synthLabel}`;
 	lyricsTrack.append(sourceElement);
 	if (!showDiagnostics || !diagnostics) {
 		return;

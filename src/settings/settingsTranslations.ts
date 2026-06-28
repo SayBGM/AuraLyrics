@@ -30,6 +30,7 @@ export type TranslationKey =
 	| "preset"
 	| "providerOrder"
 	| "providers"
+	| "pseudoKaraoke"
 	| "reduceMotion"
 	| "refreshCurrentLyrics"
 	| "requestingToken"
@@ -74,6 +75,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		preset: "Preset",
 		providerOrder: "Provider order: {order}",
 		providers: "Providers",
+		pseudoKaraoke: "Synthesized karaoke",
 		reduceMotion: "Reduce motion",
 		refreshCurrentLyrics: "Refresh current lyrics",
 		requestingToken: "Requesting Musixmatch token...",
@@ -114,6 +116,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		musixmatchToken: "Musixmatch 토큰",
 		preset: "프리셋",
 		providerOrder: "제공자 순서: {order}",
+		pseudoKaraoke: "노래방 자동 합성",
 		providers: "제공자",
 		reduceMotion: "모션 줄이기",
 		refreshCurrentLyrics: "현재 가사 새로고침",
@@ -155,6 +158,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		musixmatchToken: "Musixmatch トークン",
 		preset: "プリセット",
 		providerOrder: "プロバイダー順: {order}",
+		pseudoKaraoke: "カラオケ自動合成",
 		providers: "プロバイダー",
 		reduceMotion: "モーションを減らす",
 		refreshCurrentLyrics: "現在の歌詞を更新",

@@ -4,7 +4,15 @@ export type AudioAnalysisSegment = {
 	start: number;
 	duration: number;
 	loudness_max?: number;
+	loudness_max_time?: number;
 	loudness_start?: number;
+	confidence?: number;
+	pitches?: number[];
+	timbre?: number[];
+};
+
+export type AudioAnalysisTatum = {
+	start: number;
 	confidence?: number;
 };
 
@@ -31,6 +39,7 @@ export type AudioAnalysisData = {
 	track?: AudioAnalysisTrack;
 	sections?: AudioAnalysisSection[];
 	beats?: AudioAnalysisBeat[];
+	tatums?: AudioAnalysisTatum[];
 	segments?: AudioAnalysisSegment[];
 };
 
@@ -59,11 +68,39 @@ const MIN_BAR_HEIGHT = 0.14;
 const DEFAULT_BAR_COUNT = 18;
 
 export class AudioAnalysisWaveformService {
+	private readonly analysisCache = new Map<string, AudioAnalysisData | undefined>();
+	private readonly inFlight = new Map<string, Promise<AudioAnalysisData | undefined>>();
+
 	public constructor(private readonly getAudioData?: GetAudioData) {}
+
+	public async getAnalysis(track: TrackIdentity): Promise<AudioAnalysisData | undefined> {
+		if (this.analysisCache.has(track.uri)) {
+			return this.analysisCache.get(track.uri);
+		}
+		const pending = this.inFlight.get(track.uri);
+		if (pending) {
+			return pending;
+		}
+		const request = (async () => {
+			try {
+				return await this.getAudioData?.(track.uri);
+			} catch {
+				return undefined;
+			}
+		})();
+		this.inFlight.set(track.uri, request);
+		try {
+			const data = await request;
+			this.analysisCache.set(track.uri, data);
+			return data;
+		} finally {
+			this.inFlight.delete(track.uri);
+		}
+	}
 
 	public async loadProfile(track: TrackIdentity): Promise<TrackWaveformProfile> {
 		try {
-			const data = await this.getAudioData?.(track.uri);
+			const data = await this.getAnalysis(track);
 			const rhythm = rhythmProfileFromAnalysis(data);
 			const segments = (data?.segments ?? []).filter(isUsableSegment);
 			if (segments.length > 0) {

@@ -5,7 +5,8 @@ import { MusixmatchProvider } from "../lyrics/providers/MusixmatchProvider";
 import { type MusixmatchTokenResponse, MusixmatchTokenService } from "../lyrics/providers/MusixmatchTokenService";
 import { ProviderRegistry } from "../lyrics/providers/ProviderRegistry";
 import { SpotifyProvider } from "../lyrics/providers/SpotifyProvider";
-import type { LyricsDocument, LyricsLoadState, TrackIdentity } from "../lyrics/types";
+import { buildPseudoKaraokeLyrics, type PseudoKaraokeResult } from "../lyrics/pseudoKaraoke/buildPseudoKaraoke";
+import type { LineLyrics, LyricsDocument, LyricsLoadState, TrackIdentity } from "../lyrics/types";
 import { DocumentPipController, type PipSession } from "../pip/DocumentPipController";
 import { SpicetifyStorageAdapter } from "../platform/SpicetifyStorageAdapter";
 import { PlaybackClock } from "../player/PlaybackClock";
@@ -42,6 +43,7 @@ export class ExtensionApp {
 	private currentTrack?: TrackIdentity;
 	private lastLoadState: LyricsLoadState = { status: "idle" };
 	private waveformProfile?: TrackWaveformProfile;
+	private readonly pseudoKaraokeByUri = new Map<string, PseudoKaraokeResult | null>();
 	private started = false;
 	private isPlaybackActive = false;
 	private playbackTimestampSec = 0;
@@ -99,7 +101,7 @@ export class ExtensionApp {
 		this.disposers.push(
 			this.player.trackChanged.subscribe((track) => void this.onTrackChanged(track)),
 			this.player.playbackChanged.subscribe((isPlaying) => this.onPlaybackChanged(isPlaying)),
-			this.settings.subscribe(() => this.applySettings()),
+			this.settings.subscribe(() => void this.applySettings()),
 			this.pip.closed.subscribe(() => this.closePip(false))
 		);
 		this.topbar.register();
@@ -190,8 +192,14 @@ export class ExtensionApp {
 		this.stateMachine.dispatch({ type: "validTrack" });
 		this.showStatus("Loading lyrics", track.title);
 		const waveformProfilePromise = this.waveformService.loadProfile(track);
+		if (refresh) {
+			this.pseudoKaraokeByUri.delete(track.uri);
+		}
 		this.lastLoadState = await this.lyricsService.load(track, this.settings.get(), refresh);
 		this.waveformProfile = this.lastLoadState.status === "ready" ? await waveformProfilePromise : undefined;
+		if (this.lastLoadState.status === "ready" && this.shouldSynthesizeKaraoke(this.lastLoadState)) {
+			await this.ensurePseudoKaraoke(track, this.lastLoadState.lyrics as LineLyrics);
+		}
 		this.resyncPlaybackTimestamp();
 		this.renderLoadState(this.lastLoadState);
 	}
@@ -214,14 +222,16 @@ export class ExtensionApp {
 		}
 		if (state.status === "ready") {
 			this.stateMachine.dispatch({ type: "lyricsReady" });
+			const lyrics = this.displayLyricsFor(state);
 			this.renderer.mount(this.session.root, {
-				lyrics: state.lyrics,
+				lyrics,
 				settings: this.settings.get(),
 				provider: state.provider,
 				source: state.source,
 				diagnostics: state.diagnostics,
-				waveforms: this.waveformsForLyrics(state.lyrics),
+				waveforms: this.waveformsForLyrics(lyrics),
 				rhythm: this.waveformProfile,
+				synthInfo: this.synthInfoFor(state),
 			});
 			return;
 		}
@@ -301,20 +311,54 @@ export class ExtensionApp {
 		}
 	}
 
-	private applySettings(): void {
+	private async applySettings(): Promise<void> {
 		this.session?.applySettings(this.settings.get());
 		this.resyncPlaybackTimestamp();
-		if (this.session && this.lastLoadState.status === "ready") {
+		const state = this.lastLoadState;
+		if (this.session && state.status === "ready") {
+			if (this.shouldSynthesizeKaraoke(state) && this.currentTrack) {
+				await this.ensurePseudoKaraoke(this.currentTrack, state.lyrics as LineLyrics);
+			}
+			const lyrics = this.displayLyricsFor(state);
 			this.renderer.mount(this.session.root, {
-				lyrics: this.lastLoadState.lyrics,
+				lyrics,
 				settings: this.settings.get(),
-				provider: this.lastLoadState.provider,
-				source: this.lastLoadState.source,
-				diagnostics: this.lastLoadState.diagnostics,
-				waveforms: this.waveformsForLyrics(this.lastLoadState.lyrics),
+				provider: state.provider,
+				source: state.source,
+				diagnostics: state.diagnostics,
+				waveforms: this.waveformsForLyrics(lyrics),
 				rhythm: this.waveformProfile,
+				synthInfo: this.synthInfoFor(state),
 			});
 		}
+	}
+
+	private shouldSynthesizeKaraoke(state: LyricsLoadState): boolean {
+		const settings = this.settings.get();
+		return state.status === "ready" && state.lyrics.type === "line" && settings.pseudoKaraoke && settings.syncPreference === "prefer-syllable";
+	}
+
+	private async ensurePseudoKaraoke(track: TrackIdentity, lineLyrics: LineLyrics): Promise<void> {
+		if (this.pseudoKaraokeByUri.has(track.uri)) {
+			return;
+		}
+		const analysis = await this.waveformService.getAnalysis(track);
+		this.pseudoKaraokeByUri.set(track.uri, buildPseudoKaraokeLyrics(lineLyrics, analysis, track.durationMs));
+	}
+
+	private displayLyricsFor(state: Extract<LyricsLoadState, { status: "ready" }>): LyricsDocument {
+		if (!this.shouldSynthesizeKaraoke(state)) {
+			return state.lyrics;
+		}
+		return this.pseudoKaraokeByUri.get(state.track.uri)?.lyrics ?? state.lyrics;
+	}
+
+	private synthInfoFor(state: Extract<LyricsLoadState, { status: "ready" }>): { averageConfidence: number } | undefined {
+		if (!this.shouldSynthesizeKaraoke(state)) {
+			return undefined;
+		}
+		const result = this.pseudoKaraokeByUri.get(state.track.uri);
+		return result ? { averageConfidence: result.averageConfidence } : undefined;
 	}
 
 	private waveformsForLyrics(lyrics: LyricsDocument): InterludeWaveformMap {

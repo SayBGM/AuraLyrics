@@ -92,6 +92,7 @@ export class SettingsView {
 					(value) => this.update({ syncPreference: value as ExtensionSettings["syncPreference"] }),
 					(value) => this.optionLabel("sync", value, language)
 				),
+				this.toggle(t("pseudoKaraoke"), settings.pseudoKaraoke, (value) => this.update({ pseudoKaraoke: value })),
 				this.select(
 					t("alignment"),
 					settings.alignmentMode,
