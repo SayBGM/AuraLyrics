@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { SyllableVocal } from "../../src/lyrics/types";
+import type { Syllable, SyllableVocal } from "../../src/lyrics/types";
 import { buildSyllableRows } from "../../src/renderer/lyrics/syllableRows";
 
 const vocal = (text: string, startTime = 0, endTime = 4): SyllableVocal => ({
@@ -140,5 +140,37 @@ describe("buildSyllableRows", () => {
 				extraClasses: ["korean-tail-sustain"],
 			}),
 		]);
+	});
+});
+
+describe("buildSyllableRows isPartOfWord grouping", () => {
+	const syl = (text: string, startTime: number, endTime: number, isPartOfWord: boolean): Syllable => ({ text, startTime, endTime, isPartOfWord });
+	const wordTexts = (model: ReturnType<typeof buildSyllableRows>): string[][] =>
+		model.rows.flatMap((row) => row.main.words.map((word) => word.tokens.map((token) => token.text)));
+
+	test("groups consecutive in-word syllables into one word", () => {
+		const model = buildSyllableRows({
+			startTime: 2.0,
+			endTime: 3.0,
+			syllables: [
+				syl("별", 2.0, 2.2, false),
+				syl("빛", 2.2, 2.4, true),
+				syl("이", 2.4, 2.6, true),
+				syl("내", 2.6, 2.8, false),
+				syl("린", 2.8, 3.0, true),
+			],
+		});
+		expect(wordTexts(model)).toEqual([
+			["별", "빛", "이"],
+			["내", "린"],
+		]);
+	});
+
+	test("extends the row active window to a wider vocal envelope", () => {
+		const model = buildSyllableRows({ startTime: 2.0, endTime: 3.5, syllables: [syl("가", 2.5, 2.7, false), syl("나", 2.7, 2.9, true)] });
+		expect(model.rows).toHaveLength(1);
+		expect(model.rows[0].startTime).toBeCloseTo(2.0, 5);
+		expect(model.rows[0].endTime).toBeCloseTo(3.5, 5);
+		expect(model.rows[0].holdEndTime).toBeCloseTo(3.5, 5);
 	});
 });

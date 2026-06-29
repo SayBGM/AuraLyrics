@@ -99,7 +99,13 @@ describe("buildPseudoKaraokeLyrics", () => {
 		}
 	});
 
-	test("splits parenthetical text into background vocals", () => {
+	test("anchors the line envelope to the original line bounds", () => {
+		const lead = leadOf(lineLyrics());
+		expect(lead.startTime).toBeCloseTo(2, 5);
+		expect(lead.endTime).toBeCloseTo(6, 5);
+	});
+
+	test("keeps parentheticals inline as echo (no background layer)", () => {
 		const line: LineLyrics = {
 			type: "line",
 			startTime: 2,
@@ -111,11 +117,17 @@ describe("buildPseudoKaraokeLyrics", () => {
 		if (!item || item.type !== "vocal") {
 			throw new Error("expected vocal set");
 		}
-		expect(item.background?.length ?? 0).toBeGreaterThanOrEqual(1);
-		const leadText = item.lead.syllables.map((syllable) => syllable.text).join(" ");
-		expect(leadText).not.toContain("echo");
-		const backgroundText = (item.background ?? []).flatMap((vocal) => vocal.syllables.map((syllable) => syllable.text)).join(" ");
-		expect(backgroundText).toContain("echo");
+		expect(item.background).toBeUndefined();
+		const texts = item.lead.syllables.map((syllable) => syllable.text);
+		const joined = texts.join("");
+		// Parens are preserved inline so the renderer shows an echo.
+		expect(joined).toContain("(");
+		expect(joined).toContain(")");
+		expect(joined).toContain("echo");
+		// The parenthetical syllable is forced to a word start so the renderer re-parses it.
+		const openIndex = texts.findIndex((text) => text.includes("("));
+		expect(openIndex).toBeGreaterThanOrEqual(0);
+		expect(item.lead.syllables[openIndex].isPartOfWord).toBe(false);
 	});
 
 	test("lets a sustained final syllable hold (melisma) rather than being clipped", () => {

@@ -27,7 +27,7 @@ const countLexical = (units: string[]): number => units.filter((unit) => !isWhit
 type RawSyllable = { text: string; startMs: number; endMs: number; isPartOfWord: boolean };
 
 export type PseudoKaraokeResult = { lyrics: SyllableLyrics; averageConfidence: number };
-type LineSynthesis = { lead: SyllableVocal; background?: SyllableVocal[]; confidence: number };
+type LineSynthesis = { lead: SyllableVocal; confidence: number };
 
 // Convert line lyrics → syllable lyrics. Returns null when synthesis is not possible.
 export const buildPseudoKaraokeLyrics = (
@@ -55,7 +55,7 @@ export const buildPseudoKaraokeLyrics = (
 		}
 		synthesizedAny = true;
 		confidences.push(synthesis.confidence);
-		content.push({ type: "vocal", oppositeAligned: item.oppositeAligned, lead: synthesis.lead, background: synthesis.background });
+		content.push({ type: "vocal", oppositeAligned: item.oppositeAligned, lead: synthesis.lead });
 	}
 
 	if (!synthesizedAny) {
@@ -69,7 +69,7 @@ export const buildPseudoKaraokeLyrics = (
 	};
 };
 
-// Synthesize one line, splitting parenthetical "(...)" spans into background vocals.
+// Synthesize one line. Parenthetical "(...)" spans stay inline (the renderer shows them as echo).
 export const buildPseudoKaraokeLine = (
 	line: LineVocal,
 	analysis: AudioAnalysisData | undefined,
@@ -84,41 +84,51 @@ export const buildPseudoKaraokeLine = (
 	const segments = parseWordLevelParentheticals(line.text, false);
 	const hasParenthetical = segments.some((segment) => segment.isParenthetical);
 
+	let raw: RawSyllable[];
 	if (!hasParenthetical) {
-		const raw = buildSyllablesForSpan(line.text, activeStart, activeEnd, model, lineConfidence);
-		const lead = rawToVocal(raw);
-		return lead ? { lead, confidence: lineConfidence } : null;
-	}
-
-	// Allocate a time sub-window per segment, proportional to its sung weight.
-	const segWeights = segments.map((segment) => spanWeight(segment.text, lineConfidence, activeEnd - activeStart));
-	const totalSegWeight = segWeights.reduce((sum, value) => sum + value, 0) || 1;
-	const leadSyllables: RawSyllable[] = [];
-	const background: SyllableVocal[] = [];
-	let spanStart = activeStart;
-	let acc = 0;
-	for (let index = 0; index < segments.length; index += 1) {
-		acc += segWeights[index];
-		const spanEnd = index === segments.length - 1 ? activeEnd : massWindowTime(model, acc / totalSegWeight, activeStart, activeEnd, spanStart);
-		const raw = buildSyllablesForSpan(segments[index].text, spanStart, spanEnd, model, lineConfidence);
-		if (segments[index].isParenthetical) {
-			const vocal = rawToVocal(raw);
-			if (vocal) {
-				background.push(vocal);
+		raw = buildSyllablesForSpan(line.text, activeStart, activeEnd, model, lineConfidence);
+	} else {
+		// Lay every segment (main + parenthetical) out contiguously in time. Parenthetical text keeps its
+		// parens and is forced to isPartOfWord=false so the renderer re-parses it into an inline echo.
+		raw = [];
+		const segWeights = segments.map((segment) => spanWeight(segment.text, lineConfidence, activeEnd - activeStart));
+		const totalSegWeight = segWeights.reduce((sum, value) => sum + value, 0) || 1;
+		let spanStart = activeStart;
+		let acc = 0;
+		for (let index = 0; index < segments.length; index += 1) {
+			acc += segWeights[index];
+			const spanEnd = index === segments.length - 1 ? activeEnd : massWindowTime(model, acc / totalSegWeight, activeStart, activeEnd, spanStart);
+			const segRaw = buildSyllablesForSpan(segments[index].text, spanStart, spanEnd, model, lineConfidence);
+			if (segments[index].isParenthetical) {
+				wrapParenthetical(segRaw);
 			}
-		} else {
-			leadSyllables.push(...raw);
+			raw.push(...segRaw);
+			spanStart = spanEnd;
 		}
-		spanStart = spanEnd;
 	}
 
-	const lead = rawToVocal(leadSyllables);
+	const lead = rawToVocal(raw);
 	if (!lead) {
-		// All-parenthetical or empty main: fall back to a single full-line lead.
-		const fallback = rawToVocal(buildSyllablesForSpan(line.text, activeStart, activeEnd, model, lineConfidence));
-		return fallback ? { lead: fallback, confidence: lineConfidence } : null;
+		return null;
 	}
-	return { lead, background: background.length ? background : undefined, confidence: lineConfidence };
+	// Anchor the line envelope to the original line bounds so active state / scroll matches line sync.
+	// Internal syllable times stay vocal-energy accurate, so the fill still follows the music.
+	lead.startTime = line.startTime;
+	lead.endTime = line.endTime;
+	return { lead, confidence: lineConfidence };
+};
+
+// Re-wrap a parenthetical segment's syllables so the renderer detects an inline echo:
+// keep the parens on the edge syllables and force isPartOfWord=false across the segment.
+const wrapParenthetical = (segRaw: RawSyllable[]): void => {
+	if (segRaw.length === 0) {
+		return;
+	}
+	for (const syllable of segRaw) {
+		syllable.isPartOfWord = false;
+	}
+	segRaw[0].text = `(${segRaw[0].text}`;
+	segRaw[segRaw.length - 1].text = `${segRaw[segRaw.length - 1].text})`;
 };
 
 // Build syllables for a text span constrained to [spanStart, spanEnd] (ms).

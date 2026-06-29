@@ -67,7 +67,11 @@ export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile):
 			rows.push(row);
 		}
 		markRowTiming(row, segment);
-		if (!word || wordIsParenthetical !== segment.isParenthetical) {
+		// Group consecutive in-word syllables (isPartOfWord) into one .word so synthesized
+		// karaoke keeps word spacing/wrapping. Real karaoke always has isPartOfWord=false,
+		// so each token stays its own word (unchanged).
+		const startsNewWord = !item.syllable.isPartOfWord;
+		if (!word || wordIsParenthetical !== segment.isParenthetical || startsNewWord) {
 			word = createWord(segment.isParenthetical);
 			wordIsParenthetical = segment.isParenthetical;
 			const group = segment.isParenthetical ? row.echo : row.main;
@@ -106,7 +110,6 @@ export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile):
 				createToken(segment.text, { ...item.syllable, startTime: segment.startTime, endTime: segment.endTime }, segment.isParenthetical)
 			);
 		}
-		word = undefined;
 		if (segment.isParenthetical && !segment.continues) {
 			row = undefined;
 			word = undefined;
@@ -114,6 +117,14 @@ export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile):
 				stripNextMainPrefix = true;
 			}
 		}
+	}
+	// Extend the row active window to the vocal envelope. Synthesized lyrics anchor the envelope to the
+	// original line bounds, so the row activates / scrolls in step with line-synced lyrics.
+	if (rows.length > 0) {
+		rows[0].startTime = Math.min(rows[0].startTime, vocal.startTime);
+		const lastRow = rows[rows.length - 1];
+		lastRow.endTime = Math.max(lastRow.endTime, vocal.endTime);
+		lastRow.holdEndTime = lastRow.endTime;
 	}
 	applyRowHoldTiming(rows);
 	return { hasParenthetical, rows };
