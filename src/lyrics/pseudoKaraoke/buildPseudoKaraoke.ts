@@ -23,12 +23,12 @@ export const buildPseudoKaraokeLine = (
 	const endMs = Math.max(startMs + 1, line.endTime * S_TO_MS);
 	const lineDurationMs = endMs - startMs;
 
-	let units = tokenizeLine(line.text, { lineConfidence: 0.5, lineDurationMs });
+	const model = buildLineTimingModel(startMs, endMs, analysis, context);
+	let units = tokenizeLine(line.text, { lineConfidence: model.confidence, lineDurationMs });
 	if (units.length === 0) {
 		return null;
 	}
 	let weights = units.map(getUnitWeight);
-	const model = buildLineTimingModel(startMs, endMs, analysis, context);
 
 	if (model.conservativeMode) {
 		units = mergeUnitsConservatively(units);

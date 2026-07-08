@@ -60,10 +60,15 @@ export const melismaBoostForProgress = (progress: number): MelismaBoost => {
 	};
 };
 
-const isKoreanTailCandidate = (text: string, syllable: Syllable, allSyllables: Syllable[], rhythm: RhythmProfile | undefined): boolean => {
+const isKoreanTailCandidate = (text: string, syllable: Syllable, allSyllables: Syllable[], rhythm: RhythmProfile | undefined): boolean =>
+	!syllable.isPartOfWord && isFinalHeldKoreanSyllable(text, syllable, allSyllables, rhythm);
+
+// Whether `syllable` is the line's last syllable, made of plain Hangul text (no parens,
+// whitespace, or Latin-only content), and held long enough to warrant a sustain/melisma
+// effect. Deliberately ignores isPartOfWord so split single-character syllables still qualify.
+const isFinalHeldKoreanSyllable = (text: string, syllable: Syllable, allSyllables: Syllable[], rhythm: RhythmProfile | undefined): boolean => {
 	const trimmed = text.trim();
 	if (
-		syllable.isPartOfWord ||
 		trimmed.length !== text.length ||
 		/\s/u.test(trimmed) ||
 		/[()（）]/u.test(trimmed) ||
@@ -84,6 +89,26 @@ const isKoreanTailCandidate = (text: string, syllable: Syllable, allSyllables: S
 		return duration >= minSingleTokenKoreanTailDuration(rhythm);
 	}
 	return duration >= median(previousDurations) * KOREAN_TAIL_RATIO;
+};
+
+// Single split-out Hangul character (from splitHangulSyllables) plus optional trailing
+// punctuation, e.g. "해" or "해," — but not a parenthesized token.
+const SINGLE_HELD_KOREAN_CHAR = /^[가-힣][^\p{L}\p{N}\s]*$/u;
+
+export const melismaSustainClassesForFinalSyllable = (
+	segment: TimedParentheticalSegment,
+	syllable: Syllable,
+	allSyllables: Syllable[],
+	rhythm: RhythmProfile | undefined
+): string[] | undefined => {
+	if (/[()（）]/u.test(segment.text) || !SINGLE_HELD_KOREAN_CHAR.test(segment.text)) {
+		return undefined;
+	}
+	if (!isFinalHeldKoreanSyllable(segment.text, syllable, allSyllables, rhythm)) {
+		return undefined;
+	}
+	const duration = segment.endTime - segment.startTime;
+	return isLongKoreanMelisma(duration) ? ["korean-tail-sustain", "korean-melisma-sustain"] : ["korean-tail-sustain"];
 };
 
 const minKoreanTailDuration = (rhythm: RhythmProfile | undefined): number => {

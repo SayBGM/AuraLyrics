@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { SyllableVocal } from "../../src/lyrics/types";
+import type { Syllable, SyllableVocal } from "../../src/lyrics/types";
 import { buildSyllableRows } from "../../src/renderer/lyrics/syllableRows";
 
 const vocal = (text: string, startTime = 0, endTime = 4): SyllableVocal => ({
@@ -139,6 +139,89 @@ describe("buildSyllableRows", () => {
 				metadata: expect.objectContaining({ startTime: 2.4025, endTime: 4 }),
 				extraClasses: ["korean-tail-sustain"],
 			}),
+		]);
+	});
+
+	test("applies melisma sustain classes to a split final single-char syllable held long enough", () => {
+		const model = buildSyllableRows({
+			startTime: 2.0,
+			endTime: 8.0,
+			syllables: [
+				{ text: "사", startTime: 2.0, endTime: 2.3, isPartOfWord: false },
+				{ text: "랑", startTime: 2.3, endTime: 2.6, isPartOfWord: true },
+				{ text: "해", startTime: 2.6, endTime: 8.0, isPartOfWord: true },
+			],
+		});
+		const tailWord = model.rows[0].main.words.at(-1);
+
+		expect(tailWord?.tokens.at(-1)).toEqual(
+			expect.objectContaining({
+				text: "해",
+				extraClasses: ["korean-tail-sustain", "korean-melisma-sustain"],
+			})
+		);
+		expect(tailWord?.extraClasses).toContain("korean-melisma-word");
+	});
+
+	test("applies only the sustain class (no melisma) for a moderately held final split syllable", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 4.4,
+			syllables: [
+				{ text: "사", startTime: 0, endTime: 0.3, isPartOfWord: false },
+				{ text: "랑", startTime: 0.3, endTime: 0.6, isPartOfWord: true },
+				{ text: "해", startTime: 0.6, endTime: 4.4, isPartOfWord: true },
+			],
+		});
+		const tailWord = model.rows[0].main.words.at(-1);
+
+		expect(tailWord?.tokens.at(-1)).toEqual(
+			expect.objectContaining({
+				text: "해",
+				extraClasses: ["korean-tail-sustain"],
+			})
+		);
+		expect(tailWord?.extraClasses).toContain("korean-tail-word");
+		expect(tailWord?.extraClasses).not.toContain("korean-melisma-word");
+	});
+
+	test("applies no melisma sustain classes when the final split syllable is short", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 0.9,
+			syllables: [
+				{ text: "사", startTime: 0, endTime: 0.3, isPartOfWord: false },
+				{ text: "랑", startTime: 0.3, endTime: 0.6, isPartOfWord: true },
+				{ text: "해", startTime: 0.6, endTime: 0.9, isPartOfWord: true },
+			],
+		});
+		const tailWord = model.rows[0].main.words.at(-1);
+
+		expect(tailWord?.tokens.at(-1)?.extraClasses).toEqual([]);
+		expect(tailWord?.extraClasses).not.toContain("korean-tail-word");
+	});
+});
+
+describe("buildSyllableRows isPartOfWord grouping", () => {
+	const syl = (text: string, startTime: number, endTime: number, isPartOfWord: boolean): Syllable => ({ text, startTime, endTime, isPartOfWord });
+	const wordTexts = (model: ReturnType<typeof buildSyllableRows>): string[][] =>
+		model.rows.flatMap((row) => row.main.words.map((word) => word.tokens.map((token) => token.text)));
+
+	test("groups consecutive in-word syllables into one word", () => {
+		const model = buildSyllableRows({
+			startTime: 2.0,
+			endTime: 3.0,
+			syllables: [
+				syl("별", 2.0, 2.2, false),
+				syl("빛", 2.2, 2.4, true),
+				syl("이", 2.4, 2.6, true),
+				syl("내", 2.6, 2.8, false),
+				syl("린", 2.8, 3.0, true),
+			],
+		});
+		expect(wordTexts(model)).toEqual([
+			["별", "빛", "이"],
+			["내", "린"],
 		]);
 	});
 });

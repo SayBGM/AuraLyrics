@@ -205,6 +205,55 @@ describe("LyricsService", () => {
 		expect(state.lyrics.content.some((item) => item.type === "interlude" && item.startTime === 19.539)).toBe(false);
 	});
 
+	test("caches the pre-split syllable document but returns the Hangul-split version", async () => {
+		const cache = new LyricsCache();
+		const wordLevelLyrics: LyricsDocument = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 4.719,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4.719,
+						syllables: [{ text: "아른아른", startTime: 0, endTime: 4.719, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: true, lyrics: wordLevelLyrics }),
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { retryDelayMs: 0 });
+
+		const state = await service.load(track, DEFAULT_SETTINGS, true);
+
+		expect(state.status).toBe("ready");
+		if (state.status !== "ready" || state.lyrics.type !== "syllable") {
+			throw new Error("expected ready syllable lyrics");
+		}
+		const returnedItem = state.lyrics.content[0];
+		if (returnedItem.type !== "vocal") {
+			throw new Error("expected vocal content");
+		}
+		expect(returnedItem.lead.syllables.length).toBeGreaterThan(1);
+		expect(returnedItem.lead.syllables.every((syllable) => [...syllable.text].length === 1)).toBe(true);
+
+		const cachedLyrics = cache.get(track.uri)?.lyrics;
+		if (!cachedLyrics || cachedLyrics.type !== "syllable") {
+			throw new Error("expected cached syllable lyrics");
+		}
+		const cachedItem = cachedLyrics.content[0];
+		if (cachedItem.type !== "vocal") {
+			throw new Error("expected cached vocal content");
+		}
+		expect(cachedItem.lead.syllables).toEqual([{ text: "아른아른", startTime: 0, endTime: 4.719, isPartOfWord: false }]);
+	});
+
 	test("returns ready lyrics when cache persistence fails after provider success", async () => {
 		const provider: LyricsProvider = {
 			id: "spotify",

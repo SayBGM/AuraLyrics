@@ -51,6 +51,6 @@ describe("requestMusixmatch", () => {
 
 		expect(result).toEqual({ ok: true });
 		expect(cosmosGet).not.toHaveBeenCalled();
-		expect(fetchFn).toHaveBeenCalledWith(`https://my-proxy.example.com/?url=${encodeURIComponent(targetUrl)}`);
+		expect(fetchFn).toHaveBeenCalledWith(`https://my-proxy.example.com/?url=${encodeURIComponent(targetUrl)}`, { headers: cosmosHeaders });
 	});
 });

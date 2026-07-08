@@ -1,6 +1,6 @@
 import type { Syllable, SyllableVocal } from "../../lyrics/types";
 import type { RhythmProfile } from "../AudioAnalysisWaveformService";
-import { koreanTailSplitForSegment } from "./koreanTail";
+import { koreanTailSplitForSegment, melismaSustainClassesForFinalSyllable } from "./koreanTail";
 import { type ParentheticalSegment, parseWordLevelParentheticals, type TimedParentheticalSegment, withSegmentTiming } from "./parentheticalSegments";
 
 export type SyllableVisualToken = {
@@ -67,7 +67,11 @@ export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile):
 			rows.push(row);
 		}
 		markRowTiming(row, segment);
-		if (!word || wordIsParenthetical !== segment.isParenthetical) {
+		// Group consecutive in-word syllables (isPartOfWord) into one .word so synthesized
+		// karaoke keeps word spacing/wrapping. Real karaoke always has isPartOfWord=false,
+		// so each token stays its own word (unchanged).
+		const startsNewWord = !item.syllable.isPartOfWord;
+		if (!word || wordIsParenthetical !== segment.isParenthetical || startsNewWord) {
 			word = createWord(segment.isParenthetical);
 			wordIsParenthetical = segment.isParenthetical;
 			const group = segment.isParenthetical ? row.echo : row.main;
@@ -102,11 +106,24 @@ export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile):
 				)
 			);
 		} else {
+			const melismaClasses = segment.isParenthetical
+				? undefined
+				: melismaSustainClassesForFinalSyllable(segment, item.syllable, vocal.syllables, rhythm);
+			if (melismaClasses) {
+				addWordClass(word, "korean-tail-word");
+				if (melismaClasses.includes("korean-melisma-sustain")) {
+					addWordClass(word, "korean-melisma-word");
+				}
+			}
 			word.tokens.push(
-				createToken(segment.text, { ...item.syllable, startTime: segment.startTime, endTime: segment.endTime }, segment.isParenthetical)
+				createToken(
+					segment.text,
+					{ ...item.syllable, startTime: segment.startTime, endTime: segment.endTime },
+					segment.isParenthetical,
+					melismaClasses
+				)
 			);
 		}
-		word = undefined;
 		if (segment.isParenthetical && !segment.continues) {
 			row = undefined;
 			word = undefined;

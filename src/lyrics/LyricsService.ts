@@ -3,7 +3,21 @@ import { addInterludes, rebuildInterludes } from "./InterludeBuilder";
 import type { LyricsCache } from "./LyricsCache";
 import { normalizeLyrics } from "./LyricsNormalizer";
 import type { ProviderRegistry } from "./providers/ProviderRegistry";
-import type { LyricsCacheStatus, LyricsLoadDiagnostics, LyricsLoadState, LyricsProvider, ProviderContext, ProviderId, TrackIdentity } from "./types";
+import { splitHangulSyllables } from "./splitHangulSyllables";
+import type {
+	LyricsCacheStatus,
+	LyricsDocument,
+	LyricsLoadDiagnostics,
+	LyricsLoadState,
+	LyricsProvider,
+	ProviderContext,
+	ProviderId,
+	TrackIdentity,
+} from "./types";
+
+// Word-level syllable providers (Musixmatch) sync whole Hangul words as one token;
+// split them into per-character syllables so the gradient sweep isn't word-at-a-time.
+const withHangulSplit = (lyrics: LyricsDocument): LyricsDocument => (lyrics.type === "syllable" ? splitHangulSyllables(lyrics) : lyrics);
 
 type LyricsServiceOptions = {
 	maxAttempts: number;
@@ -47,7 +61,7 @@ export class LyricsService {
 			attempts: [],
 		};
 		if (cached && cached.provider === primaryProvider?.id) {
-			const lyrics = rebuildInterludes(cached.lyrics);
+			const lyrics = withHangulSplit(rebuildInterludes(cached.lyrics));
 			return {
 				status: "ready",
 				track,
@@ -112,7 +126,7 @@ export class LyricsService {
 					return {
 						status: "ready",
 						track,
-						lyrics,
+						lyrics: withHangulSplit(lyrics),
 						provider: provider.id,
 						source: "network",
 						diagnostics,
