@@ -1,6 +1,6 @@
 {
 	"name": "aura-lyrics",
-	"version": "0.1.11",
+	"version": "0.1.12",
 	"description": "A Document Picture-in-Picture Spicetify lyrics extension with album-art ambience and spring animations.",
 	"type": "module",
 	"private": true,
