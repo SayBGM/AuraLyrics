@@ -155,6 +155,34 @@ export class SettingsView {
 			})
 		);
 		rows.push(this.button(this.t("generateMusixmatchToken", language), () => void this.refreshMusixmatchToken()));
+		rows.push(
+			this.select(
+				this.t("musixmatchProxyMode", language),
+				settings.providers.musixmatchProxyMode,
+				["default", "custom"],
+				(value) => {
+					this.update({
+						providers: { ...this.store.get().providers, musixmatchProxyMode: value as ExtensionSettings["providers"]["musixmatchProxyMode"] },
+					});
+				},
+				(value) => this.optionLabel("musixmatchProxyMode", value, language)
+			)
+		);
+		rows.push(
+			this.text(
+				this.t(
+					settings.providers.musixmatchProxyMode === "custom" ? "musixmatchProxyModeCustomDescription" : "musixmatchProxyModeDefaultDescription",
+					language
+				)
+			)
+		);
+		if (settings.providers.musixmatchProxyMode === "custom") {
+			rows.push(
+				this.input(this.t("musixmatchProxyBaseUrl", language), settings.providers.musixmatchProxyBaseUrl ?? "", (value) => {
+					this.update({ providers: { ...this.store.get().providers, musixmatchProxyBaseUrl: value || undefined } });
+				})
+			);
+		}
 		if (this.tokenStatus) {
 			rows.push(this.text("key" in this.tokenStatus ? this.t(this.tokenStatus.key, language) : this.tokenStatus.text));
 		}

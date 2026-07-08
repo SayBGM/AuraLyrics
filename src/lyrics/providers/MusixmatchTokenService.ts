@@ -12,36 +12,37 @@ export type MusixmatchTokenResponse = {
 
 type CosmosGet = (url: string, body?: unknown, headers?: Record<string, string>) => Promise<MusixmatchTokenResponse>;
 
-const TOKEN_ENDPOINTS = [
-	{
-		id: "desktop",
-		url: "https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0",
-		headers: {
-			authority: "apic-desktop.musixmatch.com",
+const buildTokenEndpoints = (proxyBaseUrl?: string) =>
+	[
+		{
+			id: "desktop",
+			url: `${proxyBaseUrl ?? "https://apic-desktop.musixmatch.com"}/ws/1.1/token.get?app_id=web-desktop-app-v1.0`,
+			headers: {
+				authority: "apic-desktop.musixmatch.com",
+			},
 		},
-	},
-	{
-		id: "mobile",
-		url: "https://apic-appmobile.musixmatch.com/ws/1.1/token.get?app_id=mac-ios-v2.0",
-		headers: {
-			Host: "apic-appmobile.musixmatch.com",
-			authority: "apic-appmobile.musixmatch.com",
-			"X-Cookie": "x-mxm-token-guid=",
-			"x-mxm-app-version": "10.1.1",
-			"X-User-Agent": "Musixmatch/2025120901 CFNetwork/3860.300.31 Darwin/25.2.0",
-			"Accept-Language": "en-US,en;q=0.9",
-			Connection: "keep-alive",
-			Accept: "application/json",
+		{
+			id: "mobile",
+			url: "https://apic-appmobile.musixmatch.com/ws/1.1/token.get?app_id=mac-ios-v2.0",
+			headers: {
+				Host: "apic-appmobile.musixmatch.com",
+				authority: "apic-appmobile.musixmatch.com",
+				"X-Cookie": "x-mxm-token-guid=",
+				"x-mxm-app-version": "10.1.1",
+				"X-User-Agent": "Musixmatch/2025120901 CFNetwork/3860.300.31 Darwin/25.2.0",
+				"Accept-Language": "en-US,en;q=0.9",
+				Connection: "keep-alive",
+				Accept: "application/json",
+			},
 		},
-	},
-] as const;
+	] as const;
 
 export class MusixmatchTokenService {
 	public constructor(private readonly cosmosGet: CosmosGet) {}
 
-	public async refresh(): Promise<string> {
+	public async refresh(proxyBaseUrl?: string): Promise<string> {
 		const errors: string[] = [];
-		for (const endpoint of TOKEN_ENDPOINTS) {
+		for (const endpoint of buildTokenEndpoints(proxyBaseUrl)) {
 			try {
 				const response = await this.cosmosGet(endpoint.url, null, endpoint.headers);
 				const token = this.extractToken(response);

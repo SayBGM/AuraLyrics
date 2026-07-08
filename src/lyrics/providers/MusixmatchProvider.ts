@@ -54,7 +54,7 @@ export class MusixmatchProvider implements LyricsProvider {
 			usertoken: context.musixmatchToken ?? "",
 		});
 		const payload = await context.cosmosGet<MusixmatchMacroResponse>(
-			`https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?${params.toString()}`,
+			`${context.musixmatchProxyBaseUrl ?? "https://apic-desktop.musixmatch.com"}/ws/1.1/macro.subtitles.get?${params.toString()}`,
 			null,
 			{
 				authority: "apic-desktop.musixmatch.com",
@@ -101,7 +101,7 @@ export class MusixmatchProvider implements LyricsProvider {
 		});
 		try {
 			const payload = await context.cosmosGet<MusixmatchRichsyncResponse>(
-				`https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?${params.toString()}`,
+				`${context.musixmatchProxyBaseUrl ?? "https://apic-desktop.musixmatch.com"}/ws/1.1/track.richsync.get?${params.toString()}`,
 				null,
 				{
 					authority: "apic-desktop.musixmatch.com",

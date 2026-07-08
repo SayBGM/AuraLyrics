@@ -17,6 +17,7 @@ import { LyricsRenderer } from "../renderer/LyricsRenderer";
 import type { SpicetifyGlobal } from "../runtime/spicetify";
 import { SettingsStore } from "../settings/SettingsStore";
 import { SettingsView } from "../settings/SettingsView";
+import type { ExtensionSettings } from "../settings/settingsSchema";
 import { pipStyles } from "../styles/pipStyles";
 import { MusicStateMachine } from "./MusicStateMachine";
 import { TopbarController } from "./TopbarController";
@@ -76,6 +77,7 @@ export class ExtensionApp {
 			fetch: window.fetch.bind(window),
 			userAgent: `spicetify v${this.spicetify.Config?.version ?? "unknown"} AuraLyrics`,
 			musixmatchToken: settings.providers.musixmatchToken,
+			musixmatchProxyBaseUrl: this.resolveMusixmatchProxyBaseUrl(settings.providers),
 		}));
 		this.settingsView = new SettingsView(this.settings, this.registry.all(), {
 			onRefreshLyrics: () => void this.loadCurrentTrack(true),
@@ -211,9 +213,13 @@ export class ExtensionApp {
 	}
 
 	private async refreshMusixmatchToken(): Promise<string | undefined> {
-		const token = await this.musixmatchTokenService.refresh();
+		const token = await this.musixmatchTokenService.refresh(this.resolveMusixmatchProxyBaseUrl(this.settings.get().providers));
 		this.spicetify.showNotification?.("Musixmatch token updated.");
 		return token;
+	}
+
+	private resolveMusixmatchProxyBaseUrl(providers: ExtensionSettings["providers"]): string | undefined {
+		return providers.musixmatchProxyMode === "custom" && providers.musixmatchProxyBaseUrl ? providers.musixmatchProxyBaseUrl : undefined;
 	}
 
 	private renderLoadState(state: LyricsLoadState): void {

@@ -100,4 +100,41 @@ describe("MusixmatchProvider", () => {
 		}
 		expect(result.lyrics.type).toBe("syllable");
 	});
+
+	test("uses the official Musixmatch host by default", async () => {
+		const urls: string[] = [];
+		const provider = new MusixmatchProvider();
+		const context: ProviderContext = {
+			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
+				urls.push(url);
+				return { message: { body: {} } } as T;
+			},
+			fetch,
+			userAgent: "test",
+			musixmatchToken: "token",
+		};
+
+		await provider.fetch(track, context);
+
+		expect(urls[0]).toMatch(/^https:\/\/apic-desktop\.musixmatch\.com\/ws\/1\.1\/macro\.subtitles\.get\?/);
+	});
+
+	test("routes requests through a configured proxy base URL", async () => {
+		const urls: string[] = [];
+		const provider = new MusixmatchProvider();
+		const context: ProviderContext = {
+			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
+				urls.push(url);
+				return { message: { body: {} } } as T;
+			},
+			fetch,
+			userAgent: "test",
+			musixmatchToken: "token",
+			musixmatchProxyBaseUrl: "https://my-proxy.example.com",
+		};
+
+		await provider.fetch(track, context);
+
+		expect(urls[0]).toMatch(/^https:\/\/my-proxy\.example\.com\/ws\/1\.1\/macro\.subtitles\.get\?/);
+	});
 });

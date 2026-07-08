@@ -61,4 +61,40 @@ describe("MusixmatchTokenService", () => {
 
 		await expect(service.refresh()).rejects.toThrow("desktop and mobile");
 	});
+
+	test("routes only the desktop token request through a configured proxy base URL", async () => {
+		const cosmosGet = vi.fn(async () => ({
+			message: {
+				header: { status_code: 200 },
+				body: { user_token: "token" },
+			},
+		}));
+		const service = new MusixmatchTokenService(cosmosGet);
+
+		await expect(service.refresh("https://my-proxy.example.com")).resolves.toBe("token");
+		expect(cosmosGet).toHaveBeenCalledWith("https://my-proxy.example.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0", null, {
+			authority: "apic-desktop.musixmatch.com",
+		});
+	});
+
+	test("keeps the real mobile host when the desktop proxy fails", async () => {
+		const cosmosGet = vi
+			.fn()
+			.mockResolvedValueOnce({
+				message: {
+					header: { status_code: 401, hint: "captcha required" },
+				},
+			})
+			.mockResolvedValueOnce({
+				message: {
+					header: { status_code: 200 },
+					body: { user_token: "mobile-token" },
+				},
+			});
+		const service = new MusixmatchTokenService(cosmosGet);
+
+		await expect(service.refresh("https://my-proxy.example.com")).resolves.toBe("mobile-token");
+		expect(cosmosGet.mock.calls[0]?.[0]).toBe("https://my-proxy.example.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0");
+		expect(cosmosGet.mock.calls[1]?.[0]).toContain("apic-appmobile.musixmatch.com");
+	});
 });

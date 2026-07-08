@@ -48,4 +48,30 @@ describe("settingsSchema", () => {
 		expect(settings.backgroundEnabled).toBe(true);
 		expect(settings.language).toBe("en");
 	});
+
+	test("defaults the musixmatch proxy mode to default", () => {
+		expect(DEFAULT_SETTINGS.providers.musixmatchProxyMode).toBe("default");
+	});
+
+	test("normalizes an invalid musixmatch proxy mode back to default", () => {
+		const settings = normalizeLoadedSettings({
+			providers: {
+				musixmatchProxyMode: "self-hosted" as never,
+			},
+		});
+
+		expect(settings.providers.musixmatchProxyMode).toBe("default");
+	});
+
+	test("passes through a custom musixmatch proxy mode and base URL", () => {
+		const settings = normalizeLoadedSettings({
+			providers: {
+				musixmatchProxyMode: "custom",
+				musixmatchProxyBaseUrl: "https://my-proxy.example.com",
+			},
+		});
+
+		expect(settings.providers.musixmatchProxyMode).toBe("custom");
+		expect(settings.providers.musixmatchProxyBaseUrl).toBe("https://my-proxy.example.com");
+	});
 });

@@ -239,4 +239,49 @@ describe("SettingsView", () => {
 		expect(content?.textContent).toContain("背景");
 		expect(content?.textContent).toContain("現在の歌詞を更新");
 	});
+
+	test("only shows the Musixmatch proxy URL input when custom mode is selected", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		let content: HTMLElement | undefined;
+		window.Spicetify = {
+			PopupModal: {
+				display: (options) => {
+					content = options.content;
+				},
+			},
+		} as typeof window.Spicetify;
+		new SettingsView(store, providers, {
+			onRefreshLyrics: vi.fn(),
+			onClearCache: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+		}).open();
+
+		const findProxyInput = () =>
+			Array.from(content?.querySelectorAll<HTMLInputElement>("input[type='text']") ?? []).find((item) =>
+				item.closest("label")?.textContent?.includes("Proxy server URL")
+			);
+
+		expect(findProxyInput()).toBeUndefined();
+
+		const proxyModeSelect = Array.from(content?.querySelectorAll("select") ?? []).find((item) =>
+			Array.from(item.options)
+				.map((option) => option.value)
+				.every((value) => value === "default" || value === "custom")
+		);
+		if (!proxyModeSelect) {
+			throw new Error("Musixmatch proxy mode select was not rendered.");
+		}
+		proxyModeSelect.value = "custom";
+		proxyModeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get().providers.musixmatchProxyMode).toBe("custom");
+		const proxyInput = findProxyInput();
+		if (!proxyInput) {
+			throw new Error("Musixmatch proxy URL input was not rendered.");
+		}
+		proxyInput.value = "https://my-proxy.example.com";
+		proxyInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get().providers.musixmatchProxyBaseUrl).toBe("https://my-proxy.example.com");
+	});
 });

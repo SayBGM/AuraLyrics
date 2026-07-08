@@ -26,6 +26,10 @@ export type TranslationKey =
 	| "motion"
 	| "moveDown"
 	| "moveUp"
+	| "musixmatchProxyBaseUrl"
+	| "musixmatchProxyMode"
+	| "musixmatchProxyModeCustomDescription"
+	| "musixmatchProxyModeDefaultDescription"
 	| "musixmatchToken"
 	| "preset"
 	| "providerOrder"
@@ -42,7 +46,7 @@ export type TranslationKey =
 	| "tokenUpdated"
 	| "vignette";
 
-export type OptionGroup = "alignment" | "interlude" | "language" | "preset" | "sync";
+export type OptionGroup = "alignment" | "interlude" | "language" | "musixmatchProxyMode" | "preset" | "sync";
 
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 	en: {
@@ -71,6 +75,10 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		motion: "Motion",
 		moveDown: "Move {provider} down",
 		moveUp: "Move {provider} up",
+		musixmatchProxyBaseUrl: "Proxy server URL",
+		musixmatchProxyMode: "Musixmatch proxy",
+		musixmatchProxyModeCustomDescription: "Route desktop requests through the proxy server you specify below.",
+		musixmatchProxyModeDefaultDescription: "Request directly from Musixmatch's official servers.",
 		musixmatchToken: "Musixmatch token",
 		preset: "Preset",
 		providerOrder: "Provider order: {order}",
@@ -113,6 +121,10 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		motion: "모션",
 		moveDown: "{provider} 아래로 이동",
 		moveUp: "{provider} 위로 이동",
+		musixmatchProxyBaseUrl: "프록시 서버 주소",
+		musixmatchProxyMode: "Musixmatch 프록시",
+		musixmatchProxyModeCustomDescription: "아래에 지정한 프록시 서버를 통해 desktop 요청을 우회합니다.",
+		musixmatchProxyModeDefaultDescription: "Musixmatch 공식 서버로 직접 요청합니다.",
 		musixmatchToken: "Musixmatch 토큰",
 		preset: "프리셋",
 		providerOrder: "제공자 순서: {order}",
@@ -155,6 +167,10 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		motion: "モーション",
 		moveDown: "{provider} を下へ移動",
 		moveUp: "{provider} を上へ移動",
+		musixmatchProxyBaseUrl: "プロキシサーバーURL",
+		musixmatchProxyMode: "Musixmatchプロキシ",
+		musixmatchProxyModeCustomDescription: "以下で指定したプロキシサーバー経由でdesktopリクエストを迂回します。",
+		musixmatchProxyModeDefaultDescription: "Musixmatch公式サーバーに直接リクエストします。",
 		musixmatchToken: "Musixmatch トークン",
 		preset: "プリセット",
 		providerOrder: "プロバイダー順: {order}",
@@ -188,6 +204,11 @@ const OPTION_LABELS: Record<OptionGroup, Record<UiLanguage, Record<string, strin
 		en: { en: "English", ja: "日本語", ko: "한국어" },
 		ko: { en: "English", ja: "日本語", ko: "한국어" },
 		ja: { en: "English", ja: "日本語", ko: "한국어" },
+	},
+	musixmatchProxyMode: {
+		en: { custom: "Custom", default: "Default" },
+		ko: { custom: "커스텀", default: "기본값" },
+		ja: { custom: "カスタム", default: "デフォルト" },
 	},
 	preset: {
 		en: { clean: "Clean", custom: "Custom", immersive: "Immersive", karaoke: "Karaoke" },

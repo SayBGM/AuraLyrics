@@ -5,6 +5,7 @@ export type SyncPreference = "prefer-syllable" | "line-only";
 export type AlignmentMode = "natural" | "center" | "left";
 export type InterludeStyle = "frame" | "dots" | "wave";
 export type UiLanguage = "en" | "ko" | "ja";
+export type MusixmatchProxyMode = "default" | "custom";
 
 export type ExtensionSettings = {
 	language: UiLanguage;
@@ -33,6 +34,8 @@ export type ExtensionSettings = {
 		order: ProviderId[];
 		enabled: Record<ProviderId, boolean>;
 		musixmatchToken?: string;
+		musixmatchProxyMode: MusixmatchProxyMode;
+		musixmatchProxyBaseUrl?: string;
 	};
 	debugMode: boolean;
 };
@@ -77,6 +80,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 			lrclib: true,
 			musixmatch: true,
 		},
+		musixmatchProxyMode: "default",
 	},
 	debugMode: false,
 };
@@ -118,6 +122,7 @@ const isProviderId = (value: unknown): value is ProviderId => typeof value === "
 
 const isInterludeStyle = (value: unknown): value is InterludeStyle => value === "frame" || value === "dots" || value === "wave";
 const isUiLanguage = (value: unknown): value is UiLanguage => value === "en" || value === "ko" || value === "ja";
+const isMusixmatchProxyMode = (value: unknown): value is MusixmatchProxyMode => value === "default" || value === "custom";
 
 const clampNumber = (value: unknown, fallback: number, min: number, max: number): number => {
 	const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -183,6 +188,10 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 				musixmatch: enabled.musixmatch ?? defaults.providers.enabled.musixmatch,
 			},
 			musixmatchToken: providers.musixmatchToken,
+			musixmatchProxyMode: isMusixmatchProxyMode(providers.musixmatchProxyMode)
+				? providers.musixmatchProxyMode
+				: defaults.providers.musixmatchProxyMode,
+			musixmatchProxyBaseUrl: providers.musixmatchProxyBaseUrl,
 		},
 	};
 };
