@@ -66,7 +66,7 @@ export class ExtensionApp {
 				throw new Error("Spicetify.CosmosAsync is not available.");
 			}
 			return this.spicetify.CosmosAsync.get<MusixmatchTokenResponse>(url, body, headers);
-		});
+		}, window.fetch.bind(window));
 		this.lyricsService = new LyricsService(this.registry, this.cache, (settings) => ({
 			cosmosGet: (url, body, headers) => {
 				if (!this.spicetify.CosmosAsync) {

@@ -77,7 +77,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		moveUp: "Move {provider} up",
 		musixmatchProxyBaseUrl: "Proxy server URL",
 		musixmatchProxyMode: "Musixmatch proxy",
-		musixmatchProxyModeCustomDescription: "Route desktop requests through the proxy server you specify below.",
+		musixmatchProxyModeCustomDescription:
+			"Route desktop requests through a proxy that takes the target URL as a query parameter, e.g. https://your-proxy.example.com/?url=",
 		musixmatchProxyModeDefaultDescription: "Request directly from Musixmatch's official servers.",
 		musixmatchToken: "Musixmatch token",
 		preset: "Preset",
@@ -123,7 +124,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		moveUp: "{provider} 위로 이동",
 		musixmatchProxyBaseUrl: "프록시 서버 주소",
 		musixmatchProxyMode: "Musixmatch 프록시",
-		musixmatchProxyModeCustomDescription: "아래에 지정한 프록시 서버를 통해 desktop 요청을 우회합니다.",
+		musixmatchProxyModeCustomDescription:
+			"타겟 URL을 쿼리 파라미터로 받는 프록시로 desktop 요청을 우회합니다. 예: https://your-proxy.example.com/?url=",
 		musixmatchProxyModeDefaultDescription: "Musixmatch 공식 서버로 직접 요청합니다.",
 		musixmatchToken: "Musixmatch 토큰",
 		preset: "프리셋",
@@ -169,7 +171,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		moveUp: "{provider} を上へ移動",
 		musixmatchProxyBaseUrl: "プロキシサーバーURL",
 		musixmatchProxyMode: "Musixmatchプロキシ",
-		musixmatchProxyModeCustomDescription: "以下で指定したプロキシサーバー経由でdesktopリクエストを迂回します。",
+		musixmatchProxyModeCustomDescription:
+			"ターゲットURLをクエリパラメータで受け取るプロキシ経由でdesktopリクエストを迂回します。例: https://your-proxy.example.com/?url=",
 		musixmatchProxyModeDefaultDescription: "Musixmatch公式サーバーに直接リクエストします。",
 		musixmatchToken: "Musixmatch トークン",
 		preset: "プリセット",

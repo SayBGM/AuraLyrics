@@ -119,22 +119,26 @@ describe("MusixmatchProvider", () => {
 		expect(urls[0]).toMatch(/^https:\/\/apic-desktop\.musixmatch\.com\/ws\/1\.1\/macro\.subtitles\.get\?/);
 	});
 
-	test("routes requests through a configured proxy base URL", async () => {
-		const urls: string[] = [];
+	test("routes requests through a configured proxy via fetch, bypassing CosmosAsync entirely", async () => {
 		const provider = new MusixmatchProvider();
+		const fetchedUrls: string[] = [];
 		const context: ProviderContext = {
-			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
-				urls.push(url);
-				return { message: { body: {} } } as T;
+			cosmosGet: async () => {
+				throw new Error("cosmosGet should not be used when a proxy is configured");
 			},
-			fetch,
+			fetch: (async (url: string) => {
+				fetchedUrls.push(url.toString());
+				return { json: async () => ({ message: { body: {} } }) } as Response;
+			}) as typeof fetch,
 			userAgent: "test",
 			musixmatchToken: "token",
-			musixmatchProxyBaseUrl: "https://my-proxy.example.com",
+			musixmatchProxyBaseUrl: "https://my-proxy.example.com/?url=",
 		};
 
 		await provider.fetch(track, context);
 
-		expect(urls[0]).toMatch(/^https:\/\/my-proxy\.example\.com\/ws\/1\.1\/macro\.subtitles\.get\?/);
+		expect(fetchedUrls[0]).toMatch(
+			/^https:\/\/my-proxy\.example\.com\/\?url=https%3A%2F%2Fapic-desktop\.musixmatch\.com%2Fws%2F1\.1%2Fmacro\.subtitles\.get/
+		);
 	});
 });

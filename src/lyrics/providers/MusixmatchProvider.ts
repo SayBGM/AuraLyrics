@@ -1,5 +1,11 @@
 import { parseMusixmatchRichsync, parseMusixmatchSubtitle } from "../parsers/MusixmatchParser";
 import type { LyricsProvider, ProviderContext, ProviderResult, TrackIdentity } from "../types";
+import { requestMusixmatch } from "./musixmatchProxy";
+
+const MUSIXMATCH_DESKTOP_HEADERS = {
+	authority: "apic-desktop.musixmatch.com",
+	cookie: "x-mxm-token-guid=",
+};
 
 type MusixmatchMacroResponse = {
 	message?: {
@@ -53,14 +59,13 @@ export class MusixmatchProvider implements LyricsProvider {
 			f_subtitle_length: String(Math.floor(track.durationMs / 1000)),
 			usertoken: context.musixmatchToken ?? "",
 		});
-		const payload = await context.cosmosGet<MusixmatchMacroResponse>(
-			`${context.musixmatchProxyBaseUrl ?? "https://apic-desktop.musixmatch.com"}/ws/1.1/macro.subtitles.get?${params.toString()}`,
-			null,
-			{
-				authority: "apic-desktop.musixmatch.com",
-				cookie: "x-mxm-token-guid=",
-			}
-		);
+		const payload = await requestMusixmatch<MusixmatchMacroResponse>({
+			targetUrl: `https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?${params.toString()}`,
+			proxyBaseUrl: context.musixmatchProxyBaseUrl,
+			cosmosGet: context.cosmosGet,
+			cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
+			fetch: context.fetch,
+		});
 		const macro = payload.message?.body?.macro_calls;
 		const matcher = macro?.["matcher.track.get"]?.message;
 		if (!matcher || matcher.header.status_code !== 200) {
@@ -100,14 +105,13 @@ export class MusixmatchProvider implements LyricsProvider {
 			usertoken: context.musixmatchToken ?? "",
 		});
 		try {
-			const payload = await context.cosmosGet<MusixmatchRichsyncResponse>(
-				`${context.musixmatchProxyBaseUrl ?? "https://apic-desktop.musixmatch.com"}/ws/1.1/track.richsync.get?${params.toString()}`,
-				null,
-				{
-					authority: "apic-desktop.musixmatch.com",
-					cookie: "x-mxm-token-guid=",
-				}
-			);
+			const payload = await requestMusixmatch<MusixmatchRichsyncResponse>({
+				targetUrl: `https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?${params.toString()}`,
+				proxyBaseUrl: context.musixmatchProxyBaseUrl,
+				cosmosGet: context.cosmosGet,
+				cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
+				fetch: context.fetch,
+			});
 			const richsyncBody = payload.message?.body?.richsync?.richsync_body;
 			return richsyncBody ? parseMusixmatchRichsync(richsyncBody) : undefined;
 		} catch {
