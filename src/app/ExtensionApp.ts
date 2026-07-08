@@ -5,8 +5,8 @@ import { MusixmatchProvider } from "../lyrics/providers/MusixmatchProvider";
 import { type MusixmatchTokenResponse, MusixmatchTokenService } from "../lyrics/providers/MusixmatchTokenService";
 import { ProviderRegistry } from "../lyrics/providers/ProviderRegistry";
 import { SpotifyProvider } from "../lyrics/providers/SpotifyProvider";
-import { buildPseudoKaraokeLyrics, type PseudoKaraokeResult } from "../lyrics/pseudoKaraoke/buildPseudoKaraoke";
-import type { LineLyrics, LyricsDocument, LyricsLoadState, TrackIdentity } from "../lyrics/types";
+import { buildPseudoKaraokeLyrics } from "../lyrics/pseudoKaraoke/buildPseudoKaraoke";
+import type { LineLyrics, LyricsDocument, LyricsLoadState, SyllableLyrics, TrackIdentity } from "../lyrics/types";
 import { DocumentPipController, type PipSession } from "../pip/DocumentPipController";
 import { SpicetifyStorageAdapter } from "../platform/SpicetifyStorageAdapter";
 import { PlaybackClock } from "../player/PlaybackClock";
@@ -43,7 +43,7 @@ export class ExtensionApp {
 	private currentTrack?: TrackIdentity;
 	private lastLoadState: LyricsLoadState = { status: "idle" };
 	private waveformProfile?: TrackWaveformProfile;
-	private readonly pseudoKaraokeByUri = new Map<string, PseudoKaraokeResult | null>();
+	private readonly pseudoKaraokeByUri = new Map<string, SyllableLyrics | null>();
 	private started = false;
 	private isPlaybackActive = false;
 	private playbackTimestampSec = 0;
@@ -231,7 +231,6 @@ export class ExtensionApp {
 				diagnostics: state.diagnostics,
 				waveforms: this.waveformsForLyrics(lyrics),
 				rhythm: this.waveformProfile,
-				synthInfo: this.synthInfoFor(state),
 			});
 			return;
 		}
@@ -328,7 +327,6 @@ export class ExtensionApp {
 				diagnostics: state.diagnostics,
 				waveforms: this.waveformsForLyrics(lyrics),
 				rhythm: this.waveformProfile,
-				synthInfo: this.synthInfoFor(state),
 			});
 		}
 	}
@@ -350,15 +348,7 @@ export class ExtensionApp {
 		if (!this.shouldSynthesizeKaraoke(state)) {
 			return state.lyrics;
 		}
-		return this.pseudoKaraokeByUri.get(state.track.uri)?.lyrics ?? state.lyrics;
-	}
-
-	private synthInfoFor(state: Extract<LyricsLoadState, { status: "ready" }>): { averageConfidence: number } | undefined {
-		if (!this.shouldSynthesizeKaraoke(state)) {
-			return undefined;
-		}
-		const result = this.pseudoKaraokeByUri.get(state.track.uri);
-		return result ? { averageConfidence: result.averageConfidence } : undefined;
+		return this.pseudoKaraokeByUri.get(state.track.uri) ?? state.lyrics;
 	}
 
 	private waveformsForLyrics(lyrics: LyricsDocument): InterludeWaveformMap {

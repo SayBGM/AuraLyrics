@@ -14,12 +14,3 @@ export const DP_CUMULATIVE_ERROR = 2.1;
 
 // Minimum gap between boundaries (ms).
 export const MIN_GAP_MS = 24;
-
-// Refinement: onset-aware unit merging.
-// A candidate counts as a vocal onset once its refined score clears this bar.
-export const ONSET_STRONG = 0.5;
-// Merge units down toward the onset count when lexical units exceed onsets by this ratio.
-export const ONSET_OVERSPLIT_RATIO = 1.6;
-
-// Refinement: below this line confidence, skip DP and distribute by weight evenly.
-export const LOW_CONFIDENCE_FLOOR = 0.18;

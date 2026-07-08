@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { buildPseudoKaraokeLyrics } from "../../../src/lyrics/pseudoKaraoke/buildPseudoKaraoke";
-import type { LineLyrics, SyllableVocal } from "../../../src/lyrics/types";
+import type { LineLyrics } from "../../../src/lyrics/types";
 import { buildVocalAnalysis } from "./fixtures";
 
 const lineLyrics = (): LineLyrics => ({
@@ -14,41 +14,37 @@ const lineLyrics = (): LineLyrics => ({
 	],
 });
 
-const leadOf = (lyrics: LineLyrics, analysis = buildVocalAnalysis(2, 9), index = 0): SyllableVocal => {
-	const result = buildPseudoKaraokeLyrics(lyrics, analysis);
-	if (!result) {
-		throw new Error("expected synthesized lyrics");
-	}
-	const item = result.lyrics.content[index];
-	if (!item || item.type !== "vocal") {
-		throw new Error("expected vocal set");
-	}
-	return item.lead;
-};
-
 describe("buildPseudoKaraokeLyrics", () => {
-	test("synthesizes syllable lyrics with an average confidence", () => {
-		const result = buildPseudoKaraokeLyrics(lineLyrics(), buildVocalAnalysis(2, 9));
+	test("synthesizes syllable lyrics from line lyrics + analysis", () => {
+		const analysis = buildVocalAnalysis(2, 9);
+		const result = buildPseudoKaraokeLyrics(lineLyrics(), analysis);
 		expect(result).not.toBeNull();
 		if (!result) {
 			throw new Error("expected synthesized lyrics");
 		}
-		expect(result.lyrics.type).toBe("syllable");
-		expect(result.lyrics.content).toHaveLength(3);
-		expect(result.averageConfidence).toBeGreaterThan(0);
+		expect(result.type).toBe("syllable");
+		expect(result.content).toHaveLength(3);
 	});
 
 	test("passes interludes through unchanged", () => {
-		const result = buildPseudoKaraokeLyrics(lineLyrics(), buildVocalAnalysis(2, 9));
-		expect(result?.lyrics.content[1]).toEqual({ type: "interlude", startTime: 6, endTime: 7 });
+		const analysis = buildVocalAnalysis(2, 9);
+		const result = buildPseudoKaraokeLyrics(lineLyrics(), analysis);
+		expect(result?.content[1]).toEqual({ type: "interlude", startTime: 6, endTime: 7 });
 	});
 
 	test("syllables are ordered, non-overlapping, and within the line bounds (seconds)", () => {
-		const { syllables } = leadOf(lineLyrics());
+		const analysis = buildVocalAnalysis(2, 9);
+		const result = buildPseudoKaraokeLyrics(lineLyrics(), analysis);
+		const first = result?.content[0];
+		if (!first || first.type !== "vocal") {
+			throw new Error("expected vocal set");
+		}
+		const { syllables } = first.lead;
 		expect(syllables.length).toBeGreaterThan(1);
 		for (let index = 0; index < syllables.length; index += 1) {
 			const syllable = syllables[index];
 			expect(syllable.endTime).toBeGreaterThan(syllable.startTime);
+			// times are in seconds, within the original line window
 			expect(syllable.startTime).toBeGreaterThanOrEqual(2 - 0.01);
 			expect(syllable.endTime).toBeLessThanOrEqual(6 + 0.01);
 			if (index > 0) {
@@ -58,90 +54,19 @@ describe("buildPseudoKaraokeLyrics", () => {
 	});
 
 	test("marks word boundaries via isPartOfWord", () => {
-		const lead = leadOf(lineLyrics(), buildVocalAnalysis(2, 9), 2);
-		expect(lead.syllables[0].isPartOfWord).toBe(false);
-		expect(lead.syllables.map((syllable) => syllable.text).join(" ")).toContain("hello");
+		const analysis = buildVocalAnalysis(2, 9);
+		const result = buildPseudoKaraokeLyrics(lineLyrics(), analysis);
+		const latin = result?.content[2];
+		if (!latin || latin.type !== "vocal") {
+			throw new Error("expected vocal set");
+		}
+		// "hello bright world" → each word starts a new word (isPartOfWord false).
+		expect(latin.lead.syllables[0].isPartOfWord).toBe(false);
+		expect(latin.lead.syllables.map((syllable) => syllable.text).join(" ")).toContain("hello");
 	});
 
 	test("returns null when no audio analysis is available", () => {
 		expect(buildPseudoKaraokeLyrics(lineLyrics(), undefined)).toBeNull();
 		expect(buildPseudoKaraokeLyrics(lineLyrics(), { segments: [] })).toBeNull();
-	});
-
-	test("onset-aware merging reduces over-splitting when onsets are sparse", () => {
-		const line: LineLyrics = {
-			type: "line",
-			startTime: 2,
-			endTime: 6,
-			content: [{ type: "vocal", text: "가나다라마바사아", startTime: 2, endTime: 6, oppositeAligned: false }],
-		};
-		const dense = leadOf(line, buildVocalAnalysis(2, 6, 0.18)).syllables.length;
-		const sparse = leadOf(line, buildVocalAnalysis(2, 6, 0.6)).syllables.length;
-		expect(sparse).toBeLessThanOrEqual(dense);
-	});
-
-	test("falls back to even weight distribution when the line has no candidates", () => {
-		const line: LineLyrics = {
-			type: "line",
-			startTime: 10,
-			endTime: 14,
-			content: [{ type: "vocal", text: "가나다", startTime: 10, endTime: 14, oppositeAligned: false }],
-		};
-		// Analysis only covers 2–5s, so the 10–14s line has no vocal candidates.
-		const { syllables } = leadOf(line, buildVocalAnalysis(2, 5));
-		expect(syllables).toHaveLength(3);
-		for (let index = 0; index < syllables.length; index += 1) {
-			expect(syllables[index].startTime).toBeGreaterThanOrEqual(10 - 0.01);
-			expect(syllables[index].endTime).toBeLessThanOrEqual(14 + 0.01);
-			if (index > 0) {
-				expect(syllables[index].startTime).toBeGreaterThanOrEqual(syllables[index - 1].endTime - 0.01);
-			}
-		}
-	});
-
-	test("anchors the line envelope to the original line bounds", () => {
-		const lead = leadOf(lineLyrics());
-		expect(lead.startTime).toBeCloseTo(2, 5);
-		expect(lead.endTime).toBeCloseTo(6, 5);
-	});
-
-	test("keeps parentheticals inline as echo (no background layer)", () => {
-		const line: LineLyrics = {
-			type: "line",
-			startTime: 2,
-			endTime: 6,
-			content: [{ type: "vocal", text: "shining bright (echo now)", startTime: 2, endTime: 6, oppositeAligned: false }],
-		};
-		const result = buildPseudoKaraokeLyrics(line, buildVocalAnalysis(2, 6));
-		const item = result?.lyrics.content[0];
-		if (!item || item.type !== "vocal") {
-			throw new Error("expected vocal set");
-		}
-		expect(item.background).toBeUndefined();
-		const texts = item.lead.syllables.map((syllable) => syllable.text);
-		const joined = texts.join("");
-		// Parens are preserved inline so the renderer shows an echo.
-		expect(joined).toContain("(");
-		expect(joined).toContain(")");
-		expect(joined).toContain("echo");
-		// The parenthetical syllable is forced to a word start so the renderer re-parses it.
-		const openIndex = texts.findIndex((text) => text.includes("("));
-		expect(openIndex).toBeGreaterThanOrEqual(0);
-		expect(item.lead.syllables[openIndex].isPartOfWord).toBe(false);
-	});
-
-	test("lets a sustained final syllable hold (melisma) rather than being clipped", () => {
-		const line: LineLyrics = {
-			type: "line",
-			startTime: 2,
-			endTime: 8,
-			content: [{ type: "vocal", text: "가나다라", startTime: 2, endTime: 8, oppositeAligned: false }],
-		};
-		const { syllables } = leadOf(line, buildVocalAnalysis(2, 8));
-		const durations = syllables.map((syllable) => syllable.endTime - syllable.startTime);
-		const last = durations[durations.length - 1];
-		const others = durations.slice(0, -1).sort((a, b) => a - b);
-		const median = others[Math.floor(others.length / 2)] ?? last;
-		expect(last).toBeGreaterThanOrEqual(median * 0.8);
 	});
 });

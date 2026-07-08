@@ -30,7 +30,6 @@ export type LyricsRendererMountOptions = {
 	diagnostics?: LyricsLoadDiagnostics;
 	waveforms?: InterludeWaveformMap;
 	rhythm?: RhythmProfile;
-	synthInfo?: { averageConfidence: number };
 };
 
 export class LyricsRenderer {
@@ -41,10 +40,7 @@ export class LyricsRenderer {
 	private groups: AnimatedGroup[] = [];
 	private settings?: ExtensionSettings;
 
-	public mount(
-		root: HTMLElement,
-		{ lyrics, settings, provider, source, diagnostics, waveforms = {}, rhythm, synthInfo }: LyricsRendererMountOptions
-	): void {
+	public mount(root: HTMLElement, { lyrics, settings, provider, source, diagnostics, waveforms = {}, rhythm }: LyricsRendererMountOptions): void {
 		this.destroy();
 		this.hostRoot = root;
 		this.container = document.createElement("div");
@@ -60,7 +56,7 @@ export class LyricsRenderer {
 		this.container.append(this.lyricsViewport);
 		root.replaceChildren(this.container);
 		this.buildLyrics(lyrics, settings, waveforms, rhythm);
-		appendProviderSource(this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode, synthInfo });
+		appendProviderSource(this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
 	}
 
 	public showStatus(root: HTMLElement, status: StatusViewModel, settings: ExtensionSettings): void {

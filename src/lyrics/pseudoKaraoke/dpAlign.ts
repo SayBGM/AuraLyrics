@@ -128,10 +128,8 @@ export const alignPhraseUnitsWithDP = (
 		const isFinal = unitIndex === unitCount - 1;
 		const localMassNorm = getLocalMassAtTime(curve, time) / averageLocalMass;
 		const boundaryPenalty = isFinal ? 0 : localMassNorm * (0.11 + confidence * 0.06);
-		// Let the phrase-final unit absorb a sustained tail (melisma) instead of being
-		// penalized for it; keep the penalty on non-final units to avoid over-splitting.
 		const longTailPenalty =
-			!isFinal && lexical && actualDurationRatio > expectedSegmentRatio * 2.4 ? (actualDurationRatio - expectedSegmentRatio * 2.4) * 1.1 : 0;
+			lexical && actualDurationRatio > expectedSegmentRatio * 2.4 ? (actualDurationRatio - expectedSegmentRatio * 2.4) * 1.1 : 0;
 
 		return (
 			massError * (DP_MASS_ERROR_BASE + confidence * DP_MASS_ERROR_CONFIDENCE) +
