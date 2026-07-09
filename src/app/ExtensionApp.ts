@@ -44,7 +44,9 @@ export class ExtensionApp {
 	private currentTrack?: TrackIdentity;
 	private lastLoadState: LyricsLoadState = { status: "idle" };
 	private waveformProfile?: TrackWaveformProfile;
-	private readonly pseudoKaraokeByUri = new Map<string, SyllableLyrics | null>();
+	// Keyed by track URI; `source` records the exact line lyrics the synthesis was built
+	// from, so a later load with different provider timing never shows a stale result.
+	private readonly pseudoKaraokeByUri = new Map<string, { source: LineLyrics; lyrics: SyllableLyrics | null }>();
 	private started = false;
 	private isPlaybackActive = false;
 	private playbackTimestampSec = 0;
@@ -343,18 +345,22 @@ export class ExtensionApp {
 	}
 
 	private async ensurePseudoKaraoke(track: TrackIdentity, lineLyrics: LineLyrics): Promise<void> {
-		if (this.pseudoKaraokeByUri.has(track.uri)) {
+		if (this.pseudoKaraokeByUri.get(track.uri)?.source === lineLyrics) {
 			return;
 		}
 		const analysis = await this.waveformService.getAnalysis(track);
-		this.pseudoKaraokeByUri.set(track.uri, buildPseudoKaraokeLyrics(lineLyrics, analysis, track.durationMs));
+		this.pseudoKaraokeByUri.set(track.uri, { source: lineLyrics, lyrics: buildPseudoKaraokeLyrics(lineLyrics, analysis, track.durationMs) });
 	}
 
 	private displayLyricsFor(state: Extract<LyricsLoadState, { status: "ready" }>): LyricsDocument {
 		if (!this.shouldSynthesizeKaraoke(state)) {
 			return state.lyrics;
 		}
-		return this.pseudoKaraokeByUri.get(state.track.uri) ?? state.lyrics;
+		const entry = this.pseudoKaraokeByUri.get(state.track.uri);
+		if (!entry || entry.source !== state.lyrics) {
+			return state.lyrics;
+		}
+		return entry.lyrics ?? state.lyrics;
 	}
 
 	private waveformsForLyrics(lyrics: LyricsDocument): InterludeWaveformMap {

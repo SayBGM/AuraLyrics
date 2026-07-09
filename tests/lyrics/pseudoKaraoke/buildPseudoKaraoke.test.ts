@@ -53,6 +53,39 @@ describe("buildPseudoKaraokeLyrics", () => {
 		}
 	});
 
+	test("starts the first syllable at the line start even when vocal energy begins later", () => {
+		const analysis = buildVocalAnalysis(3.5, 6);
+		const result = buildPseudoKaraokeLyrics(lineLyrics(), analysis);
+		const first = result?.content[0];
+		if (!first || first.type !== "vocal") {
+			throw new Error("expected vocal set");
+		}
+		expect(first.lead.syllables[0].startTime).toBeCloseTo(2, 5);
+	});
+
+	test("keeps every syllable inside a short line window even with many units", () => {
+		const analysis = buildVocalAnalysis(2, 6);
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 2,
+			endTime: 2.3,
+			content: [{ type: "vocal", text: "가나다라마바사아자차카타파하", startTime: 2, endTime: 2.3, oppositeAligned: false }],
+		};
+		const result = buildPseudoKaraokeLyrics(lyrics, analysis);
+		const first = result?.content[0];
+		if (!first || first.type !== "vocal") {
+			throw new Error("expected vocal set");
+		}
+		let previousEnd = 2;
+		for (const syllable of first.lead.syllables) {
+			expect(syllable.startTime).toBeGreaterThanOrEqual(previousEnd - 1e-6);
+			expect(syllable.endTime).toBeGreaterThanOrEqual(syllable.startTime);
+			expect(syllable.startTime).toBeGreaterThanOrEqual(2 - 1e-6);
+			expect(syllable.endTime).toBeLessThanOrEqual(2.3 + 1e-6);
+			previousEnd = syllable.endTime;
+		}
+	});
+
 	test("marks word boundaries via isPartOfWord", () => {
 		const analysis = buildVocalAnalysis(2, 9);
 		const result = buildPseudoKaraokeLyrics(lineLyrics(), analysis);

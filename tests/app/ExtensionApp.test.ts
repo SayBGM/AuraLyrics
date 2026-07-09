@@ -1,7 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
-import type { LineLyrics } from "../../src/lyrics/types";
+import type { LineLyrics, SyllableLyrics } from "../../src/lyrics/types";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
+import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
 
 const createSpicetify = () => {
 	const values = new Map<string, string>();
@@ -410,6 +411,96 @@ describe("ExtensionApp", () => {
 		expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s");
 		expect(root.querySelector<HTMLElement>(".interlude")?.dataset.waveformSource).toBe("audio-analysis");
 		expect(root.querySelectorAll(".interlude-wave-bar").length).toBeGreaterThan(0);
+	});
+
+	test("re-synthesizes pseudo-karaoke when a new load returns different line lyrics for the same track", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:pseudo",
+				metadata: {
+					title: "Pseudo Track",
+					artist_name: "Aura",
+					album_title: "Karaoke",
+					duration: "180000",
+				},
+			},
+		};
+		spicetify.URI = {
+			isTrack: () => true,
+			isLocalTrack: () => false,
+		};
+		spicetify.getAudioData = vi.fn(async () => buildVocalAnalysis(0, 10));
+		const makeLyrics = (offset: number): LineLyrics => ({
+			type: "line",
+			startTime: offset,
+			endTime: offset + 4,
+			content: [{ type: "vocal", text: "별빛이 내린 밤에", startTime: offset, endTime: offset + 4, oppositeAligned: false }],
+		});
+		const lyricsA = makeLyrics(1);
+		const lyricsB = makeLyrics(2);
+		const readyState = (lyrics: LineLyrics) =>
+			({
+				status: "ready",
+				lyrics,
+				provider: "lrclib",
+				source: "network",
+				track: { uri: "spotify:track:pseudo", title: "Pseudo Track" },
+			}) as const;
+		const app = new ExtensionApp(spicetify);
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			lyricsService: { load: () => Promise<ReturnType<typeof readyState>> };
+			pseudoKaraokeByUri: Map<string, { source: LineLyrics; lyrics: SyllableLyrics | null }>;
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			setAccentColor: vi.fn(),
+		};
+		internals.lyricsService = {
+			load: vi.fn().mockResolvedValueOnce(readyState(lyricsA)).mockResolvedValueOnce(readyState(lyricsB)),
+		};
+
+		await internals.loadCurrentTrack(false);
+		const entryA = internals.pseudoKaraokeByUri.get("spotify:track:pseudo");
+		expect(entryA?.source).toBe(lyricsA);
+		expect(entryA?.lyrics?.type).toBe("syllable");
+
+		await internals.loadCurrentTrack(false);
+		const entryB = internals.pseudoKaraokeByUri.get("spotify:track:pseudo");
+		expect(entryB?.source).toBe(lyricsB);
+		expect(entryB?.lyrics).not.toBe(entryA?.lyrics);
+	});
+
+	test("falls back to line lyrics instead of showing a synthesis built from other line data", () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const staleLine: LineLyrics = { type: "line", startTime: 0, endTime: 4, content: [] };
+		const currentLine: LineLyrics = { type: "line", startTime: 1, endTime: 5, content: [] };
+		const staleSynthesis: SyllableLyrics = { type: "syllable", startTime: 0, endTime: 4, content: [] };
+		const internals = app as unknown as {
+			pseudoKaraokeByUri: Map<string, { source: LineLyrics; lyrics: SyllableLyrics | null }>;
+			displayLyricsFor: (state: unknown) => unknown;
+		};
+		internals.pseudoKaraokeByUri.set("spotify:track:stale", { source: staleLine, lyrics: staleSynthesis });
+
+		const state = {
+			status: "ready",
+			lyrics: currentLine,
+			provider: "lrclib",
+			source: "network",
+			track: { uri: "spotify:track:stale", title: "Stale Track" },
+		};
+		expect(internals.displayLyricsFor(state)).toBe(currentLine);
+
+		internals.pseudoKaraokeByUri.set("spotify:track:stale", { source: currentLine, lyrics: staleSynthesis });
+		expect(internals.displayLyricsFor(state)).toBe(staleSynthesis);
 	});
 
 	test("starts audio analysis while lyrics are still loading", async () => {

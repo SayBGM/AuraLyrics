@@ -68,6 +68,14 @@ export const buildPseudoKaraokeLine = (
 		}
 	}
 
+	// Line-window invariant: the greedy fallback's minimum-gap cascade can walk past the
+	// phrase end on degenerate inputs, so clamp every boundary into [startMs, endMs] and
+	// force monotonic order before emitting syllables.
+	for (let index = 0; index < boundaries.length; index += 1) {
+		const lowerBound = index > 0 ? boundaries[index - 1] : startMs;
+		boundaries[index] = Math.min(endMs, Math.max(lowerBound, boundaries[index]));
+	}
+
 	// Build syllables, dropping whitespace-only units.
 	const syllables: Syllable[] = [];
 	let prevEndedWithSpace = true;
@@ -78,8 +86,10 @@ export const buildPseudoKaraokeLine = (
 			continue;
 		}
 		const text = unit.trim();
-		const startTime = boundaries[index] * MS_TO_S;
-		const endTime = Math.max(startTime + MS_TO_S, boundaries[index + 1] * MS_TO_S);
+		// The previous syllable's minimum-duration floor can pass the next boundary, so
+		// floor the start at the previous end to keep syllables ordered and non-overlapping.
+		const startTime = Math.max(boundaries[index] * MS_TO_S, syllables.at(-1)?.endTime ?? startMs * MS_TO_S);
+		const endTime = Math.min(endMs * MS_TO_S, Math.max(startTime + MS_TO_S, boundaries[index + 1] * MS_TO_S));
 		syllables.push({ text, startTime, endTime, isPartOfWord: !prevEndedWithSpace });
 		prevEndedWithSpace = hasTrailingSpace(unit);
 	}

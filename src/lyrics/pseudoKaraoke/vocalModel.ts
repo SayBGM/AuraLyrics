@@ -388,6 +388,8 @@ export const buildRhythmAnchors = (start: number, end: number, analysis: AudioAn
 };
 
 // ─────────────────── §5.6 active window ───────────────────
+// Deviation from §5.6: the window start is pinned to the line start — line sync data is
+// trusted for onset, so only the tail is trimmed toward where the vocal actually ends.
 
 export const buildVocalActivityWindow = (
 	start: number,
@@ -417,17 +419,13 @@ export const buildVocalActivityWindow = (
 	if (!strongest) {
 		return { activeStart: start, activeEnd: end };
 	}
-	const leadPad = clamp(interval * 0.04, 30, 160);
 	const tailPad = clamp(interval * 0.05, 40, 220);
 	const minActive = clamp(interval * 0.4, 260, interval);
-	let activeStart = Math.max(start, strongest[0].time - leadPad);
 	let activeEnd = Math.min(end, strongest[strongest.length - 1].segmentEnd + tailPad);
-	if (activeEnd - activeStart < minActive) {
-		const center = (activeStart + activeEnd) / 2;
-		activeStart = Math.max(start, center - minActive / 2);
-		activeEnd = Math.min(end, activeStart + minActive);
+	if (activeEnd - start < minActive) {
+		activeEnd = Math.min(end, start + minActive);
 	}
-	return { activeStart, activeEnd };
+	return { activeStart: start, activeEnd };
 };
 
 const clusterStrength = (cluster: VocalCandidate[]): number => cluster.reduce((sum, candidate) => sum + candidate.score, 0);

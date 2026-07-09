@@ -17,6 +17,14 @@ describe("vocal model", () => {
 		expect(model.activeEnd).toBeGreaterThan(model.activeStart);
 	});
 
+	test("pins the active window start to the line start and trims only the tail", () => {
+		const model = buildLineTimingModel(2000, 8000, analysis, context);
+		expect(model.activeStart).toBe(2000);
+		// vocal energy stops at 6s, so the tail is pulled in from the 8s line end
+		expect(model.activeEnd).toBeLessThan(8000);
+		expect(model.activeEnd).toBeGreaterThan(2000);
+	});
+
 	test("cumulative mass is monotonically non-decreasing", () => {
 		const { vocalMassCurve } = buildLineTimingModel(2000, 6000, analysis, context);
 		let previous = -1;
