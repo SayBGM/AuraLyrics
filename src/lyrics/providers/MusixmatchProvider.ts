@@ -1,4 +1,10 @@
-import { parseMusixmatchRichsync, parseMusixmatchSubtitle } from "../parsers/MusixmatchParser";
+import {
+	buildMusixmatchTranslationMap,
+	type MusixmatchTranslationEntry,
+	type MusixmatchTranslationMap,
+	parseMusixmatchRichsync,
+	parseMusixmatchSubtitle,
+} from "../parsers/MusixmatchParser";
 import type { LyricsProvider, ProviderContext, ProviderResult, TrackIdentity } from "../types";
 import { requestMusixmatch } from "./musixmatchProxy";
 
@@ -35,7 +41,16 @@ type MusixmatchRichsyncResponse = {
 	};
 };
 
+type MusixmatchTranslationsResponse = {
+	message?: {
+		body?: {
+			translations_list?: MusixmatchTranslationEntry[];
+		};
+	};
+};
+
 const TEMPORARY_BLOCK_COOLDOWN_MS = 1000 * 60 * 10;
+const TRANSLATION_LANGUAGE = "ko";
 
 export class MusixmatchProvider implements LyricsProvider {
 	public readonly id = "musixmatch";
@@ -80,8 +95,9 @@ export class MusixmatchProvider implements LyricsProvider {
 			return { ok: false, reason: "error", message: matcher?.header.hint ?? "Musixmatch request failed." };
 		}
 		const trackId = this.extractTrackId(matcher.body);
+		const translations = trackId ? await this.fetchTranslations(trackId, context) : undefined;
 		if (trackId) {
-			const richsync = await this.fetchRichsync(trackId, track.durationMs, context);
+			const richsync = await this.fetchRichsync(trackId, track.durationMs, context, translations);
 			if (richsync) {
 				return { ok: true, lyrics: richsync };
 			}
@@ -91,11 +107,37 @@ export class MusixmatchProvider implements LyricsProvider {
 		if (!body) {
 			return { ok: false, reason: "no-lyrics" };
 		}
-		const lyrics = parseMusixmatchSubtitle(body);
+		const lyrics = parseMusixmatchSubtitle(body, translations);
 		return lyrics ? { ok: true, lyrics } : { ok: false, reason: "no-lyrics" };
 	}
 
-	private async fetchRichsync(trackId: number, durationMs: number, context: ProviderContext) {
+	// Best-effort: lyrics must never fail (or slow-fail) because translations are unavailable.
+	private async fetchTranslations(trackId: number, context: ProviderContext): Promise<MusixmatchTranslationMap | undefined> {
+		const params = new URLSearchParams({
+			format: "json",
+			app_id: "web-desktop-app-v1.0",
+			track_id: String(trackId),
+			selected_language: TRANSLATION_LANGUAGE,
+			comment_format: "text",
+			part: "user",
+			usertoken: context.musixmatchToken ?? "",
+		});
+		try {
+			const payload = await requestMusixmatch<MusixmatchTranslationsResponse>({
+				targetUrl: `https://apic-desktop.musixmatch.com/ws/1.1/crowd.track.translations.get?${params.toString()}`,
+				proxyBaseUrl: context.musixmatchProxyBaseUrl,
+				cosmosGet: context.cosmosGet,
+				cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
+				fetch: context.fetch,
+			});
+			const map = buildMusixmatchTranslationMap(payload.message?.body?.translations_list ?? []);
+			return map.size > 0 ? map : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async fetchRichsync(trackId: number, durationMs: number, context: ProviderContext, translations?: MusixmatchTranslationMap) {
 		const params = new URLSearchParams({
 			format: "json",
 			app_id: "web-desktop-app-v1.0",
@@ -113,7 +155,7 @@ export class MusixmatchProvider implements LyricsProvider {
 				fetch: context.fetch,
 			});
 			const richsyncBody = payload.message?.body?.richsync?.richsync_body;
-			return richsyncBody ? parseMusixmatchRichsync(richsyncBody) : undefined;
+			return richsyncBody ? parseMusixmatchRichsync(richsyncBody, translations) : undefined;
 		} catch {
 			return undefined;
 		}

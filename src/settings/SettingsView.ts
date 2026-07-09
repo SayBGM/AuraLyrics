@@ -93,6 +93,7 @@ export class SettingsView {
 					(value) => this.optionLabel("sync", value, language)
 				),
 				this.toggle(t("pseudoKaraoke"), settings.pseudoKaraoke, (value) => this.update({ pseudoKaraoke: value })),
+				this.toggle(t("showTranslation"), settings.showTranslation, (value) => this.update({ showTranslation: value })),
 				this.select(
 					t("alignment"),
 					settings.alignmentMode,

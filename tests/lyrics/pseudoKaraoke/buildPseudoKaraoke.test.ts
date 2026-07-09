@@ -69,4 +69,20 @@ describe("buildPseudoKaraokeLyrics", () => {
 		expect(buildPseudoKaraokeLyrics(lineLyrics(), undefined)).toBeNull();
 		expect(buildPseudoKaraokeLyrics(lineLyrics(), { segments: [] })).toBeNull();
 	});
+
+	test("carries per-line translations onto the synthesized vocal sets", () => {
+		const analysis = buildVocalAnalysis(2, 9);
+		const lyrics = lineLyrics();
+		if (lyrics.content[0].type !== "vocal" || lyrics.content[2].type !== "vocal") {
+			throw new Error("expected vocal lines");
+		}
+		lyrics.content[0].translatedText = "별빛 번역";
+		const result = buildPseudoKaraokeLyrics(lyrics, analysis);
+		const [first, , second] = result?.content ?? [];
+		if (first?.type !== "vocal" || second?.type !== "vocal") {
+			throw new Error("expected vocal sets");
+		}
+		expect(first.translatedText).toBe("별빛 번역");
+		expect(second.translatedText).toBeUndefined();
+	});
 });

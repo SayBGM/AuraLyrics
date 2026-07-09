@@ -879,4 +879,142 @@ describe("LyricsRenderer", () => {
 		expect(bars).toHaveLength(3);
 		expect(Array.from(bars).map((bar) => bar.style.getPropertyValue("--bar-fill-ratio"))).toEqual(["1", "0.5", "0"]);
 	});
+
+	test("renders a translation sub-line under a line lyric", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 10,
+			content: [
+				{ type: "vocal", text: "Loves all of you", translatedText: "너의 모든 것을 사랑해", startTime: 0, endTime: 5, oppositeAligned: false },
+				{ type: "vocal", text: "No translation here", startTime: 5, endTime: 10, oppositeAligned: false },
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
+
+		const groups = Array.from(root.querySelectorAll<HTMLElement>(".line-group"));
+		expect(groups[0]?.querySelector(".lyric-translation")?.textContent).toBe("너의 모든 것을 사랑해");
+		expect(groups[0]?.querySelector(".line")?.textContent).toBe("Loves all of you");
+		expect(groups[1]?.querySelector(".lyric-translation")).toBeNull();
+	});
+
+	test("hides translation sub-lines when showTranslation is off", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 5,
+			content: [
+				{ type: "vocal", text: "Loves all of you", translatedText: "너의 모든 것을 사랑해", startTime: 0, endTime: 5, oppositeAligned: false },
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, showTranslation: false });
+
+		expect(root.querySelector(".lyric-translation")).toBeNull();
+	});
+
+	test("renders a static translation sub-line under a syllable lyric without syncing it", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 5,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					translatedText: "너의 모든 것을 사랑해",
+					lead: {
+						startTime: 0,
+						endTime: 5,
+						syllables: [
+							{ text: "Loves", startTime: 0, endTime: 2, isPartOfWord: false },
+							{ text: "you", startTime: 2, endTime: 5, isPartOfWord: false },
+						],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
+		renderer.update(1, 1 / 60);
+
+		const group = root.querySelector<HTMLElement>(".syllable-group");
+		const translation = group?.querySelector<HTMLElement>(".lyric-translation");
+		expect(translation?.textContent).toBe("너의 모든 것을 사랑해");
+		// The translation must never become its own scroll row or a synced syllable.
+		expect(translation?.dataset.scrollRow).toBeUndefined();
+		expect(translation?.querySelector(".syllable")).toBeNull();
+		expect(group?.lastElementChild).toBe(translation);
+	});
+
+	test("keeps parentheses inline instead of echo-splitting when a translation is shown", () => {
+		const root = document.createElement("div");
+		const makeLyrics = (translatedText?: string): SyllableLyrics => ({
+			type: "syllable",
+			startTime: 0,
+			endTime: 5,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					translatedText,
+					lead: {
+						startTime: 0,
+						endTime: 5,
+						syllables: [
+							{ text: "Loves", startTime: 0, endTime: 2, isPartOfWord: false },
+							{ text: "(ooh)", startTime: 2, endTime: 5, isPartOfWord: false },
+						],
+					},
+				},
+			],
+		});
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, makeLyrics("사랑해 (우)"), DEFAULT_SETTINGS);
+
+		const group = root.querySelector<HTMLElement>(".syllable-group");
+		expect(group?.classList.contains("has-parenthetical")).toBe(false);
+		expect(group?.querySelector(".syllable-row.has-parenthetical-echo")).toBeNull();
+		expect(group?.querySelector(".parenthetical-word")).toBeNull();
+		expect(group?.querySelector(".vocals.lead")?.textContent).toBe("Loves(ooh)");
+		// The translation renders as one plain string; its parentheses are never split.
+		expect(group?.querySelector(".lyric-translation")?.textContent).toBe("사랑해 (우)");
+
+		mountRenderer(renderer, root, makeLyrics(undefined), DEFAULT_SETTINGS);
+		expect(root.querySelector(".syllable-row.has-parenthetical-echo")).not.toBeNull();
+	});
+
+	test("carries the translation onto the line-only downgrade of syllable lyrics", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 5,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					translatedText: "너의 모든 것을 사랑해",
+					lead: {
+						startTime: 0,
+						endTime: 5,
+						syllables: [{ text: "Loves", startTime: 0, endTime: 5, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, syncPreference: "line-only" });
+
+		expect(root.querySelector(".line-group .lyric-translation")?.textContent).toBe("너의 모든 것을 사랑해");
+	});
 });

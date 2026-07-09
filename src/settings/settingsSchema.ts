@@ -21,6 +21,7 @@ export type ExtensionSettings = {
 	inactiveBlurPx: number;
 	syncPreference: SyncPreference;
 	pseudoKaraoke: boolean;
+	showTranslation: boolean;
 	alignmentMode: AlignmentMode;
 	visibleContextLines: number;
 	showInterludes: boolean;
@@ -64,6 +65,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 	inactiveBlurPx: 0.85,
 	syncPreference: "prefer-syllable",
 	pseudoKaraoke: true,
+	showTranslation: true,
 	alignmentMode: "center",
 	visibleContextLines: 1,
 	showInterludes: true,
@@ -164,6 +166,7 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		...settings,
 		language: isUiLanguage(settings.language) ? settings.language : defaults.language,
 		pseudoKaraoke: typeof settings.pseudoKaraoke === "boolean" ? settings.pseudoKaraoke : defaults.pseudoKaraoke,
+		showTranslation: typeof settings.showTranslation === "boolean" ? settings.showTranslation : defaults.showTranslation,
 		backgroundEnabled: true,
 		fontScale: clampNumber(fontScale, defaults.fontScale, 0.6, 2.4),
 		lyricsDelayMs: clampNumber(settings.lyricsDelayMs, defaults.lyricsDelayMs, -5000, 5000),

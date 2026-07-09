@@ -9,7 +9,14 @@ import { SyllableVocals } from "./components/SyllableVocals";
 import type { FrameProgressDimensions } from "./interludeProgress";
 import { frameSizeForViewport, interludeKey, progressPercent, splitFrameProgress } from "./interludeProgress";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
-import { appendProviderSource, applyHoldTiming, scrollActiveIntoView, syllableToLine, updateContextVisibility } from "./lyricsTrackHelpers";
+import {
+	appendProviderSource,
+	applyHoldTiming,
+	createTranslationElement,
+	scrollActiveIntoView,
+	syllableToLine,
+	updateContextVisibility,
+} from "./lyricsTrackHelpers";
 
 export { interludeKey } from "./interludeProgress";
 export type { InterludeWaveformMap } from "./interludeWaveforms";
@@ -126,6 +133,9 @@ export class LyricsRenderer {
 				const row = document.createElement("div");
 				row.className = "vocals-group static";
 				row.textContent = line.romanizedText ?? line.text;
+				if (settings.showTranslation && line.translatedText) {
+					row.append(createTranslationElement(line.translatedText));
+				}
 				this.lyricsTrack.append(row);
 			}
 			return;
@@ -157,13 +167,20 @@ export class LyricsRenderer {
 			const group = document.createElement("div");
 			group.className = "vocals-group syllable-group";
 			group.classList.toggle("opposite-aligned", item.oppositeAligned);
-			const lead = new SyllableVocals(item.lead, false, settings, rhythm);
-			const backgrounds = (item.background ?? []).map((background) => new SyllableVocals(background, true, settings, rhythm));
+			// When a translation is shown, the parenthetical echo would land exactly where the
+			// translation goes, so parentheses stay inline and the translation style wins.
+			const translatedText = settings.showTranslation ? item.translatedText : undefined;
+			const vocalOptions = { splitParentheticals: !translatedText };
+			const lead = new SyllableVocals(item.lead, false, settings, rhythm, vocalOptions);
+			const backgrounds = (item.background ?? []).map((background) => new SyllableVocals(background, true, settings, rhythm, vocalOptions));
 			const vocalRanges = [item.lead, ...(item.background ?? [])];
 			const startTime = Math.min(...vocalRanges.map((vocal) => vocal.startTime));
 			const endTime = Math.max(...vocalRanges.map((vocal) => vocal.endTime));
 			group.classList.toggle("has-parenthetical", lead.hasParenthetical);
 			group.append(lead.element, ...backgrounds.map((background) => background.element));
+			if (translatedText) {
+				group.append(createTranslationElement(translatedText));
+			}
 			const animated: AnimatedGroup = {
 				element: group,
 				startTime,

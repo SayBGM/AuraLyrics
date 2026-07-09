@@ -49,6 +49,15 @@ describe("settingsSchema", () => {
 		expect(settings.language).toBe("en");
 	});
 
+	test("shows lyric translations by default and normalizes invalid values", () => {
+		expect(DEFAULT_SETTINGS.showTranslation).toBe(true);
+
+		const settings = normalizeLoadedSettings({ showTranslation: "yes" as never });
+
+		expect(settings.showTranslation).toBe(true);
+		expect(normalizeLoadedSettings({ showTranslation: false }).showTranslation).toBe(false);
+	});
+
 	test("defaults the musixmatch proxy mode to default", () => {
 		expect(DEFAULT_SETTINGS.providers.musixmatchProxyMode).toBe("default");
 	});

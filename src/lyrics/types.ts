@@ -8,6 +8,7 @@ export type TimeRange = {
 export type TextMetadata = {
 	text: string;
 	romanizedText?: string;
+	translatedText?: string;
 };
 
 export type Interlude = TimeRange & {
@@ -44,6 +45,7 @@ export type SyllableVocalSet = {
 	oppositeAligned: boolean;
 	lead: SyllableVocal;
 	background?: SyllableVocal[];
+	translatedText?: string;
 };
 
 export type SyllableLyrics = TimeRange & {

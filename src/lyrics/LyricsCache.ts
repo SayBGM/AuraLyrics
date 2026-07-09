@@ -18,8 +18,9 @@ type LyricsCacheOptions = {
 	ttlMs: number;
 };
 
-const CACHE_KEY = "aura-lyrics:lyrics-cache-v1";
-const LEGACY_CACHE_KEY = "dynamic-popup-lyrics:lyrics-cache-v1";
+// v2: cached documents may carry per-line translatedText; v1 entries predate it and are discarded.
+const CACHE_KEY = "aura-lyrics:lyrics-cache-v2";
+const STALE_CACHE_KEYS = ["aura-lyrics:lyrics-cache-v1", "dynamic-popup-lyrics:lyrics-cache-v1"];
 const DEFAULT_OPTIONS: LyricsCacheOptions = {
 	maxEntries: 80,
 	now: () => Date.now(),
@@ -63,7 +64,9 @@ export class LyricsCache {
 		this.values.clear();
 		try {
 			this.storage?.delete?.(CACHE_KEY);
-			this.storage?.delete?.(LEGACY_CACHE_KEY);
+			for (const staleKey of STALE_CACHE_KEYS) {
+				this.storage?.delete?.(staleKey);
+			}
 		} catch {
 			// Cache storage is best-effort; callers should not fail because cleanup failed.
 		}
@@ -77,7 +80,7 @@ export class LyricsCache {
 	private load(): void {
 		let raw: string | null | undefined;
 		try {
-			raw = this.storage?.get(CACHE_KEY) ?? this.storage?.get(LEGACY_CACHE_KEY);
+			raw = this.storage?.get(CACHE_KEY);
 		} catch {
 			return;
 		}

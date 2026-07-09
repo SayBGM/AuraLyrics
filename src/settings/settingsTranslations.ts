@@ -41,6 +41,7 @@ export type TranslationKey =
 	| "resetSettings"
 	| "saturation"
 	| "showInterludes"
+	| "showTranslation"
 	| "sync"
 	| "tokenMissing"
 	| "tokenUpdated"
@@ -91,6 +92,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		resetSettings: "Reset settings",
 		saturation: "Saturation",
 		showInterludes: "Show interludes",
+		showTranslation: "Show translation",
 		sync: "Sync",
 		tokenMissing: "Musixmatch token was not returned.",
 		tokenUpdated: "Musixmatch token updated.",
@@ -138,6 +140,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		resetSettings: "설정 초기화",
 		saturation: "채도",
 		showInterludes: "인터루드 표시",
+		showTranslation: "번역 표시",
 		sync: "싱크",
 		tokenMissing: "Musixmatch 토큰이 반환되지 않았습니다.",
 		tokenUpdated: "Musixmatch 토큰이 업데이트되었습니다.",
@@ -185,6 +188,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		resetSettings: "設定をリセット",
 		saturation: "彩度",
 		showInterludes: "インタールード表示",
+		showTranslation: "翻訳を表示",
 		sync: "同期",
 		tokenMissing: "Musixmatch トークンが返されませんでした。",
 		tokenUpdated: "Musixmatch トークンを更新しました。",

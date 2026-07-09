@@ -5,7 +5,7 @@ import { glowCurve, scaleCurve, yOffsetCurve } from "../animation/curves";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
 import { melismaBoostForProgress } from "../lyrics/koreanTail";
-import { buildSyllableRows, type SyllableVisualGroup } from "../lyrics/syllableRows";
+import { buildSyllableRows, type SyllableRowsOptions, type SyllableVisualGroup } from "../lyrics/syllableRows";
 
 type LiveSyllable = {
 	metadata: Syllable;
@@ -38,7 +38,8 @@ export class SyllableVocals {
 		private readonly vocal: SyllableVocal,
 		isBackground: boolean,
 		settings: ExtensionSettings,
-		private readonly rhythm?: RhythmProfile
+		private readonly rhythm?: RhythmProfile,
+		private readonly rowsOptions?: SyllableRowsOptions
 	) {
 		this.element = document.createElement("div");
 		this.element.className = `vocals ${isBackground ? "background" : "lead"}`;
@@ -100,7 +101,7 @@ export class SyllableVocals {
 	}
 
 	private build(settings: ExtensionSettings): void {
-		const model = buildSyllableRows(this.vocal, this.rhythm);
+		const model = buildSyllableRows(this.vocal, this.rhythm, this.rowsOptions);
 		this.hasParenthetical = model.hasParenthetical;
 		this.element.classList.toggle("has-parenthetical", this.hasParenthetical);
 		for (const rowModel of model.rows) {

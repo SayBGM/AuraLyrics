@@ -101,6 +101,108 @@ describe("MusixmatchProvider", () => {
 		expect(result.lyrics.type).toBe("syllable");
 	});
 
+	test("fetches Korean crowd translations and merges them into subtitle lyrics", async () => {
+		const urls: string[] = [];
+		const provider = new MusixmatchProvider();
+		const context: ProviderContext = {
+			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
+				urls.push(url);
+				if (url.includes("crowd.track.translations.get")) {
+					return {
+						message: {
+							body: {
+								translations_list: [{ translation: { subtitle_matched_line: "Hello", description: "안녕" } }],
+							},
+						},
+					} as T;
+				}
+				if (url.includes("track.richsync.get")) {
+					return { message: { header: { status_code: 404 }, body: {} } } as T;
+				}
+				return {
+					message: {
+						body: {
+							macro_calls: {
+								"matcher.track.get": {
+									message: {
+										header: { status_code: 200 },
+										body: { track: { track_id: 123, has_subtitles: true, instrumental: false } },
+									},
+								},
+								"track.subtitles.get": {
+									message: {
+										body: {
+											subtitle_list: [{ subtitle: { subtitle_body: JSON.stringify([{ text: "Hello", time: { total: 1 } }]) } }],
+										},
+									},
+								},
+							},
+						},
+					},
+				} as T;
+			},
+			fetch,
+			userAgent: "test",
+			musixmatchToken: "token",
+		};
+
+		const result = await provider.fetch(track, context);
+
+		const translationUrl = urls.find((url) => url.includes("crowd.track.translations.get"));
+		expect(translationUrl).toContain("selected_language=ko");
+		expect(translationUrl).toContain("track_id=123");
+		expect(result.ok).toBe(true);
+		if (!result.ok || result.lyrics.type !== "line") {
+			throw new Error("expected line lyrics");
+		}
+		const vocal = result.lyrics.content[0];
+		expect(vocal.type === "vocal" && vocal.translatedText).toBe("안녕");
+	});
+
+	test("still returns lyrics when the translation request fails", async () => {
+		const provider = new MusixmatchProvider();
+		const context: ProviderContext = {
+			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
+				if (url.includes("crowd.track.translations.get") || url.includes("track.richsync.get")) {
+					throw new Error("translation endpoint down");
+				}
+				return {
+					message: {
+						body: {
+							macro_calls: {
+								"matcher.track.get": {
+									message: {
+										header: { status_code: 200 },
+										body: { track: { track_id: 123, has_subtitles: true, instrumental: false } },
+									},
+								},
+								"track.subtitles.get": {
+									message: {
+										body: {
+											subtitle_list: [{ subtitle: { subtitle_body: JSON.stringify([{ text: "Hello", time: { total: 1 } }]) } }],
+										},
+									},
+								},
+							},
+						},
+					},
+				} as T;
+			},
+			fetch,
+			userAgent: "test",
+			musixmatchToken: "token",
+		};
+
+		const result = await provider.fetch(track, context);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok || result.lyrics.type !== "line") {
+			throw new Error("expected line lyrics");
+		}
+		const vocal = result.lyrics.content[0];
+		expect(vocal.type === "vocal" && vocal.translatedText).toBeUndefined();
+	});
+
 	test("uses the official Musixmatch host by default", async () => {
 		const urls: string[] = [];
 		const provider = new MusixmatchProvider();

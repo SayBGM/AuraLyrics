@@ -119,7 +119,7 @@ export const buildPseudoKaraokeLyrics = (
 			continue;
 		}
 		synthesizedAny = true;
-		content.push({ type: "vocal", oppositeAligned: item.oppositeAligned, lead });
+		content.push({ type: "vocal", oppositeAligned: item.oppositeAligned, lead, translatedText: item.translatedText });
 	}
 
 	if (!synthesizedAny) {
@@ -137,6 +137,7 @@ export const buildPseudoKaraokeLyrics = (
 const lineToSingleSyllableSet = (line: LineVocal): SyllableVocalSet => ({
 	type: "vocal",
 	oppositeAligned: line.oppositeAligned,
+	translatedText: line.translatedText,
 	lead: {
 		startTime: line.startTime,
 		endTime: line.endTime,

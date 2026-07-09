@@ -58,16 +58,27 @@ describe("LyricsCache", () => {
 		expect(restored?.lyrics).toMatchObject(lyrics);
 	});
 
-	test("loads lyrics from the previous dynamic popup cache key", () => {
+	test("ignores stale v1 caches so tracks re-fetch with translations", () => {
 		const storage = new MemoryStorage();
-		storage.set(
-			"dynamic-popup-lyrics:lyrics-cache-v1",
-			JSON.stringify([["spotify:track:legacy", { lyrics, provider: "spotify", updatedAt: Date.now() }]])
-		);
+		const entry = JSON.stringify([["spotify:track:legacy", { lyrics, provider: "spotify", updatedAt: Date.now() }]]);
+		storage.set("aura-lyrics:lyrics-cache-v1", entry);
+		storage.set("dynamic-popup-lyrics:lyrics-cache-v1", entry);
 
-		const restored = new LyricsCache(storage).get("spotify:track:legacy");
+		expect(new LyricsCache(storage).get("spotify:track:legacy")).toBeUndefined();
+	});
 
-		expect(restored?.provider).toBe("spotify");
+	test("clear removes stale cache keys alongside the current one", () => {
+		const storage = new MemoryStorage();
+		storage.set("aura-lyrics:lyrics-cache-v1", "stale");
+		storage.set("dynamic-popup-lyrics:lyrics-cache-v1", "stale");
+		const cache = new LyricsCache(storage);
+		cache.set("spotify:track:1", lyrics, "spotify");
+
+		cache.clear();
+
+		expect(storage.values.has("aura-lyrics:lyrics-cache-v1")).toBe(false);
+		expect(storage.values.has("dynamic-popup-lyrics:lyrics-cache-v1")).toBe(false);
+		expect(cache.get("spotify:track:1")).toBeUndefined();
 	});
 
 	test("drops expired lyrics", () => {

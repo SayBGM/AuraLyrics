@@ -19,7 +19,45 @@ type MusixmatchRichsyncToken = {
 	o: number;
 };
 
-export const parseMusixmatchSubtitle = (subtitleBody: string): LineLyrics | undefined => {
+export type MusixmatchTranslationEntry = {
+	translation?: {
+		description?: string;
+		snippet?: string;
+		subtitle_matched_line?: string;
+		matched_line?: string;
+	};
+};
+
+export type MusixmatchTranslationMap = Map<string, string>;
+
+const translationKey = (text: string): string => text.trim().replace(/\s+/g, " ").toLowerCase();
+
+export const buildMusixmatchTranslationMap = (entries: MusixmatchTranslationEntry[]): MusixmatchTranslationMap => {
+	const map: MusixmatchTranslationMap = new Map();
+	for (const entry of entries) {
+		const translated = entry.translation?.description?.trim();
+		if (!translated) {
+			continue;
+		}
+		for (const original of [entry.translation?.matched_line, entry.translation?.subtitle_matched_line, entry.translation?.snippet]) {
+			if (original?.trim()) {
+				map.set(translationKey(original), translated);
+			}
+		}
+	}
+	return map;
+};
+
+const lookupTranslation = (translations: MusixmatchTranslationMap | undefined, text: string | undefined): string | undefined => {
+	if (!translations || !text?.trim()) {
+		return undefined;
+	}
+	const translated = translations.get(translationKey(text));
+	// A translation identical to the original (e.g. a Korean track "translated" to Korean) adds nothing.
+	return translated && translationKey(translated) !== translationKey(text) ? translated : undefined;
+};
+
+export const parseMusixmatchSubtitle = (subtitleBody: string, translations?: MusixmatchTranslationMap): LineLyrics | undefined => {
 	const lines = JSON.parse(subtitleBody) as MusixmatchSubtitleLine[];
 	if (!Array.isArray(lines) || lines.length === 0) {
 		return undefined;
@@ -29,6 +67,7 @@ export const parseMusixmatchSubtitle = (subtitleBody: string): LineLyrics | unde
 		return {
 			type: "vocal" as const,
 			text: line.text || "♪",
+			translatedText: lookupTranslation(translations, line.text),
 			startTime,
 			endTime: lines[index + 1]?.time.total ?? startTime + 4,
 			oppositeAligned: false,
@@ -42,7 +81,7 @@ export const parseMusixmatchSubtitle = (subtitleBody: string): LineLyrics | unde
 	};
 };
 
-export const parseMusixmatchRichsync = (richsyncBody: string): SyllableLyrics | undefined => {
+export const parseMusixmatchRichsync = (richsyncBody: string, translations?: MusixmatchTranslationMap): SyllableLyrics | undefined => {
 	const lines = JSON.parse(richsyncBody) as MusixmatchRichsyncLine[];
 	if (!Array.isArray(lines) || lines.length === 0) {
 		return undefined;
@@ -77,6 +116,7 @@ export const parseMusixmatchRichsync = (richsyncBody: string): SyllableLyrics | 
 					endTime: line.te,
 					syllables,
 				},
+				translatedText: lookupTranslation(translations, line.x ?? tokens.map((token) => token.c).join("")),
 			};
 		})
 		.filter((line): line is NonNullable<typeof line> => line !== undefined);

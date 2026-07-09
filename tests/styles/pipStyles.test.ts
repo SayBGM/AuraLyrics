@@ -195,6 +195,19 @@ describe("pipStyles", () => {
 		expect(pipStyles).toContain("font-size: var(--lyrics-size)");
 	});
 
+	test("styles the translation sub-line smaller and dimmer than the original lyric", () => {
+		const translationRule = pipStyles.match(/\.lyric-translation \{[^}]+\}/)?.[0] ?? "";
+		const activeRule = pipStyles.match(/\.vocals-group\.active \.lyric-translation \{[^}]+\}/)?.[0] ?? "";
+		const sungRule = pipStyles.match(/\.vocals-group\.sung \.lyric-translation \{[^}]+\}/)?.[0] ?? "";
+
+		expect(translationRule).toContain("display: block");
+		expect(translationRule).toContain("font-size: calc(var(--lyrics-size) * 0.52)");
+		expect(translationRule).toContain("color: rgba(255, 255, 255, 0.5)");
+		expect(translationRule).toContain("word-break: keep-all");
+		expect(activeRule).toContain("color: rgba(255, 255, 255, 0.8)");
+		expect(sungRule).toContain("color: rgba(255, 255, 255, 0.4)");
+	});
+
 	test("styles Korean long-tail syllables without changing word layout", () => {
 		const wordRule = pipStyles.match(/\.korean-tail-word \{[^}]+\}/)?.[0] ?? "";
 		const sustainRule = pipStyles.match(/\.korean-tail-sustain \{[^}]+\}/)?.[0] ?? "";

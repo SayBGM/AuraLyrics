@@ -34,19 +34,25 @@ export type SyllableRowsModel = {
 	rows: SyllableVisualRow[];
 };
 
+export type SyllableRowsOptions = {
+	// false keeps "(...)" inline in the main text instead of splitting it into the echo group
+	// (used when a translation sub-line occupies the echo's space below the line).
+	splitParentheticals?: boolean;
+};
+
 type ParsedTimedSegment = {
 	syllable: Syllable;
 	segment: TimedParentheticalSegment;
 };
 
-export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile): SyllableRowsModel => {
+export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile, options?: SyllableRowsOptions): SyllableRowsModel => {
 	const rows: SyllableVisualRow[] = [];
 	let row: SyllableVisualRow | undefined;
 	let word: SyllableVisualWord | undefined;
 	let wordIsParenthetical = false;
 	let hasParenthetical = false;
 	let stripNextMainPrefix = false;
-	const timedSegments = parseTimedSegments(vocal);
+	const timedSegments = parseTimedSegments(vocal, options?.splitParentheticals ?? true);
 
 	for (const [index, item] of timedSegments.entries()) {
 		const stacksWithNextMain = shouldStackWithNextMain(item.segment, timedSegments, index);
@@ -136,14 +142,15 @@ export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile):
 	return { hasParenthetical, rows };
 };
 
-const parseTimedSegments = (vocal: SyllableVocal): ParsedTimedSegment[] => {
+const parseTimedSegments = (vocal: SyllableVocal, splitParentheticals: boolean): ParsedTimedSegment[] => {
 	const parsed: ParsedTimedSegment[] = [];
 	let isInsideParenthetical = false;
 	for (const syllable of vocal.syllables) {
 		const text = syllable.romanizedText ?? syllable.text;
-		const segments: ParentheticalSegment[] = syllable.isPartOfWord
-			? [{ text, isParenthetical: false, continues: false }]
-			: parseWordLevelParentheticals(text, isInsideParenthetical);
+		const segments: ParentheticalSegment[] =
+			!splitParentheticals || syllable.isPartOfWord
+				? [{ text, isParenthetical: false, continues: false }]
+				: parseWordLevelParentheticals(text, isInsideParenthetical);
 		isInsideParenthetical = segments.at(-1)?.continues ?? false;
 		for (const segment of withSegmentTiming(syllable, segments)) {
 			parsed.push({ syllable, segment });

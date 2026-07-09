@@ -1,5 +1,6 @@
 import type { LineVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
+import { createTranslationElement } from "../lyricsTrackHelpers";
 
 export class LineVocals {
 	public readonly element: HTMLDivElement;
@@ -23,6 +24,9 @@ export class LineVocals {
 		span.className = "lyric line";
 		appendLineTokens(span, line.romanizedText ?? line.text);
 		this.element.append(span);
+		if (settings.showTranslation && line.translatedText) {
+			this.element.append(createTranslationElement(line.translatedText));
+		}
 		this.applySettings(settings);
 	}
 

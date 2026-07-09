@@ -147,6 +147,30 @@ export const lyricsStyles = `
 	color: rgba(255, 255, 255, 0.72);
 }
 
+.lyric-translation {
+	display: block;
+	margin-top: calc(var(--lyrics-size) * 0.16);
+	font-size: calc(var(--lyrics-size) * 0.52);
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	word-spacing: 0.04em;
+	line-height: 1.3;
+	color: rgba(255, 255, 255, 0.5);
+	text-shadow: 0 1px 12px rgba(0, 0, 0, 0.28);
+	transition: color 420ms ease;
+	white-space: normal;
+	overflow-wrap: break-word;
+	word-break: keep-all;
+}
+
+.vocals-group.active .lyric-translation {
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.vocals-group.sung .lyric-translation {
+	color: rgba(255, 255, 255, 0.4);
+}
+
 .vocals {
 	display: inline-flex;
 	flex-wrap: wrap;
