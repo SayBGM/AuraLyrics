@@ -220,6 +220,8 @@ The theme layer derives a `syntheticWakeForeground` with the same pure color/con
 - reveal followed by backward seek does not return to the cover;
 - reveal followed by backward seek and manual refresh does not return to the cover;
 - PiP close and reopen on the same playback track epoch preserves the revealed latch;
+- PiP close while still holding discards the pending snapshot; reopen after playback has reached or approached the first vocal reevaluates from the new synchronized position and reveals immediately when appropriate;
+- no-track after reveal ends the current gate lifetime, so the next valid track starts with a fresh unrevealed latch;
 - a new player track epoch resets the latch, even for repeat playback when a new `trackChanged` event is emitted;
 - positive and negative `lyricsDelayMs` fixtures use the delayed synchronized timestamp for initial, resume, and tick reveal decisions;
 - reveal call ordering is resync/update, mount, then an immediate renderer update at the identical timestamp.
