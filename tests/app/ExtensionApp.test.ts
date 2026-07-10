@@ -548,6 +548,18 @@ describe("ExtensionApp", () => {
 		expect(internals.displayLyricsFor(state)).toBe(staleSynthesis);
 	});
 
+	test("marks only synthesized line-to-syllable lyrics as synthetic", () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const line: LineLyrics = { type: "line", startTime: 0, endTime: 4, content: [] };
+		const syllable: SyllableLyrics = { type: "syllable", startTime: 0, endTime: 4, content: [] };
+		const timingSourceFor = (app as unknown as { timingSourceFor: (state: unknown, lyrics: unknown) => string }).timingSourceFor;
+		const state = { status: "ready", lyrics: line, track: { uri: "x" } };
+		expect(timingSourceFor.call(app, state, syllable)).toBe("synthetic");
+		expect(timingSourceFor.call(app, state, line)).toBe("native");
+		expect(timingSourceFor.call(app, { ...state, lyrics: syllable }, syllable)).toBe("native");
+	});
+
 	test("starts audio analysis while lyrics are still loading", async () => {
 		const { spicetify } = createSpicetify();
 		const lyrics: LineLyrics = {

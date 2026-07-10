@@ -65,6 +65,7 @@ export class LyricsRenderer {
 		this.lyricsTrack.className = `lyrics-track align-${settings.alignmentMode}`;
 		this.lyricsViewport.append(this.lyricsTrack);
 		this.container.append(this.lyricsViewport);
+		root.replaceChildren(this.container);
 		if (timingSource === "synthetic") {
 			const marker = document.createElement("span");
 			marker.className = "aura-timing-marker";
@@ -72,9 +73,8 @@ export class LyricsRenderer {
 			marker.setAttribute("role", "img");
 			marker.setAttribute("aria-label", timingMarkerLabel(settings.language));
 			marker.title = timingMarkerLabel(settings.language);
-			this.container.append(marker);
+			this.lyricsViewport.append(marker);
 		}
-		root.replaceChildren(this.container);
 		this.buildLyrics(lyrics, settings, waveforms, rhythm);
 		appendProviderSource(this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
 	}
