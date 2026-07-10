@@ -281,6 +281,31 @@ describe("TrackSessionController", () => {
 		});
 	});
 
+	test("does not let an older settings presentation overwrite a newer one after pseudo analysis", async () => {
+		const currentTrack = track("spotify:track:settings-race");
+		const analysisResult = deferred<AudioAnalysisData | undefined>();
+		const synthetic = syllableLyrics(2);
+		const { controller, buildPseudoKaraoke } = createController({
+			load: async () => ready(currentTrack, lineLyrics()),
+			getAnalysis: async () => analysisResult.promise,
+			buildPseudoKaraoke: () => synthetic,
+		});
+		const initial = await controller.load(currentTrack, settings({ pseudoKaraoke: false }), false);
+		if (!initial) throw new Error("Expected initial track snapshot.");
+		await controller.enrichmentFor(initial);
+
+		const older = controller.updateSettings(settings({ pseudoKaraoke: true, syncPreference: "prefer-syllable" }));
+		const newer = controller.updateSettings(settings({ pseudoKaraoke: true, syncPreference: "line-only" }));
+		const newerSnapshot = await newer;
+		analysisResult.resolve(undefined);
+
+		expect(await older).toBeUndefined();
+		expect(buildPseudoKaraoke).not.toHaveBeenCalled();
+		expect(newerSnapshot).toMatchObject({ lyrics: { type: "line" }, timingSource: "native" });
+		expect(controller.getSnapshot()).toBe(newerSnapshot);
+		expect(newerSnapshot && controller.isCurrent(newerSnapshot)).toBe(true);
+	});
+
 	test("never exposes a waveform profile for a non-ready load state", async () => {
 		const currentTrack = track("spotify:track:empty");
 		const { controller } = createController({

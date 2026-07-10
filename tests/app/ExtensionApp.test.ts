@@ -1,10 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
-import type { ReadyTrackSessionSnapshot, TrackSessionSnapshot } from "../../src/app/TrackSessionController";
+import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
 import type { LineLyrics, LyricsLoadState, TrackIdentity } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
+import type { ExtensionSettings } from "../../src/settings/settingsSchema";
 import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
 
 const createSpicetify = () => {
@@ -327,6 +328,7 @@ describe("ExtensionApp", () => {
 				applySettings: (settings: unknown) => void;
 			};
 			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
+			settings: { update: (patch: unknown) => void };
 			trackSession: typeof trackSession;
 			renderer: { applySettings: () => void; mount: typeof mount };
 			applySettings: () => Promise<void>;
@@ -338,8 +340,10 @@ describe("ExtensionApp", () => {
 		internals.currentTrack = snapshot.loadState.track;
 		internals.trackSession = trackSession;
 		internals.renderer = { applySettings: vi.fn(), mount };
+		internals.settings.update({ showTranslation: false });
 
 		const applying = internals.applySettings();
+		expect(trackSession.updateSettings).toHaveBeenCalledOnce();
 		snapshotResult.resolve(snapshot);
 		trackSession.invalidate();
 		await applying;
@@ -432,6 +436,62 @@ describe("ExtensionApp", () => {
 
 		expect(updateSettings).toHaveBeenCalledTimes(2);
 		expect(mount).toHaveBeenCalledOnce();
+	});
+
+	test("mounts only the current real track-session snapshot when structural pseudo updates race", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:real-settings-race");
+		const analysisResult = deferred<ReturnType<typeof buildVocalAnalysis> | undefined>();
+		const controller = new TrackSessionController(
+			{
+				load: async () => readyLoadState(track),
+				refreshCooldowns: vi.fn(),
+				invalidate: vi.fn(),
+			},
+			{
+				loadProfile: async () => ({ trackUri: track.uri, seed: 1, segments: [], source: "seeded" as const }),
+				getAnalysis: async () => analysisResult.promise,
+			}
+		);
+		const mount = vi.fn();
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: () => void };
+			currentTrack: TrackIdentity;
+			appliedSettings: ExtensionSettings;
+			settings: {
+				get: () => ExtensionSettings;
+				update: (patch: Partial<ExtensionSettings>) => void;
+			};
+			trackSession: TrackSessionController;
+			renderer: { applySettings: () => void; mount: typeof mount };
+			applySettings: () => Promise<void>;
+		};
+		internals.settings.update({ pseudoKaraoke: false });
+		internals.appliedSettings = internals.settings.get();
+		const initial = await controller.load(track, internals.settings.get(), false);
+		if (!initial) throw new Error("Expected initial track snapshot.");
+		await controller.enrichmentFor(initial);
+		const updateSettings = vi.spyOn(controller, "updateSettings");
+		internals.session = { root, applySettings: vi.fn() };
+		internals.currentTrack = track;
+		internals.trackSession = controller;
+		internals.renderer = { applySettings: vi.fn(), mount };
+
+		internals.settings.update({ pseudoKaraoke: true, syncPreference: "prefer-syllable" });
+		const older = internals.applySettings();
+		internals.settings.update({ syncPreference: "line-only" });
+		const newer = internals.applySettings();
+		await newer;
+		const currentSnapshot = controller.getSnapshot();
+		analysisResult.resolve(buildVocalAnalysis(0, 4));
+		await older;
+
+		expect(updateSettings).toHaveBeenCalledTimes(2);
+		expect(mount).toHaveBeenCalledOnce();
+		expect(controller.getSnapshot()).toBe(currentSnapshot);
+		expect(controller.isCurrent(currentSnapshot)).toBe(true);
 	});
 
 	test("invalidates track sessions on track change, PiP close, and destroy", async () => {

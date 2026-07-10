@@ -55,6 +55,7 @@ const idleSnapshot = (): TrackSessionSnapshot => ({
 
 export class TrackSessionController {
 	private generation = 0;
+	private presentationRevision = 0;
 	private settings?: ExtensionSettings;
 	private snapshot: TrackSessionSnapshot = idleSnapshot();
 	private readonly enrichmentBySnapshot = new WeakMap<ReadyTrackSessionSnapshot, EnrichmentEntry>();
@@ -88,12 +89,14 @@ export class TrackSessionController {
 
 	public invalidate(): void {
 		this.generation += 1;
+		this.presentationRevision += 1;
 		this.snapshot = idleSnapshot();
 		this.lyricsService.invalidate();
 	}
 
 	public async load(track: TrackIdentity, settings: ExtensionSettings, refresh: boolean): Promise<TrackSessionSnapshot | undefined> {
 		const generation = ++this.generation;
+		this.presentationRevision += 1;
 		this.settings = settings;
 		this.snapshot = {
 			loadState: { status: "loading", track },
@@ -129,11 +132,12 @@ export class TrackSessionController {
 	public async updateSettings(settings: ExtensionSettings): Promise<TrackSessionSnapshot | undefined> {
 		this.settings = settings;
 		const generation = this.generation;
+		const presentationRevision = ++this.presentationRevision;
 		const { loadState, waveformProfile } = this.snapshot;
 		if (loadState.status !== "ready") {
 			return this.snapshot;
 		}
-		return this.present(loadState, waveformProfile, generation);
+		return this.present(loadState, waveformProfile, generation, presentationRevision, settings);
 	}
 
 	private async enrich(
@@ -145,22 +149,28 @@ export class TrackSessionController {
 		if (!this.isGenerationCurrent(generation)) {
 			return undefined;
 		}
-		return this.present(loadState, waveformProfile, generation);
+		const settings = this.settings;
+		if (!settings) {
+			return undefined;
+		}
+		return this.present(loadState, waveformProfile, generation, this.presentationRevision, settings);
 	}
 
 	private async present(
 		loadState: ReadyLoadState,
 		waveformProfile: TrackWaveformProfile | undefined,
-		generation: number
+		generation: number,
+		presentationRevision: number,
+		settings: ExtensionSettings
 	): Promise<ReadyTrackSessionSnapshot | undefined> {
-		if (this.shouldSynthesize(loadState)) {
-			await this.ensurePseudoKaraoke(loadState.track, loadState.lyrics as LineLyrics, generation);
+		if (this.shouldSynthesize(loadState, settings)) {
+			await this.ensurePseudoKaraoke(loadState.track, loadState.lyrics as LineLyrics, generation, presentationRevision);
 		}
-		if (!this.isGenerationCurrent(generation)) {
+		if (!this.isPresentationCurrent(generation, presentationRevision)) {
 			return undefined;
 		}
 
-		const lyrics = this.displayLyricsFor(loadState);
+		const lyrics = this.displayLyricsFor(loadState, settings);
 		this.snapshot = {
 			loadState,
 			lyrics,
@@ -170,21 +180,21 @@ export class TrackSessionController {
 		return this.snapshot;
 	}
 
-	private shouldSynthesize(loadState: LyricsLoadState): loadState is ReadyLoadState & { lyrics: LineLyrics } {
+	private shouldSynthesize(loadState: LyricsLoadState, settings: ExtensionSettings): loadState is ReadyLoadState & { lyrics: LineLyrics } {
 		return (
 			loadState.status === "ready" &&
 			loadState.lyrics.type === "line" &&
-			this.settings?.pseudoKaraoke === true &&
-			this.settings.syncPreference === "prefer-syllable"
+			settings.pseudoKaraoke === true &&
+			settings.syncPreference === "prefer-syllable"
 		);
 	}
 
-	private async ensurePseudoKaraoke(track: TrackIdentity, lineLyrics: LineLyrics, generation: number): Promise<void> {
+	private async ensurePseudoKaraoke(track: TrackIdentity, lineLyrics: LineLyrics, generation: number, presentationRevision: number): Promise<void> {
 		if (this.pseudoKaraokeByUri.get(track.uri)?.source === lineLyrics) {
 			return;
 		}
 		const analysis = await this.waveformService.getAnalysis(track);
-		if (!this.isGenerationCurrent(generation)) {
+		if (!this.isPresentationCurrent(generation, presentationRevision)) {
 			return;
 		}
 		this.pseudoKaraokeByUri.set(track.uri, {
@@ -193,8 +203,8 @@ export class TrackSessionController {
 		});
 	}
 
-	private displayLyricsFor(loadState: ReadyLoadState): LyricsDocument {
-		if (!this.shouldSynthesize(loadState)) {
+	private displayLyricsFor(loadState: ReadyLoadState, settings: ExtensionSettings): LyricsDocument {
+		if (!this.shouldSynthesize(loadState, settings)) {
 			return loadState.lyrics;
 		}
 		const entry = this.pseudoKaraokeByUri.get(loadState.track.uri);
@@ -203,5 +213,9 @@ export class TrackSessionController {
 
 	private isGenerationCurrent(generation: number): boolean {
 		return generation === this.generation;
+	}
+
+	private isPresentationCurrent(generation: number, presentationRevision: number): boolean {
+		return this.isGenerationCurrent(generation) && presentationRevision === this.presentationRevision;
 	}
 }
