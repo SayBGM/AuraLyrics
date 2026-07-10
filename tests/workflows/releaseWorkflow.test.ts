@@ -6,7 +6,7 @@ describe("release workflow", () => {
 		const workflow = await readFile(".github/workflows/release.yml", "utf8");
 		const publishStep = workflow.slice(workflow.indexOf("- name: Publish GitHub release"));
 
-		expect(publishStep).toContain("if: startsWith(github.ref, 'refs/tags/v')");
+		expect(publishStep).toContain("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')");
 		expect(publishStep).toContain('TAG="$GITHUB_REF_NAME"');
 		expect(publishStep).not.toMatch(/manual-\$\{GITHUB_RUN_NUMBER\}/);
 	});
