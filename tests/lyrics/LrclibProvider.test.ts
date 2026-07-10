@@ -79,13 +79,22 @@ describe("LrclibProvider", () => {
 		expect(result).toEqual({ ok: false, reason: "instrumental" });
 	});
 
-	test.each([undefined, 42, "", "   "])("classifies missing or invalid synchronized lyrics as no lyrics (%p)", async (syncedLyrics) => {
+	test.each([undefined, "", "   "])("classifies missing or empty synchronized lyrics as no lyrics (%p)", async (syncedLyrics) => {
 		const provider = new LrclibProvider();
 		const context = createContext(cosmosGetReturning({ syncedLyrics }));
 
 		const result = await provider.fetch(track, context);
 
 		expect(result).toEqual({ ok: false, reason: "no-lyrics" });
+	});
+
+	test("classifies non-string synchronized lyrics as a schema error", async () => {
+		const provider = new LrclibProvider();
+		const context = createContext(cosmosGetReturning({ syncedLyrics: 42 }));
+
+		const result = await provider.fetch(track, context);
+
+		expect(result).toMatchObject({ ok: false, reason: "error" });
 	});
 
 	test("classifies a Cosmos 404 as no lyrics", async () => {
@@ -123,6 +132,28 @@ describe("LrclibProvider", () => {
 		const result = await provider.fetch(track, context);
 
 		expect(result).toMatchObject({ ok: false, reason: "temporarily-unavailable" });
+	});
+
+	test("classifies general Cosmos errors as errors", async () => {
+		const provider = new LrclibProvider();
+		const context = createContext(async () => {
+			throw new Error("network unavailable");
+		});
+
+		const result = await provider.fetch(track, context);
+
+		expect(result).toEqual({ ok: false, reason: "error", message: "network unavailable" });
+	});
+
+	test("classifies a Cosmos 400 as an error", async () => {
+		const provider = new LrclibProvider();
+		const context = createContext(async () => {
+			throw { status: 400 };
+		});
+
+		const result = await provider.fetch(track, context);
+
+		expect(result).toMatchObject({ ok: false, reason: "error" });
 	});
 
 	test.each([

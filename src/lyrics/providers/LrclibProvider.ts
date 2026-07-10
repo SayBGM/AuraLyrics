@@ -75,7 +75,13 @@ export class LrclibProvider implements LyricsProvider {
 			return { ok: false, reason: "instrumental" };
 		}
 		const syncedLyrics = payload.syncedLyrics;
-		if (typeof syncedLyrics !== "string" || syncedLyrics.trim().length === 0) {
+		if (syncedLyrics === undefined) {
+			return { ok: false, reason: "no-lyrics" };
+		}
+		if (typeof syncedLyrics !== "string") {
+			return { ok: false, reason: "error", message: "LRCLIB returned a malformed payload." };
+		}
+		if (syncedLyrics.trim().length === 0) {
 			return { ok: false, reason: "no-lyrics" };
 		}
 		return { ok: true, lyrics: parseLrc(syncedLyrics) };
