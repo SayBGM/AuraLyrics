@@ -4,6 +4,7 @@ export type TranslationKey =
 	| "advanced"
 	| "alignment"
 	| "animations"
+	| "appearance"
 	| "background"
 	| "blur"
 	| "clearCache"
@@ -14,9 +15,6 @@ export type TranslationKey =
 	| "general"
 	| "generateMusixmatchToken"
 	| "glow"
-	| "heroDetail"
-	| "heroEyebrow"
-	| "heroTitle"
 	| "inactiveBlur"
 	| "intensity"
 	| "interludeStyle"
@@ -32,6 +30,7 @@ export type TranslationKey =
 	| "musixmatchProxyModeDefaultDescription"
 	| "musixmatchToken"
 	| "preset"
+	| "providerEnabled"
 	| "providerOrder"
 	| "providers"
 	| "pseudoKaraoke"
@@ -42,6 +41,8 @@ export type TranslationKey =
 	| "saturation"
 	| "showInterludes"
 	| "showTranslation"
+	| "settingsNavigation"
+	| "settingsTitle"
 	| "sync"
 	| "tokenMissing"
 	| "tokenUpdated"
@@ -54,6 +55,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		advanced: "Advanced",
 		alignment: "Alignment",
 		animations: "Animations",
+		appearance: "Appearance",
 		background: "Background",
 		blur: "Blur",
 		clearCache: "Clear cache",
@@ -64,9 +66,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		general: "General",
 		generateMusixmatchToken: "Generate Musixmatch token",
 		glow: "Glow",
-		heroDetail: "Lyric sync, motion, ambience, and providers in one focused surface.",
-		heroEyebrow: "AURALYRICS CONTROL",
-		heroTitle: "Tune the PiP stage.",
 		inactiveBlur: "Inactive blur",
 		intensity: "Intensity",
 		interludeStyle: "Interlude style",
@@ -83,6 +82,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		musixmatchProxyModeDefaultDescription: "Request directly from Musixmatch's official servers.",
 		musixmatchToken: "Musixmatch token",
 		preset: "Preset",
+		providerEnabled: "{provider} enabled",
 		providerOrder: "Provider order: {order}",
 		providers: "Providers",
 		pseudoKaraoke: "Synthesized karaoke",
@@ -93,6 +93,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		saturation: "Saturation",
 		showInterludes: "Show interludes",
 		showTranslation: "Show translation",
+		settingsNavigation: "Settings navigation",
+		settingsTitle: "AuraLyrics Settings",
 		sync: "Sync",
 		tokenMissing: "Musixmatch token was not returned.",
 		tokenUpdated: "Musixmatch token updated.",
@@ -102,6 +104,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		advanced: "고급",
 		alignment: "정렬",
 		animations: "애니메이션",
+		appearance: "화면",
 		background: "배경",
 		blur: "블러",
 		clearCache: "캐시 지우기",
@@ -112,9 +115,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		general: "일반",
 		generateMusixmatchToken: "Musixmatch 토큰 생성",
 		glow: "글로우",
-		heroDetail: "가사 싱크, 모션, 배경감, 제공자를 한 화면에서 조정합니다.",
-		heroEyebrow: "AURALYRICS 제어",
-		heroTitle: "PiP 무대를 조정하세요.",
 		inactiveBlur: "비활성 블러",
 		intensity: "강도",
 		interludeStyle: "인터루드 스타일",
@@ -131,6 +131,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		musixmatchProxyModeDefaultDescription: "Musixmatch 공식 서버로 직접 요청합니다.",
 		musixmatchToken: "Musixmatch 토큰",
 		preset: "프리셋",
+		providerEnabled: "{provider} 사용",
 		providerOrder: "제공자 순서: {order}",
 		pseudoKaraoke: "노래방 자동 합성",
 		providers: "제공자",
@@ -141,6 +142,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		saturation: "채도",
 		showInterludes: "인터루드 표시",
 		showTranslation: "번역 표시",
+		settingsNavigation: "설정 탐색",
+		settingsTitle: "AuraLyrics 설정",
 		sync: "싱크",
 		tokenMissing: "Musixmatch 토큰이 반환되지 않았습니다.",
 		tokenUpdated: "Musixmatch 토큰이 업데이트되었습니다.",
@@ -150,6 +153,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		advanced: "詳細",
 		alignment: "配置",
 		animations: "アニメーション",
+		appearance: "表示",
 		background: "背景",
 		blur: "ぼかし",
 		clearCache: "キャッシュを削除",
@@ -160,9 +164,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		general: "一般",
 		generateMusixmatchToken: "Musixmatch トークンを生成",
 		glow: "グロー",
-		heroDetail: "歌詞同期、モーション、背景感、プロバイダーを一画面で調整します。",
-		heroEyebrow: "AURALYRICS コントロール",
-		heroTitle: "PiP ステージを調整。",
 		inactiveBlur: "非アクティブぼかし",
 		intensity: "強度",
 		interludeStyle: "インタールードスタイル",
@@ -179,6 +180,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		musixmatchProxyModeDefaultDescription: "Musixmatch公式サーバーに直接リクエストします。",
 		musixmatchToken: "Musixmatch トークン",
 		preset: "プリセット",
+		providerEnabled: "{provider} を有効化",
 		providerOrder: "プロバイダー順: {order}",
 		pseudoKaraoke: "カラオケ自動合成",
 		providers: "プロバイダー",
@@ -189,6 +191,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		saturation: "彩度",
 		showInterludes: "インタールード表示",
 		showTranslation: "翻訳を表示",
+		settingsNavigation: "設定ナビゲーション",
+		settingsTitle: "AuraLyrics 設定",
 		sync: "同期",
 		tokenMissing: "Musixmatch トークンが返されませんでした。",
 		tokenUpdated: "Musixmatch トークンを更新しました。",

@@ -120,6 +120,7 @@ export class ExtensionApp {
 		}
 		this.player.detach();
 		this.topbar.destroy();
+		this.settingsView.destroy();
 		this.pip.close();
 		this.renderer.destroy();
 	}
