@@ -5,9 +5,9 @@
 import { getUnitWeight } from "./pseudoKaraoke/unitWeights";
 import type { Syllable, SyllableLyrics, SyllableVocal, SyllableVocalSet } from "./types";
 
-// Split only around a pure-Hangul core. Parens/brackets are deliberately excluded:
-// the renderer's parenthetical parsing (parentheticalSegments.ts) reads whole-token
-// text of isPartOfWord=false syllables, so splitting "(...)" across chars breaks it.
+// Split only around a pure-Hangul core. Parens/brackets are deliberately excluded,
+// and splitVocal preserves unmarked middle tokens when a parenthetical spans multiple
+// provider tokens. The renderer needs those tokens whole to carry its parenthetical state.
 const HANGUL_WORD = /^([,.!?~…'";:-]*)([가-힣]{2,})([,.!?~…'";:-]*)$/;
 const MIN_MS_PER_CHAR = 55;
 const MAX_NON_FINAL_CHAR_MS = 900;
@@ -22,10 +22,28 @@ export const splitHangulSyllables = (lyrics: SyllableLyrics): SyllableLyrics => 
 	}),
 });
 
-const splitVocal = (vocal: SyllableVocal): SyllableVocal => ({
-	...vocal,
-	syllables: vocal.syllables.flatMap(splitSyllable),
-});
+const splitVocal = (vocal: SyllableVocal): SyllableVocal => {
+	let isInsideParenthetical = false;
+	const syllables = vocal.syllables.flatMap((syllable) => {
+		const text = syllable.romanizedText ?? syllable.text;
+		const isParentheticalToken = isInsideParenthetical || text.includes("(") || text.includes(")");
+		isInsideParenthetical = parentheticalStateAfter(text, isInsideParenthetical);
+		return isParentheticalToken ? [syllable] : splitSyllable(syllable);
+	});
+	return { ...vocal, syllables };
+};
+
+const parentheticalStateAfter = (text: string, initialState: boolean): boolean => {
+	let isInsideParenthetical = initialState;
+	for (const char of text) {
+		if (char === "(" && !isInsideParenthetical) {
+			isInsideParenthetical = true;
+		} else if (char === ")" && isInsideParenthetical) {
+			isInsideParenthetical = false;
+		}
+	}
+	return isInsideParenthetical;
+};
 
 const splitSyllable = (syllable: Syllable): Syllable[] => {
 	const match = syllable.romanizedText ? null : HANGUL_WORD.exec(syllable.text);

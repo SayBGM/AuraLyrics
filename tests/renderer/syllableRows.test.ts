@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import type { Syllable, SyllableVocal } from "../../src/lyrics/types";
-import { buildSyllableRows } from "../../src/renderer/lyrics/syllableRows";
+import { splitHangulSyllables } from "../../src/lyrics/splitHangulSyllables";
+import type { Syllable, SyllableLyrics, SyllableVocal } from "../../src/lyrics/types";
+import { buildSyllableRows, type SyllableVisualGroup } from "../../src/renderer/lyrics/syllableRows";
 
 const vocal = (text: string, startTime = 0, endTime = 4): SyllableVocal => ({
 	startTime,
@@ -15,6 +16,47 @@ const echoText = (row: ReturnType<typeof buildSyllableRows>["rows"][number]): st
 	row.echo.words.flatMap((word) => word.tokens.map((token) => token.text)).join("");
 
 describe("buildSyllableRows", () => {
+	test("keeps a multi-token Korean parenthetical in the echo after Hangul splitting", () => {
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 168.06,
+			endTime: 170.984,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 168.06,
+						endTime: 170.984,
+						syllables: [
+							{ text: "너와", startTime: 168.06, endTime: 168.214, isPartOfWord: false },
+							{ text: "나", startTime: 168.214, endTime: 168.385, isPartOfWord: false },
+							{ text: "둘이", startTime: 168.385, endTime: 168.594, isPartOfWord: false },
+							{ text: "이", startTime: 168.594, endTime: 168.942, isPartOfWord: false },
+							{ text: "밤을", startTime: 168.942, endTime: 169.407, isPartOfWord: false },
+							{ text: "새워", startTime: 169.407, endTime: 170.057, isPartOfWord: false },
+							{ text: "(이", startTime: 170.057, endTime: 170.522, isPartOfWord: false },
+							{ text: "밤을", startTime: 170.522, endTime: 170.869, isPartOfWord: false },
+							{ text: "새워)", startTime: 170.869, endTime: 170.984, isPartOfWord: false },
+						],
+					},
+				},
+			],
+		};
+		const split = splitHangulSyllables(lyrics);
+		const item = split.content[0];
+		if (item.type !== "vocal") {
+			throw new Error("expected vocal");
+		}
+		const model = buildSyllableRows(item.lead);
+		const words = (group: SyllableVisualGroup): string[] => group.words.map((word) => word.tokens.map((token) => token.text).join(""));
+
+		expect(model.rows).toHaveLength(1);
+		expect(words(model.rows[0].main)).toEqual(["너와", "나", "둘이", "이", "밤을", "새워"]);
+		expect(words(model.rows[0].echo)).toEqual(["이", "밤을", "새워"]);
+		expect(words(model.rows[0].main).join("")).not.toContain(")");
+	});
+
 	test("models parenthetical echoes in the same visual rows as their main lyric", () => {
 		const model = buildSyllableRows({
 			startTime: 0,

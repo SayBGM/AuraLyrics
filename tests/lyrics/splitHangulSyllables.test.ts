@@ -101,6 +101,21 @@ describe("splitHangulSyllables", () => {
 		expect(result).toEqual([syllable]);
 	});
 
+	test("preserves Hangul tokens inside a parenthetical spanning provider tokens", () => {
+		const syllables: Syllable[] = [
+			{ text: "사랑해", startTime: 0, endTime: 0.9, isPartOfWord: false },
+			{ text: "(이", startTime: 0.9, endTime: 1.2, isPartOfWord: false },
+			{ text: "밤을", startTime: 1.2, endTime: 1.8, isPartOfWord: false },
+			{ text: "새워)", startTime: 1.8, endTime: 2.4, isPartOfWord: false },
+			{ text: "오늘도", startTime: 2.4, endTime: 3.3, isPartOfWord: false },
+		];
+
+		const result = leadSyllables(splitHangulSyllables(lyricsWithSyllables(syllables)));
+
+		expect(result.map((item) => item.text)).toEqual(["사", "랑", "해", "(이", "밤을", "새워)", "오", "늘", "도"]);
+		expect(result.slice(3, 6)).toEqual(syllables.slice(1, 4));
+	});
+
 	test("splits a leading-punctuation Hangul word, attaching the punctuation to the first char", () => {
 		const syllable: Syllable = { text: "'그대여", startTime: 0, endTime: 1.5, isPartOfWord: false };
 		const result = leadSyllables(splitHangulSyllables(lyricsWithSyllables([syllable])));
