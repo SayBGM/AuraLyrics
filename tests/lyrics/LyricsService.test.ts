@@ -158,6 +158,56 @@ describe("LyricsService", () => {
 		expect(cache.get(track.uri)?.provider).toBe("spotify");
 	});
 
+	test("keeps provider-mismatch diagnostics when the primary provider replaces a fallback cache entry", async () => {
+		const cache = new LyricsCache();
+		cache.set(track.uri, lineLyrics("Fallback cache"), "lrclib");
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: true, lyrics: lineLyrics("Primary") }),
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { retryDelayMs: 0 });
+
+		const state = await service.load(track, DEFAULT_SETTINGS);
+
+		expect(state).toMatchObject({
+			status: "ready",
+			source: "network",
+			diagnostics: {
+				cache: { status: "provider-mismatch", provider: "lrclib", primaryProvider: "spotify" },
+			},
+		});
+	});
+
+	test("uses the first enabled provider that supports the track as the cache primary", async () => {
+		const cache = new LyricsCache();
+		cache.set(track.uri, lineLyrics("Supported cache"), "lrclib");
+		const unsupported: LyricsProvider = {
+			id: "spotify",
+			supports: () => false,
+			fetch: async () => {
+				throw new Error("unsupported provider must not fetch");
+			},
+		};
+		const supported: LyricsProvider = {
+			id: "lrclib",
+			supports: () => true,
+			fetch: async () => {
+				throw new Error("valid cache must avoid network fetch");
+			},
+		};
+		const service = new LyricsService(new ProviderRegistry([unsupported, supported]), cache, () => context, { retryDelayMs: 0 });
+
+		const state = await service.load(track, DEFAULT_SETTINGS);
+
+		expect(state).toMatchObject({
+			status: "ready",
+			source: "cache",
+			provider: "lrclib",
+			diagnostics: { cache: { status: "hit", provider: "lrclib", primaryProvider: "lrclib" } },
+		});
+	});
+
 	test("rebuilds cached interludes with the current threshold before rendering", async () => {
 		const staleCachedLyrics: LyricsDocument = {
 			type: "syllable",
