@@ -25,4 +25,17 @@ describe("validateLyrics", () => {
 		expect(() => validateLyrics({ type: "static", lines: [{ text: 42 }] } as never)).toThrow();
 		expect(() => validateLyrics({ type: "static", lines: [{ text: "ok", translatedText: 7 }] } as never)).toThrow();
 	});
+	test("rejects malformed timed lyric structures", () => {
+		expect(() => validateLyrics({ ...base, content: [{ ...base.content[0], text: 42 }] } as never)).toThrow();
+		expect(() => validateLyrics({ ...base, content: [{ type: "unknown", startTime: 0, endTime: 4 }] } as never)).toThrow();
+		expect(() => validateLyrics({ ...base, content: null } as never)).toThrow();
+		expect(() =>
+			validateLyrics({
+				type: "syllable",
+				startTime: 0,
+				endTime: 4,
+				content: [{ type: "vocal", oppositeAligned: false, lead: { startTime: 0, endTime: 4, syllables: null } }],
+			} as never)
+		).toThrow();
+	});
 });

@@ -411,6 +411,25 @@ describe("LyricsService", () => {
 		expect(state.lyrics).toMatchObject({ type: "line" });
 	});
 
+	test("removes malformed timed cached lyrics and falls back to the provider", async () => {
+		const cache = new LyricsCache();
+		cache.set(
+			track.uri,
+			{ ...lineLyrics("Invalid"), content: [{ ...lineLyrics("Invalid").content[0], text: 42 }] } as unknown as LyricsDocument,
+			"spotify"
+		);
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: true, lyrics: lineLyrics("Recovered") }),
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { maxAttempts: 1, retryDelayMs: 0 });
+
+		const state = await service.load(track, DEFAULT_SETTINGS, false);
+
+		expect(state).toMatchObject({ status: "ready", source: "network" });
+	});
+
 	test("manual refresh bypasses a provider cooldown", async () => {
 		let calls = 0;
 		const provider: LyricsProvider = {
