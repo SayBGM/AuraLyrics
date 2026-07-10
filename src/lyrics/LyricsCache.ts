@@ -120,7 +120,12 @@ export class LyricsCache {
 			const snapshot = new Map(this.values);
 			const oldest = [...this.values.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)[0]?.[0];
 			if (oldest) this.values.delete(oldest);
-			try { this.storage.set(CACHE_KEY, this.serializedValues()); } catch { this.values.clear(); for (const entry of snapshot) this.values.set(entry[0], entry[1]); }
+			try {
+				this.storage.set(CACHE_KEY, this.serializedValues());
+			} catch {
+				this.values.clear();
+				for (const entry of snapshot) this.values.set(entry[0], entry[1]);
+			}
 		}
 	}
 
@@ -135,7 +140,7 @@ export class LyricsCache {
 		for (const entry of entries) {
 			if (this.serializedSize(entry) > options.maxEntryBytes) continue;
 			const candidate = JSON.stringify([...kept, entry]);
-			if (candidate.length > options.maxTotalBytes) continue;
+			if (new TextEncoder().encode(candidate).length > options.maxTotalBytes) continue;
 			kept.push(entry);
 		}
 		this.values.clear();
