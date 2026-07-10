@@ -5,20 +5,24 @@ const SLEEP_EPSILON = 0.001;
 export class Spring {
 	private velocity = 0;
 	private sleeping = true;
+	private dampingRatio: number;
+	private frequency: number;
 
 	public position: number;
 	public target: number;
 
-	public constructor(
-		initial: number,
-		private dampingRatio: number,
-		private frequency: number
-	) {
-		if (dampingRatio * frequency < 0) {
-			throw new Error("Spring does not converge.");
-		}
+	public constructor(initial: number, dampingRatio: number, frequency: number) {
+		validateTuning(dampingRatio, frequency);
+		this.dampingRatio = dampingRatio;
+		this.frequency = frequency;
 		this.position = initial;
 		this.target = initial;
+	}
+
+	public configure(dampingRatio: number, frequency: number): void {
+		validateTuning(dampingRatio, frequency);
+		this.dampingRatio = dampingRatio;
+		this.frequency = frequency;
 	}
 
 	public update(deltaTime: number): number {
@@ -85,3 +89,9 @@ export class Spring {
 		return this.sleeping;
 	}
 }
+
+const validateTuning = (dampingRatio: number, frequency: number): void => {
+	if (!Number.isFinite(dampingRatio) || dampingRatio < 0 || !Number.isFinite(frequency) || frequency <= 0) {
+		throw new Error("Spring tuning requires a finite non-negative damping ratio and positive frequency.");
+	}
+};

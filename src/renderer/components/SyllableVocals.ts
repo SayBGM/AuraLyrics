@@ -4,6 +4,7 @@ import type { RhythmProfile } from "../AudioAnalysisWaveformService";
 import { glowCurve, scaleCurve, yOffsetCurve } from "../animation/curves";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
+import { SPRING_PROFILES, springTuningForSoftness } from "../animation/springTuning";
 import { melismaBoostForProgress } from "../lyrics/koreanTail";
 import { buildSyllableRows, type SyllableRowsOptions, type SyllableVisualGroup } from "../lyrics/syllableRows";
 
@@ -102,6 +103,14 @@ export class SyllableVocals {
 	public applySettings(settings: ExtensionSettings): void {
 		this.motionIntensity = Math.max(0, settings.motionIntensity);
 		this.glowStrength = Math.max(0, settings.glowStrength);
+		const scaleTuning = springTuningForSoftness(SPRING_PROFILES.scale, settings.springSoftness);
+		const yOffsetTuning = springTuningForSoftness(SPRING_PROFILES.yOffset, settings.springSoftness);
+		const glowTuning = springTuningForSoftness(SPRING_PROFILES.glow, settings.springSoftness);
+		for (const live of this.liveSyllables) {
+			live.scale.configure(scaleTuning.dampingRatio, scaleTuning.frequency);
+			live.yOffset.configure(yOffsetTuning.dampingRatio, yOffsetTuning.frequency);
+			live.glow.configure(glowTuning.dampingRatio, glowTuning.frequency);
+		}
 		this.element.style.setProperty("--font-scale", String(settings.fontScale));
 		this.element.style.setProperty("--glow-strength", String(settings.glowStrength));
 	}
@@ -154,9 +163,9 @@ export class SyllableVocals {
 		this.liveSyllables.push({
 			metadata,
 			element: span,
-			scale: new Spring(1, 0.6, 0.7),
-			yOffset: new Spring(0, 0.4, 1.25),
-			glow: new Spring(0, 0.5, 1),
+			scale: new Spring(1, SPRING_PROFILES.scale.dampingRatio, SPRING_PROFILES.scale.frequency),
+			yOffset: new Spring(0, SPRING_PROFILES.yOffset.dampingRatio, SPRING_PROFILES.yOffset.frequency),
+			glow: new Spring(0, SPRING_PROFILES.glow.dampingRatio, SPRING_PROFILES.glow.frequency),
 		});
 	}
 }
