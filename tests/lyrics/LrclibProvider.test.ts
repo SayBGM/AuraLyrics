@@ -79,7 +79,7 @@ describe("LrclibProvider", () => {
 		expect(result).toEqual({ ok: false, reason: "instrumental" });
 	});
 
-	test.each([undefined, "", "   "])("classifies missing or empty synchronized lyrics as no lyrics (%p)", async (syncedLyrics) => {
+	test.each([undefined, null, "", "   "])("classifies missing or empty synchronized lyrics as no lyrics (%p)", async (syncedLyrics) => {
 		const provider = new LrclibProvider();
 		const context = createContext(cosmosGetReturning({ syncedLyrics }));
 

@@ -75,7 +75,7 @@ export class LrclibProvider implements LyricsProvider {
 			return { ok: false, reason: "instrumental" };
 		}
 		const syncedLyrics = payload.syncedLyrics;
-		if (syncedLyrics === undefined) {
+		if (syncedLyrics === undefined || syncedLyrics === null) {
 			return { ok: false, reason: "no-lyrics" };
 		}
 		if (typeof syncedLyrics !== "string") {
