@@ -4,6 +4,7 @@ import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessi
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
 import type { LineLyrics, LyricsLoadState, TrackIdentity } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
+import type { TrackWaveformProfile } from "../../src/renderer/AudioAnalysisWaveformService";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 import type { ExtensionSettings } from "../../src/settings/settingsSchema";
 import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
@@ -492,6 +493,93 @@ describe("ExtensionApp", () => {
 		expect(mount).toHaveBeenCalledOnce();
 		expect(controller.getSnapshot()).toBe(currentSnapshot);
 		expect(controller.isCurrent(currentSnapshot)).toBe(true);
+	});
+
+	test("keeps rhythm and waveform data in the final mount when enrichment wins a settings race", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:waveform-settings-race");
+		const profileResult = deferred<TrackWaveformProfile>();
+		const settingsAnalysis = deferred<ReturnType<typeof buildVocalAnalysis> | undefined>();
+		const enrichmentAnalysis = deferred<ReturnType<typeof buildVocalAnalysis> | undefined>();
+		const getAnalysis = vi
+			.fn()
+			.mockImplementationOnce(() => settingsAnalysis.promise)
+			.mockImplementationOnce(() => enrichmentAnalysis.promise);
+		const currentProfile: TrackWaveformProfile = {
+			trackUri: track.uri,
+			seed: 17,
+			segments: [{ start: 0, duration: 4, loudness_max: -3 }],
+			beatDurationSec: 0.5,
+			source: "audio-analysis",
+		};
+		const lineWithInterlude: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{ type: "vocal", text: "Before", startTime: 0, endTime: 1, oppositeAligned: false },
+				{ type: "interlude", startTime: 1, endTime: 3 },
+				{ type: "vocal", text: "After", startTime: 3, endTime: 4, oppositeAligned: false },
+			],
+		};
+		const controller = new TrackSessionController(
+			{
+				load: async () => {
+					const state = readyLoadState(track);
+					if (state.status !== "ready") throw new Error("Expected ready load state.");
+					return { ...state, lyrics: lineWithInterlude };
+				},
+				refreshCooldowns: vi.fn(),
+				invalidate: vi.fn(),
+			},
+			{
+				loadProfile: async () => profileResult.promise,
+				getAnalysis,
+			},
+			() => ({
+				type: "syllable",
+				startTime: 0,
+				endTime: 4,
+				content: [{ type: "interlude", startTime: 1, endTime: 3 }],
+			})
+		);
+		const mount = vi.fn();
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: () => void };
+			currentTrack: TrackIdentity;
+			appliedSettings: ExtensionSettings;
+			settings: { get: () => ExtensionSettings; update: (patch: Partial<ExtensionSettings>) => void };
+			trackSession: TrackSessionController;
+			renderer: { applySettings: () => void; mount: typeof mount };
+			applySettings: () => Promise<void>;
+		};
+		internals.settings.update({ pseudoKaraoke: false, interludeStyle: "wave" });
+		internals.appliedSettings = internals.settings.get();
+		const initial = await controller.load(track, internals.settings.get(), false);
+		if (!initial) throw new Error("Expected initial track snapshot.");
+		const enrichment = controller.enrichmentFor(initial);
+		if (!enrichment) throw new Error("Expected waveform enrichment.");
+		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
+		internals.currentTrack = track;
+		internals.trackSession = controller;
+		internals.renderer = { applySettings: vi.fn(), mount };
+
+		internals.settings.update({ pseudoKaraoke: true, syncPreference: "prefer-syllable" });
+		const applying = internals.applySettings();
+		await vi.waitFor(() => expect(getAnalysis).toHaveBeenCalledTimes(1));
+		profileResult.resolve(currentProfile);
+		await vi.waitFor(() => expect(getAnalysis).toHaveBeenCalledTimes(2));
+		enrichmentAnalysis.resolve(buildVocalAnalysis(0, 4));
+		await enrichment;
+		settingsAnalysis.resolve(buildVocalAnalysis(0, 4));
+		await applying;
+
+		expect(controller.getSnapshot().waveformProfile).toBe(currentProfile);
+		expect(mount).toHaveBeenCalledOnce();
+		const mountOptions = mount.mock.calls[0]?.[1] as { rhythm?: TrackWaveformProfile; waveforms?: Record<string, { source: string }> } | undefined;
+		expect(mountOptions).toMatchObject({ rhythm: currentProfile });
+		expect(Object.values(mountOptions?.waveforms ?? {})).toContainEqual(expect.objectContaining({ source: "audio-analysis" }));
 	});
 
 	test("invalidates track sessions on track change, PiP close, and destroy", async () => {

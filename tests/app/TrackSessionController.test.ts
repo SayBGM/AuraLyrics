@@ -306,6 +306,103 @@ describe("TrackSessionController", () => {
 		expect(newerSnapshot && controller.isCurrent(newerSnapshot)).toBe(true);
 	});
 
+	test("preserves an enriched waveform when a settings presentation that captured no profile finishes later", async () => {
+		const currentTrack = track("spotify:track:profile-first-race");
+		const profileResult = deferred<TrackWaveformProfile>();
+		const settingsAnalysis = deferred<AudioAnalysisData | undefined>();
+		const enrichmentAnalysis = deferred<AudioAnalysisData | undefined>();
+		const getAnalysis = vi
+			.fn()
+			.mockImplementationOnce(() => settingsAnalysis.promise)
+			.mockImplementationOnce(() => enrichmentAnalysis.promise);
+		const synthetic = syllableLyrics(3);
+		const currentProfile = profile(currentTrack);
+		const { controller } = createController({
+			load: async () => ready(currentTrack, lineLyrics()),
+			loadProfile: async () => profileResult.promise,
+			getAnalysis,
+			buildPseudoKaraoke: () => synthetic,
+		});
+		const initial = await controller.load(currentTrack, settings({ pseudoKaraoke: false }), false);
+		if (!initial) throw new Error("Expected initial track snapshot.");
+		const enrichment = controller.enrichmentFor(initial);
+		if (!enrichment) throw new Error("Expected waveform enrichment.");
+
+		const settingsPresentation = controller.updateSettings(settings({ pseudoKaraoke: true, syncPreference: "prefer-syllable" }));
+		await vi.waitFor(() => expect(getAnalysis).toHaveBeenCalledTimes(1));
+		profileResult.resolve(currentProfile);
+		await vi.waitFor(() => expect(getAnalysis).toHaveBeenCalledTimes(2));
+		enrichmentAnalysis.resolve(undefined);
+		const enrichedSnapshot = await enrichment;
+		expect(enrichedSnapshot?.waveformProfile).toBe(currentProfile);
+
+		settingsAnalysis.resolve(undefined);
+		const finalSnapshot = await settingsPresentation;
+
+		expect(finalSnapshot?.lyrics).toBe(synthetic);
+		expect(finalSnapshot?.waveformProfile).toBe(currentProfile);
+		expect(controller.getSnapshot()).toBe(finalSnapshot);
+		expect(finalSnapshot && controller.isCurrent(finalSnapshot)).toBe(true);
+	});
+
+	test("adds a later waveform without losing a settings presentation that finished first", async () => {
+		const currentTrack = track("spotify:track:settings-first-race");
+		const profileResult = deferred<TrackWaveformProfile>();
+		const analysisResult = deferred<AudioAnalysisData | undefined>();
+		const synthetic = syllableLyrics(4);
+		const currentProfile = profile(currentTrack);
+		const { controller } = createController({
+			load: async () => ready(currentTrack, lineLyrics()),
+			loadProfile: async () => profileResult.promise,
+			getAnalysis: async () => analysisResult.promise,
+			buildPseudoKaraoke: () => synthetic,
+		});
+		const initial = await controller.load(currentTrack, settings({ pseudoKaraoke: false }), false);
+		if (!initial) throw new Error("Expected initial track snapshot.");
+		const enrichment = controller.enrichmentFor(initial);
+		if (!enrichment) throw new Error("Expected waveform enrichment.");
+
+		const settingsPresentation = controller.updateSettings(settings({ pseudoKaraoke: true, syncPreference: "prefer-syllable" }));
+		analysisResult.resolve(undefined);
+		const settingsSnapshot = await settingsPresentation;
+		expect(settingsSnapshot?.lyrics).toBe(synthetic);
+		expect(settingsSnapshot?.waveformProfile).toBeUndefined();
+
+		profileResult.resolve(currentProfile);
+		const finalSnapshot = await enrichment;
+
+		expect(finalSnapshot?.lyrics).toBe(synthetic);
+		expect(finalSnapshot?.waveformProfile).toBe(currentProfile);
+		expect(controller.getSnapshot()).toBe(finalSnapshot);
+		expect(finalSnapshot && controller.isCurrent(finalSnapshot)).toBe(true);
+	});
+
+	test("never merges a late waveform profile from a previous track into the current track", async () => {
+		const firstTrack = track("spotify:track:stale-profile");
+		const secondTrack = track("spotify:track:current-without-profile");
+		const firstProfileResult = deferred<TrackWaveformProfile>();
+		const secondProfileResult = deferred<TrackWaveformProfile>();
+		const firstProfile = profile(firstTrack);
+		const { controller } = createController({
+			load: async (requestedTrack) => ready(requestedTrack, lineLyrics()),
+			loadProfile: async (requestedTrack) => (requestedTrack.uri === firstTrack.uri ? firstProfileResult.promise : secondProfileResult.promise),
+		});
+		const first = await controller.load(firstTrack, settings({ pseudoKaraoke: false }), false);
+		if (!first) throw new Error("Expected first track snapshot.");
+		const staleEnrichment = controller.enrichmentFor(first);
+		if (!staleEnrichment) throw new Error("Expected first track enrichment.");
+		const second = await controller.load(secondTrack, settings({ pseudoKaraoke: false }), false);
+		if (!second) throw new Error("Expected second track snapshot.");
+
+		firstProfileResult.resolve(firstProfile);
+		expect(await staleEnrichment).toBeUndefined();
+		const current = await controller.updateSettings(settings({ pseudoKaraoke: false, syncPreference: "line-only" }));
+
+		expect(current?.loadState).toMatchObject({ status: "ready", track: secondTrack });
+		expect(current?.waveformProfile).toBeUndefined();
+		expect(current?.waveformProfile).not.toBe(firstProfile);
+	});
+
 	test("never exposes a waveform profile for a non-ready load state", async () => {
 		const currentTrack = track("spotify:track:empty");
 		const { controller } = createController({

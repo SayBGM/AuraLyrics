@@ -171,11 +171,12 @@ export class TrackSessionController {
 		}
 
 		const lyrics = this.displayLyricsFor(loadState, settings);
+		const mergedWaveformProfile = this.waveformProfileForCommit(loadState, waveformProfile);
 		this.snapshot = {
 			loadState,
 			lyrics,
 			timingSource: loadState.lyrics.type === "line" && lyrics.type === "syllable" ? "synthetic" : "native",
-			waveformProfile,
+			waveformProfile: mergedWaveformProfile,
 		};
 		return this.snapshot;
 	}
@@ -217,5 +218,11 @@ export class TrackSessionController {
 
 	private isPresentationCurrent(generation: number, presentationRevision: number): boolean {
 		return this.isGenerationCurrent(generation) && presentationRevision === this.presentationRevision;
+	}
+
+	private waveformProfileForCommit(loadState: ReadyLoadState, candidate: TrackWaveformProfile | undefined): TrackWaveformProfile | undefined {
+		const current = this.snapshot;
+		const currentProfile = current.loadState.status === "ready" && current.loadState === loadState ? current.waveformProfile : undefined;
+		return currentProfile ?? candidate;
 	}
 }
