@@ -2,10 +2,13 @@
 import type { AudioAnalysisData } from "../../audio/types";
 import type { Interlude, LineLyrics, LineVocal, Syllable, SyllableLyrics, SyllableVocal, SyllableVocalSet } from "../types";
 import { alignPhraseUnitsWithDP } from "./dpAlign";
+import { buildLineTimingModel } from "./lineTimingModel";
+import { getTimeByMassRatio } from "./massCurve";
 import { buildUnitPhrases, pickPhraseBoundaryTime } from "./phrases";
 import { tokenizeLine } from "./tokenize";
+import { buildTrackVocalContext } from "./trackContext";
+import type { TrackVocalContext } from "./types";
 import { getUnitWeight } from "./unitWeights";
-import { buildLineTimingModel, buildTrackVocalContext, getTimeByMassRatio, type TrackVocalContext } from "./vocalModel";
 
 const S_TO_MS = 1000;
 const MS_TO_S = 1 / 1000;

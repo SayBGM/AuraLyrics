@@ -1,8 +1,9 @@
 // §6 / §7 — group units into breath phrases, and place phrase boundaries in time.
+
+import { getLocalMassAtTime } from "./massCurve";
 import { AGGRESSIVE } from "./tokenize";
+import type { LineTimingModel } from "./types";
 import { clamp } from "./utils";
-import type { LineTimingModel } from "./vocalModel";
-import { getLocalMassAtTime } from "./vocalModel";
 
 export type Phrase = {
 	startIndex: number;

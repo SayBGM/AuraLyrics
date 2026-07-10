@@ -7,9 +7,9 @@ import {
 	DP_MASS_ERROR_CONFIDENCE,
 	MIN_GAP_MS,
 } from "./constants";
+import { getLocalMassAtTime, getMassAtTime, getTimeByMassTarget } from "./massCurve";
+import type { LineTimingModel } from "./types";
 import { clamp } from "./utils";
-import type { LineTimingModel } from "./vocalModel";
-import { getLocalMassAtTime, getMassAtTime, getTimeByMassTarget } from "./vocalModel";
 
 const isSpace = (unit: string): boolean => unit.trim().length === 0;
 const isLexical = (unit: string): boolean => /[\p{L}\p{N}]/u.test(unit);
