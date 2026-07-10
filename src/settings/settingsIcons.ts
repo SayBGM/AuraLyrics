@@ -38,8 +38,8 @@ const ICON_PATHS: Record<SettingsIconName, string[]> = {
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
-export const createSettingsIcon = (name: SettingsIconName): SVGSVGElement => {
-	const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+export const createSettingsIcon = (name: SettingsIconName, ownerDocument: Document = document): SVGSVGElement => {
+	const svg = ownerDocument.createElementNS(SVG_NAMESPACE, "svg");
 	svg.setAttribute("width", "17");
 	svg.setAttribute("height", "17");
 	svg.setAttribute("viewBox", "0 0 24 24");
@@ -51,7 +51,7 @@ export const createSettingsIcon = (name: SettingsIconName): SVGSVGElement => {
 	svg.setAttribute("aria-hidden", "true");
 	svg.setAttribute("focusable", "false");
 	for (const pathData of ICON_PATHS[name]) {
-		const path = document.createElementNS(SVG_NAMESPACE, "path");
+		const path = ownerDocument.createElementNS(SVG_NAMESPACE, "path");
 		path.setAttribute("d", pathData);
 		svg.append(path);
 	}
