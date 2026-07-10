@@ -53,6 +53,7 @@ const sanitizeProviderOrder = (value: string | null | undefined): ProviderId[] =
 };
 
 export class SettingsStore {
+	private persistenceFailurePending = false;
 	private settings: ExtensionSettings;
 	private readonly listeners = new Set<(settings: ExtensionSettings) => void>();
 	public readonly persistenceFailed = new EventEmitter<void>();
@@ -80,6 +81,12 @@ export class SettingsStore {
 
 	public commit(): boolean {
 		return this.persist();
+	}
+
+	public consumePersistenceFailure(): boolean {
+		const pending = this.persistenceFailurePending;
+		this.persistenceFailurePending = false;
+		return pending;
 	}
 
 	public applyPreset(preset: Exclude<LyricsVisualPreset, "custom">): ExtensionSettings {
@@ -128,7 +135,7 @@ export class SettingsStore {
 	}
 
 	private migrateLegacy(): ExtensionSettings {
-		return {
+		return normalizeLoadedSettings({
 			...structuredClone(DEFAULT_SETTINGS),
 			fontScale: parseNumber(this.storage.get("popup-lyrics:font-size"), 25) / 25,
 			lyricsDelayMs: parseNumber(this.storage.get("popup-lyrics:delay"), DEFAULT_SETTINGS.lyricsDelayMs),
@@ -146,7 +153,7 @@ export class SettingsStore {
 				},
 				musixmatchToken: this.storage.get("popup-lyrics:services:musixmatch:token") ?? undefined,
 			},
-		};
+		});
 	}
 
 	private merge(patch: Partial<ExtensionSettings>, markCustom: boolean): ExtensionSettings {
@@ -168,18 +175,22 @@ export class SettingsStore {
 	private persist(): boolean {
 		const saved = this.writeSettings(this.settings);
 		if (!saved) {
-			this.persistenceFailed.emit(undefined);
+			this.reportPersistenceFailure();
 		}
 		return saved;
 	}
 
 	private persistMigration(settings: ExtensionSettings): boolean {
 		const serialized = JSON.stringify(settings);
-		if (!this.write(SETTINGS_KEY, serialized) || this.storage.get(SETTINGS_KEY) !== serialized) {
-			this.persistenceFailed.emit(undefined);
+		if (!this.write(SETTINGS_KEY, serialized) || this.read(SETTINGS_KEY) !== serialized) {
+			this.reportPersistenceFailure();
 			return false;
 		}
-		return this.write(MIGRATED_KEY, "true");
+		const markerSaved = this.write(MIGRATED_KEY, "true");
+		if (!markerSaved) {
+			this.reportPersistenceFailure();
+		}
+		return markerSaved;
 	}
 
 	private writeSettings(settings: ExtensionSettings): boolean {
@@ -192,6 +203,19 @@ export class SettingsStore {
 		} catch {
 			return false;
 		}
+	}
+
+	private read(key: string): string | null | undefined {
+		try {
+			return this.storage.get(key);
+		} catch {
+			return null;
+		}
+	}
+
+	private reportPersistenceFailure(): void {
+		this.persistenceFailurePending = true;
+		this.persistenceFailed.emit(undefined);
 	}
 
 	private emit(): void {

@@ -23,6 +23,8 @@ import { MusicStateMachine } from "./MusicStateMachine";
 import { TopbarController } from "./TopbarController";
 import { TrackAccentService } from "./TrackAccentService";
 
+const SETTINGS_PERSISTENCE_ERROR = "AuraLyrics settings could not be saved.";
+
 export class ExtensionApp {
 	private readonly storage: SpicetifyStorageAdapter;
 	private readonly settings: SettingsStore;
@@ -106,8 +108,10 @@ export class ExtensionApp {
 			this.player.trackChanged.subscribe((track) => void this.onTrackChanged(track)),
 			this.player.playbackChanged.subscribe((isPlaying) => this.onPlaybackChanged(isPlaying)),
 			this.settings.subscribe(() => void this.applySettings()),
+			this.settings.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
 			this.pip.closed.subscribe(() => this.closePip(false))
 		);
+		this.showSettingsPersistenceFailure();
 		this.topbar.register();
 	}
 
@@ -219,6 +223,12 @@ export class ExtensionApp {
 		const token = await this.musixmatchTokenService.refresh(this.resolveMusixmatchProxyBaseUrl(this.settings.get().providers));
 		this.spicetify.showNotification?.("Musixmatch token updated.");
 		return token;
+	}
+
+	private showSettingsPersistenceFailure(): void {
+		if (this.settings.consumePersistenceFailure()) {
+			this.spicetify.showNotification?.(SETTINGS_PERSISTENCE_ERROR, true);
+		}
 	}
 
 	private resolveMusixmatchProxyBaseUrl(providers: ExtensionSettings["providers"]): string | undefined {

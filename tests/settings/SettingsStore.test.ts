@@ -200,6 +200,45 @@ describe("SettingsStore", () => {
 		expect(listener).toHaveBeenCalledWith(undefined);
 	});
 
+	test("retains constructor persistence failures until a caller consumes them", () => {
+		const store = new SettingsStore({
+			get: () => null,
+			set: () => false,
+		});
+
+		expect(store.consumePersistenceFailure()).toBe(true);
+		expect(store.consumePersistenceFailure()).toBe(false);
+	});
+
+	test("reports a failed migration marker write as a pending persistence failure", () => {
+		const storage = new MemoryStorage();
+		vi.spyOn(storage, "set").mockImplementation((key, value) => {
+			if (key === "aura-lyrics:migrated-v1") {
+				return false;
+			}
+			return MemoryStorage.prototype.set.call(storage, key, value);
+		});
+
+		const store = new SettingsStore(storage);
+
+		expect(store.consumePersistenceFailure()).toBe(true);
+	});
+
+	test("normalizes scalar legacy settings before exposing or persisting them", () => {
+		const storage = new MemoryStorage();
+		storage.set("popup-lyrics:font-size", "999999");
+		storage.set("popup-lyrics:delay", "999999");
+		storage.set("popup-lyrics:blur-size", "999999");
+		storage.set("popup-lyrics:services:musixmatch:token", `  ${"x".repeat(5000)}  `);
+
+		const settings = new SettingsStore(storage).get();
+
+		expect(settings.fontScale).toBe(2.4);
+		expect(settings.lyricsDelayMs).toBe(5000);
+		expect(settings.backgroundBlurPx).toBe(80);
+		expect(settings.providers.musixmatchToken).toBeUndefined();
+	});
+
 	test("writes the migration marker only after migrated settings are durably readable", () => {
 		const writes: string[] = [];
 		const storage = new MemoryStorage();

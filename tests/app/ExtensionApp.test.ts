@@ -7,6 +7,7 @@ import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
 const createSpicetify = () => {
 	const values = new Map<string, string>();
 	const topbarButtons: Array<{ element: HTMLElement; active?: boolean; deregister?: () => void }> = [];
+	const showNotification = vi.fn();
 	const spicetify = {
 		Player: {
 			getProgress: () => 0,
@@ -28,8 +29,9 @@ const createSpicetify = () => {
 				return button;
 			}),
 		},
+		showNotification,
 	} as unknown as SpicetifyGlobal;
-	return { spicetify, topbarButtons };
+	return { showNotification, spicetify, topbarButtons };
 };
 
 describe("ExtensionApp", () => {
@@ -64,6 +66,49 @@ describe("ExtensionApp", () => {
 
 		expect(internals.applySettings).not.toHaveBeenCalled();
 		expect(internals.closePip).not.toHaveBeenCalled();
+	});
+
+	test("surfaces constructor persistence failures when the app starts", () => {
+		const { showNotification, spicetify } = createSpicetify();
+		if (!spicetify.LocalStorage) {
+			throw new Error("LocalStorage fixture is missing.");
+		}
+		spicetify.LocalStorage.set = vi.fn(() => {
+			throw new Error("unavailable");
+		});
+		const app = new ExtensionApp(spicetify);
+
+		app.start();
+
+		expect(showNotification).toHaveBeenCalledOnce();
+		expect(showNotification).toHaveBeenCalledWith("AuraLyrics settings could not be saved.", true);
+		app.destroy();
+	});
+
+	test("notifies on runtime persistence failures and unsubscribes on destroy", () => {
+		const { showNotification, spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const internals = app as unknown as {
+			settings: { update: (patch: unknown) => void };
+		};
+		app.start();
+		if (!spicetify.LocalStorage) {
+			throw new Error("LocalStorage fixture is missing.");
+		}
+		spicetify.LocalStorage.set = vi.fn(() => {
+			throw new Error("unavailable");
+		});
+
+		internals.settings.update({ lyricsDelayMs: 99 });
+
+		expect(showNotification).toHaveBeenCalledOnce();
+		expect(showNotification).toHaveBeenCalledWith("AuraLyrics settings could not be saved.", true);
+
+		app.destroy();
+		showNotification.mockClear();
+		internals.settings.update({ lyricsDelayMs: 100 });
+
+		expect(showNotification).not.toHaveBeenCalled();
 	});
 
 	test("updates PiP play state from playback callbacks instead of the lyric frame tick", () => {
