@@ -30,14 +30,17 @@ const SETTINGS_SECTIONS: Array<{ icon: SettingsIconName; id: SettingsSection; la
 
 export class SettingsView {
 	private activeSection: SettingsSection = "general";
+	private attachGuardTimer?: number;
 	private compactNavigation = false;
 	private container?: HTMLDivElement;
 	private mediaListener?: (event: MediaQueryListEvent) => void;
 	private mediaQuery?: MediaQueryList;
 	private musixmatchTokenInput?: HTMLInputElement;
+	private modalFocusScope?: HTMLElement;
 	private navigation?: HTMLElement;
 	private observer?: MutationObserver;
 	private panelScroller?: HTMLDivElement;
+	private previousFocus?: HTMLElement;
 	private providerStatus?: HTMLElement;
 	private refreshTimer?: number;
 	private tokenStatus?: { key: TranslationKey } | { text: string };
@@ -53,7 +56,9 @@ export class SettingsView {
 		if (!spicetify?.PopupModal) {
 			return;
 		}
+		const previousFocus = this.container ? this.previousFocus : this.focusedElement();
 		this.cleanupLifecycle(true);
+		this.previousFocus = previousFocus;
 		const container = document.createElement("div");
 		container.className = "aura-lyrics-settings";
 		this.container = container;
@@ -64,6 +69,9 @@ export class SettingsView {
 			content: container,
 		});
 		this.attachResponsiveNavigation();
+		if (container.isConnected) {
+			this.onContainerAttached(container);
+		}
 
 		let wasConnected = container.isConnected;
 		const observer = new MutationObserver(() => {
@@ -71,14 +79,20 @@ export class SettingsView {
 				return;
 			}
 			if (container.isConnected) {
+				if (!wasConnected) {
+					this.onContainerAttached(container);
+				}
 				wasConnected = true;
+				this.clearAttachGuardTimer();
 				return;
 			}
 			if (!wasConnected) {
 				return;
 			}
+			const shouldRestoreFocus = this.shouldRestorePreviousFocus(container);
 			observer.disconnect();
 			this.observer = undefined;
+			this.clearAttachGuardTimer();
 			this.clearRefreshTimer();
 			this.detachResponsiveNavigation();
 			document.body.classList.remove("aura-lyrics-settings-open");
@@ -88,18 +102,50 @@ export class SettingsView {
 				this.panelScroller = undefined;
 				this.providerStatus = undefined;
 				this.musixmatchTokenInput = undefined;
+				this.modalFocusScope = undefined;
 			}
+			this.restorePreviousFocus(shouldRestoreFocus);
 		});
 		this.observer = observer;
 		observer.observe(document.body, { childList: true, subtree: true });
+		if (!wasConnected) {
+			this.attachGuardTimer = window.setTimeout(() => {
+				this.attachGuardTimer = undefined;
+				if (this.observer !== observer) {
+					return;
+				}
+				if (container.isConnected) {
+					wasConnected = true;
+					this.onContainerAttached(container);
+					return;
+				}
+				const shouldRestoreFocus = this.shouldRestorePreviousFocus(container);
+				observer.disconnect();
+				this.observer = undefined;
+				this.clearRefreshTimer();
+				this.detachResponsiveNavigation();
+				document.body.classList.remove("aura-lyrics-settings-open");
+				if (this.container === container) {
+					this.container = undefined;
+					this.navigation = undefined;
+					this.panelScroller = undefined;
+					this.providerStatus = undefined;
+					this.musixmatchTokenInput = undefined;
+					this.modalFocusScope = undefined;
+				}
+				this.restorePreviousFocus(shouldRestoreFocus);
+			}, 0);
+		}
 	}
 
 	public destroy(): void {
 		const shouldHideModal = this.container?.isConnected === true;
+		const shouldRestoreFocus = this.shouldRestorePreviousFocus(this.container);
 		this.cleanupLifecycle(true);
 		if (shouldHideModal) {
 			window.Spicetify?.PopupModal?.hide?.();
 		}
+		this.restorePreviousFocus(shouldRestoreFocus);
 	}
 
 	private mountShell(): void {
@@ -133,7 +179,6 @@ export class SettingsView {
 		button.id = this.tabId(section.id);
 		button.dataset.section = section.id;
 		button.setAttribute("role", "tab");
-		button.setAttribute("aria-controls", this.panelId(section.id));
 		const label = document.createElement("span");
 		label.className = "settings-tab-label";
 		label.textContent = this.t(section.label);
@@ -190,6 +235,11 @@ export class SettingsView {
 			const active = section.id === this.activeSection;
 			button.setAttribute("aria-selected", String(active));
 			button.tabIndex = active ? 0 : -1;
+			if (active) {
+				button.setAttribute("aria-controls", this.panelId(section.id));
+			} else {
+				button.removeAttribute("aria-controls");
+			}
 		}
 	}
 
@@ -258,7 +308,12 @@ export class SettingsView {
 				];
 			case "lyrics":
 				return [
-					this.number("lyrics-delay", this.t("lyricsDelay", language), settings.lyricsDelayMs, (value) => this.update({ lyricsDelayMs: value })),
+					this.number(
+						"lyrics-delay",
+						this.t("lyricsDelay", language),
+						settings.lyricsDelayMs,
+						(value) => this.update({ lyricsDelayMs: value }).lyricsDelayMs
+					),
 					this.range("font-scale", this.t("fontScale", language), settings.fontScale, 0.72, 1.5, 0.01, (value) => this.update({ fontScale: value })),
 					this.select(
 						"sync",
@@ -280,8 +335,11 @@ export class SettingsView {
 						(value) => this.update({ alignmentMode: value as ExtensionSettings["alignmentMode"] }),
 						(value) => this.optionLabel("alignment", value, language)
 					),
-					this.number("context-lines", this.t("contextLines", language), settings.visibleContextLines, (value) =>
-						this.update({ visibleContextLines: value })
+					this.number(
+						"context-lines",
+						this.t("contextLines", language),
+						settings.visibleContextLines,
+						(value) => this.update({ visibleContextLines: value }).visibleContextLines
 					),
 					this.toggle("show-interludes", this.t("showInterludes", language), settings.showInterludes, (value) =>
 						this.update({ showInterludes: value })
@@ -297,7 +355,12 @@ export class SettingsView {
 				];
 			case "appearance":
 				return [
-					this.number("background-blur", this.t("blur", language), settings.backgroundBlurPx, (value) => this.update({ backgroundBlurPx: value })),
+					this.number(
+						"background-blur",
+						this.t("blur", language),
+						settings.backgroundBlurPx,
+						(value) => this.update({ backgroundBlurPx: value }).backgroundBlurPx
+					),
 					this.range("background-dim", this.t("dim", language), settings.backgroundDim, 0, 1, 0.05, (value) => this.update({ backgroundDim: value })),
 					this.range("background-saturation", this.t("saturation", language), settings.backgroundSaturation, 0, 2, 0.05, (value) =>
 						this.update({ backgroundSaturation: value })
@@ -439,12 +502,14 @@ export class SettingsView {
 		return this.row(label, select);
 	}
 
-	private number(controlId: string, label: string, value: number, onChange: (value: number) => void): HTMLElement {
+	private number(controlId: string, label: string, value: number, onChange: (value: number) => number): HTMLElement {
 		const input = document.createElement("input");
 		input.type = "number";
 		input.value = String(value);
 		input.dataset.controlId = controlId;
-		input.addEventListener("change", () => onChange(Number(input.value)));
+		input.addEventListener("change", () => {
+			input.value = String(onChange(Number(input.value)));
+		});
 		return this.row(label, input);
 	}
 
@@ -542,8 +607,8 @@ export class SettingsView {
 		return row;
 	}
 
-	private update(patch: Partial<ExtensionSettings>): void {
-		this.store.update(patch);
+	private update(patch: Partial<ExtensionSettings>): ExtensionSettings {
+		return this.store.update(patch);
 	}
 
 	private moveProvider(provider: ExtensionSettings["providers"]["order"][number], direction: -1 | 1): void {
@@ -647,13 +712,76 @@ export class SettingsView {
 			return;
 		}
 		const control = this.panelScroller.querySelector<HTMLElement>(`[data-control-id="${state.controlId}"]`);
-		control?.focus();
+		if (control instanceof HTMLButtonElement && control.disabled) {
+			this.focusNearestReorderControl(control);
+		} else if (control) {
+			control.focus();
+		} else if (state.controlId.startsWith("provider-") && (state.controlId.endsWith("-up") || state.controlId.endsWith("-down"))) {
+			this.focusActiveTab();
+		}
 		if (control instanceof HTMLInputElement && state.selectionStart != null && state.selectionEnd != null) {
 			try {
 				control.setSelectionRange(state.selectionStart, state.selectionEnd);
 			} catch {
 				// Number and range inputs do not support a text selection.
 			}
+		}
+	}
+
+	private focusNearestReorderControl(control: HTMLButtonElement): void {
+		if (!this.panelScroller) {
+			return;
+		}
+		const controls = Array.from(this.panelScroller.querySelectorAll<HTMLButtonElement>(".icon-button"));
+		const index = controls.indexOf(control);
+		for (let distance = 1; distance < controls.length; distance += 1) {
+			const previous = controls[index - distance];
+			if (previous && !previous.disabled) {
+				previous.focus();
+				return;
+			}
+			const next = controls[index + distance];
+			if (next && !next.disabled) {
+				next.focus();
+				return;
+			}
+		}
+		this.focusActiveTab();
+	}
+
+	private focusActiveTab(): void {
+		this.navigation?.querySelector<HTMLButtonElement>(`[data-section="${this.activeSection}"]`)?.focus();
+	}
+
+	private onContainerAttached(container: HTMLElement): void {
+		this.modalFocusScope = container.closest<HTMLElement>(".main-trackCreditsModal-container") ?? container.parentElement ?? container;
+		this.focusActiveTab();
+	}
+
+	private focusedElement(): HTMLElement | undefined {
+		return document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+	}
+
+	private shouldRestorePreviousFocus(container: HTMLElement | undefined): boolean {
+		const active = this.focusedElement();
+		const focusIsInsideOwnedModal =
+			active !== undefined &&
+			container?.isConnected === true &&
+			this.modalFocusScope?.contains(container) === true &&
+			this.modalFocusScope.contains(active);
+		return (
+			active === document.body ||
+			(active !== undefined && !active.isConnected) ||
+			(active !== undefined && container?.contains(active) === true) ||
+			focusIsInsideOwnedModal
+		);
+	}
+
+	private restorePreviousFocus(shouldRestore: boolean): void {
+		const previousFocus = this.previousFocus;
+		this.previousFocus = undefined;
+		if (shouldRestore && previousFocus?.isConnected) {
+			previousFocus.focus();
 		}
 	}
 
@@ -684,6 +812,7 @@ export class SettingsView {
 	}
 
 	private cleanupLifecycle(removeContainer: boolean): void {
+		this.clearAttachGuardTimer();
 		this.clearRefreshTimer();
 		this.observer?.disconnect();
 		this.observer = undefined;
@@ -696,7 +825,15 @@ export class SettingsView {
 		this.panelScroller = undefined;
 		this.providerStatus = undefined;
 		this.musixmatchTokenInput = undefined;
+		this.modalFocusScope = undefined;
 		document.body.classList.remove("aura-lyrics-settings-open");
+	}
+
+	private clearAttachGuardTimer(): void {
+		if (this.attachGuardTimer !== undefined) {
+			window.clearTimeout(this.attachGuardTimer);
+			this.attachGuardTimer = undefined;
+		}
 	}
 
 	private clearRefreshTimer(): void {

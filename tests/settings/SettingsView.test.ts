@@ -84,10 +84,18 @@ const callbacks = (onRefreshMusixmatchToken: () => Promise<string | undefined> =
 	onRefreshMusixmatchToken,
 });
 
-const openView = (options: { media?: FakeMediaQueryList; onRefreshMusixmatchToken?: () => Promise<string | undefined> } = {}) => {
+const openView = (
+	options: { media?: FakeMediaQueryList; onRefreshMusixmatchToken?: () => Promise<string | undefined>; withTrigger?: boolean } = {}
+) => {
 	const store = new SettingsStore(new MemoryStorage());
 	let content: HTMLElement | undefined;
 	let modal: HTMLElement | undefined;
+	const trigger = options.withTrigger ? document.createElement("button") : undefined;
+	if (trigger) {
+		trigger.textContent = "Open settings";
+		document.body.append(trigger);
+		trigger.focus();
+	}
 	const media = options.media ?? createMediaQueryList();
 	const hide = vi.fn(() => {
 		modal?.remove();
@@ -106,7 +114,8 @@ const openView = (options: { media?: FakeMediaQueryList; onRefreshMusixmatchToke
 				title.dataset.modalTitle = "true";
 				title.textContent = modalOptions.title;
 				modal.append(title, modalOptions.content);
-				document.body.replaceChildren(modal);
+				document.querySelector(".test-popup-modal")?.remove();
+				document.body.append(modal);
 			},
 			hide,
 		},
@@ -119,7 +128,7 @@ const openView = (options: { media?: FakeMediaQueryList; onRefreshMusixmatchToke
 	if (!modal) {
 		throw new Error("Settings modal was not displayed.");
 	}
-	return { content, hide, media, modal, store, view };
+	return { content, hide, media, modal, store, trigger, view };
 };
 
 const tab = (content: HTMLElement, section: string): HTMLButtonElement => {
@@ -186,7 +195,9 @@ describe("SettingsView", () => {
 		expect(content.querySelector('[role="tabpanel"]')?.textContent).toContain("Language");
 		expect(content.querySelector('[role="tabpanel"]')?.textContent).not.toContain("Lyrics delay");
 		expect(tab(content, "general").getAttribute("aria-selected")).toBe("true");
+		expect(tab(content, "general").getAttribute("aria-controls")).toBe("aura-settings-panel-general");
 		expect(tab(content, "general").tabIndex).toBe(0);
+		expect(tab(content, "lyrics").hasAttribute("aria-controls")).toBe(false);
 		expect(tab(content, "lyrics").tabIndex).toBe(-1);
 	});
 
@@ -198,6 +209,8 @@ describe("SettingsView", () => {
 		expect(content.querySelector('[role="tabpanel"]')?.textContent).toContain("Lyrics delay");
 		expect(content.querySelector('[role="tabpanel"]')?.textContent).not.toContain("Language");
 		expect(tab(content, "lyrics").getAttribute("aria-selected")).toBe("true");
+		expect(tab(content, "general").hasAttribute("aria-controls")).toBe(false);
+		expect(tab(content, "lyrics").getAttribute("aria-controls")).toBe("aura-settings-panel-lyrics");
 
 		view.open();
 		const reopened = document.querySelector<HTMLElement>(".aura-lyrics-settings");
@@ -236,6 +249,37 @@ describe("SettingsView", () => {
 		expect(store.get().fontScale).toBe(1.2);
 		expect(control(content, "font-scale")).toBe(range);
 		expect(document.activeElement).toBe(range);
+	});
+
+	test("patches normalized number values into the same focused input", () => {
+		const { content, store } = openView();
+		tab(content, "appearance").click();
+		const blur = control<HTMLInputElement>(content, "background-blur");
+		blur.focus();
+		blur.value = "999";
+		blur.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get().backgroundBlurPx).toBe(80);
+		expect(blur.value).toBe("80");
+		expect(control(content, "background-blur")).toBe(blur);
+		expect(document.activeElement).toBe(blur);
+
+		tab(content, "lyrics").click();
+		const context = control<HTMLInputElement>(content, "context-lines");
+		context.focus();
+		context.value = "1.8";
+		context.dispatchEvent(new Event("change", { bubbles: true }));
+		expect(store.get().visibleContextLines).toBe(2);
+		expect(context.value).toBe("2");
+		expect(document.activeElement).toBe(context);
+
+		const delay = control<HTMLInputElement>(content, "lyrics-delay");
+		delay.focus();
+		delay.value = "99999";
+		delay.dispatchEvent(new Event("change", { bubbles: true }));
+		expect(store.get().lyricsDelayMs).toBe(5000);
+		expect(delay.value).toBe("5000");
+		expect(document.activeElement).toBe(delay);
 	});
 
 	test("keeps the current section through language and preset refreshes", async () => {
@@ -280,9 +324,11 @@ describe("SettingsView", () => {
 		expect(store.get().providers.enabled.lrclib).toBe(false);
 		expect(tab(content, "providers").getAttribute("aria-selected")).toBe("true");
 
+		control<HTMLButtonElement>(content, "provider-lrclib-up").focus();
 		control<HTMLButtonElement>(content, "provider-lrclib-up").click();
 		await flushTimers();
 		expect(store.get().providers.order.slice(0, 2)).toEqual(["lrclib", "spotify"]);
+		expect((document.activeElement as HTMLElement).dataset.controlId).toBe("provider-lrclib-down");
 		expect(tab(content, "providers").getAttribute("aria-selected")).toBe("true");
 
 		const proxyMode = control<HTMLSelectElement>(content, "proxy-mode");
@@ -355,6 +401,9 @@ describe("SettingsView", () => {
 		const css = content.querySelector("style")?.textContent ?? "";
 
 		expect(css).toContain("max-height: min(760px, calc(100vh - 32px))");
+		expect(css).toContain("body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection");
+		expect(css).toContain("body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits");
+		expect(css).not.toContain(".main-trackCreditsModal-content");
 		expect(css).toContain("grid-template-columns: 200px minmax(0, 1fr)");
 		expect(css).toContain(".settings-panel-scroll");
 		expect(css).toContain("overflow-y: auto");
@@ -366,6 +415,62 @@ describe("SettingsView", () => {
 		expect(css).toContain("#ff7457");
 		expect(css).toContain(":focus-visible");
 		expect(css).not.toContain("settings-hero");
+	});
+
+	test("focuses the active tab and restores the connected trigger on close", () => {
+		const { content, trigger, view } = openView({ withTrigger: true });
+		if (!trigger) {
+			throw new Error("Settings trigger was not created.");
+		}
+
+		expect(document.activeElement).toBe(tab(content, "general"));
+
+		view.destroy();
+		expect(document.activeElement).toBe(trigger);
+	});
+
+	test("does not steal focus from another connected surface on detach", () => {
+		const { content, trigger } = openView({ withTrigger: true });
+		if (!trigger) {
+			throw new Error("Settings trigger was not created.");
+		}
+		const otherSurface = document.createElement("button");
+		otherSurface.textContent = "Other modal";
+		document.body.append(otherSurface);
+		otherSurface.focus();
+
+		content.remove();
+		FakeMutationObserver.instances[0].trigger();
+
+		expect(document.activeElement).toBe(otherSurface);
+	});
+
+	test("does not steal focus when the host modal root is reused", () => {
+		const { content, modal, trigger } = openView({ withTrigger: true });
+		if (!trigger) {
+			throw new Error("Settings trigger was not created.");
+		}
+		const replacement = document.createElement("button");
+		replacement.textContent = "Replacement modal";
+		modal.append(replacement);
+		replacement.focus();
+
+		content.remove();
+		FakeMutationObserver.instances[0].trigger();
+
+		expect(document.activeElement).toBe(replacement);
+	});
+
+	test("restores the connected trigger after a natural detach", () => {
+		const { content, trigger } = openView({ withTrigger: true });
+		if (!trigger) {
+			throw new Error("Settings trigger was not created.");
+		}
+
+		content.remove();
+		FakeMutationObserver.instances[0].trigger();
+
+		expect(document.activeElement).toBe(trigger);
 	});
 
 	test("cleans up observers and media listeners across detach, reopen, and destroy", () => {
@@ -406,7 +511,7 @@ describe("SettingsView", () => {
 		expect(hide).toHaveBeenCalledOnce();
 	});
 
-	test("does not clean up before a locally captured container has connected", () => {
+	test("allows a container to connect within the bounded attach task", async () => {
 		const store = new SettingsStore(new MemoryStorage());
 		const media = createMediaQueryList();
 		vi.stubGlobal(
@@ -429,11 +534,34 @@ describe("SettingsView", () => {
 		expect(observer.disconnect).not.toHaveBeenCalled();
 		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(true);
 
-		document.body.append(content as HTMLElement);
-		observer.trigger();
+		queueMicrotask(() => document.body.append(content as HTMLElement));
+		await flushTimers();
 		(content as HTMLElement).remove();
 		observer.trigger();
 		expect(observer.disconnect).toHaveBeenCalledOnce();
+		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
+	});
+
+	test("cleans up when the container misses the bounded attach task", async () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const media = createMediaQueryList();
+		vi.stubGlobal(
+			"matchMedia",
+			vi.fn(() => media)
+		);
+		window.Spicetify = {
+			PopupModal: {
+				display: vi.fn(),
+			},
+		} as unknown as typeof window.Spicetify;
+		const view = new SettingsView(store, providers, callbacks());
+		view.open();
+		const observer = FakeMutationObserver.instances[0];
+
+		await flushTimers();
+
+		expect(observer.disconnect).toHaveBeenCalledOnce();
+		expect(media.removeListenerSpy).toHaveBeenCalledOnce();
 		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
 	});
 });

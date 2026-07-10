@@ -9,10 +9,14 @@ body.aura-lyrics-settings-open .main-trackCreditsModal-container {
 	color: #f5f5f7;
 }
 
-body.aura-lyrics-settings-open .main-trackCreditsModal-content {
+body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection {
 	max-height: 100%;
 	overflow: hidden;
 	padding: 0;
+}
+
+body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits {
+	padding-bottom: 0;
 }
 
 .aura-lyrics-settings {
