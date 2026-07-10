@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { LyricsCache } from "../../src/lyrics/LyricsCache";
 import { LyricsService } from "../../src/lyrics/LyricsService";
 import { ProviderRegistry } from "../../src/lyrics/providers/ProviderRegistry";
@@ -26,6 +26,14 @@ const lineLyrics = (text: string) => ({
 	endTime: 4,
 	content: [{ type: "vocal" as const, text, startTime: 0, endTime: 4, oppositeAligned: false }],
 });
+
+const deferred = <T>() => {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((next) => {
+		resolve = next;
+	});
+	return { promise, resolve };
+};
 
 describe("LyricsService", () => {
 	test("temporarily skips a blocked provider and falls back without retrying it", async () => {
@@ -528,5 +536,50 @@ describe("LyricsService", () => {
 		expect(state).toEqual({ status: "idle" });
 		expect(cache.get(firstTrack.uri)).toBeUndefined();
 		await supersedingLoad;
+	});
+
+	test("a local-track load invalidates a pending network result before it can be cached", async () => {
+		const pending = deferred<ReturnType<typeof lineLyrics>>();
+		const firstTrack = { ...track, uri: "spotify:track:pending-before-local" };
+		const localTrack = { ...track, uri: "spotify:local:aura:album:track:1", isLocal: true };
+		const cache = new LyricsCache();
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: true, lyrics: await pending.promise }),
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { maxAttempts: 1, retryDelayMs: 0 });
+
+		const staleLoad = service.load(firstTrack, DEFAULT_SETTINGS);
+		await expect(service.load(localTrack, DEFAULT_SETTINGS)).resolves.toEqual({ status: "empty", track: localTrack, reason: "unsupported-local" });
+		pending.resolve(lineLyrics("Stale after local"));
+
+		await expect(staleLoad).resolves.toEqual({ status: "idle" });
+		expect(cache.get(firstTrack.uri)).toBeUndefined();
+	});
+
+	test("invalidate prevents a pending network result from reaching the cache", async () => {
+		const pending = deferred<void>();
+		const pendingTrack = { ...track, uri: "spotify:track:pending-before-invalidate" };
+		const cache = new LyricsCache();
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => {
+				await pending.promise;
+				return { ok: false, reason: "no-lyrics" };
+			},
+		};
+		const fallbackFetch = vi.fn(async () => ({ ok: true as const, lyrics: lineLyrics("Fallback must not run") }));
+		const fallback: LyricsProvider = { id: "lrclib", supports: () => true, fetch: fallbackFetch };
+		const service = new LyricsService(new ProviderRegistry([provider, fallback]), cache, () => context, { maxAttempts: 1, retryDelayMs: 0 });
+
+		const staleLoad = service.load(pendingTrack, DEFAULT_SETTINGS);
+		service.invalidate();
+		pending.resolve();
+
+		await expect(staleLoad).resolves.toEqual({ status: "idle" });
+		expect(fallbackFetch).not.toHaveBeenCalled();
+		expect(cache.get(pendingTrack.uri)).toBeUndefined();
 	});
 });

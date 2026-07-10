@@ -25,11 +25,15 @@ export class LyricsService {
 		this.cacheRepository.clear();
 	}
 
+	public invalidate(): void {
+		this.requestId += 1;
+	}
+
 	public async load(track: TrackIdentity, settings: ExtensionSettings, refresh = false): Promise<LyricsLoadState> {
+		const currentRequest = ++this.requestId;
 		if (track.isLocal) {
 			return { status: "empty", track, reason: "unsupported-local" };
 		}
-		const currentRequest = ++this.requestId;
 		const providers = this.registry.ordered(settings);
 		const primaryProvider = providers.find((provider) => provider.supports(track));
 		const cached = this.cacheRepository.lookup(track.uri, primaryProvider?.id, refresh);

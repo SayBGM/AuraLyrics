@@ -20,6 +20,7 @@ import { SettingsView } from "../settings/SettingsView";
 import type { ExtensionSettings } from "../settings/settingsSchema";
 import { pipStyles } from "../styles/pipStyles";
 import { MusicStateMachine } from "./MusicStateMachine";
+import { rendererSettingsChange } from "./SettingsChange";
 import { TopbarController } from "./TopbarController";
 import { presentationStateForSnapshot, type TrackPresentationState } from "./TrackPresentationState";
 import {
@@ -57,10 +58,13 @@ export class ExtensionApp {
 	private themeGeneration = 0;
 	private started = false;
 	private isPlaybackActive = false;
+	private appliedSettings: ExtensionSettings;
+	private settingsPresentationGeneration = 0;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
 		this.settings = new SettingsStore(this.storage);
+		this.appliedSettings = this.settings.get();
 		this.cache = new LyricsCache(this.storage);
 		this.player = new SpicetifyPlayerAdapter(spicetify);
 		this.playbackSynchronizer = new PlaybackSynchronizer(() => this.player.getTimestamp(this.settings.get().lyricsDelayMs));
@@ -88,6 +92,7 @@ export class ExtensionApp {
 			{
 				load: (track, settings, refresh) => this.lyricsService.load(track, settings, refresh),
 				refreshCooldowns: () => this.lyricsService.refreshCooldowns(),
+				invalidate: () => this.lyricsService.invalidate(),
 			},
 			{
 				loadProfile: (track) => this.waveformService.loadProfile(track),
@@ -356,12 +361,20 @@ export class ExtensionApp {
 	private async applySettings(): Promise<void> {
 		const session = this.session;
 		const settings = this.settings.get();
+		const change = rendererSettingsChange(this.appliedSettings, settings);
+		this.appliedSettings = settings;
 		this.session?.applySettings(settings);
+		this.renderer.applySettings(settings);
 		if (this.session) {
 			this.playbackSynchronizer.resync();
 		}
+		if (!session || change !== "structural") {
+			return;
+		}
+		const presentationGeneration = ++this.settingsPresentationGeneration;
 		const snapshot = await this.trackSession.updateSettings(settings);
 		if (
+			presentationGeneration !== this.settingsPresentationGeneration ||
 			!snapshot ||
 			!this.trackSession.isCurrent(snapshot) ||
 			this.session !== session ||

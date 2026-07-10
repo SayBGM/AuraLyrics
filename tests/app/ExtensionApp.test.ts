@@ -328,7 +328,7 @@ describe("ExtensionApp", () => {
 			};
 			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
 			trackSession: typeof trackSession;
-			renderer: { mount: typeof mount };
+			renderer: { applySettings: () => void; mount: typeof mount };
 			applySettings: () => Promise<void>;
 		};
 		internals.session = {
@@ -337,7 +337,7 @@ describe("ExtensionApp", () => {
 		};
 		internals.currentTrack = snapshot.loadState.track;
 		internals.trackSession = trackSession;
-		internals.renderer = { mount };
+		internals.renderer = { applySettings: vi.fn(), mount };
 
 		const applying = internals.applySettings();
 		snapshotResult.resolve(snapshot);
@@ -345,6 +345,93 @@ describe("ExtensionApp", () => {
 		await applying;
 
 		expect(mount).not.toHaveBeenCalled();
+	});
+
+	test("applies visual settings live without asking the track session to rebuild lyrics", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const applySessionSettings = vi.fn();
+		const applyRendererSettings = vi.fn();
+		const updateSettings = vi.fn();
+		const mount = vi.fn();
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: typeof applySessionSettings };
+			settings: { update: (patch: unknown) => void };
+			trackSession: { updateSettings: typeof updateSettings };
+			renderer: { applySettings: typeof applyRendererSettings; mount: typeof mount };
+			applySettings: () => Promise<void>;
+		};
+		internals.session = { root: document.createElement("main"), applySettings: applySessionSettings };
+		internals.trackSession = { updateSettings };
+		internals.renderer = { applySettings: applyRendererSettings, mount };
+		internals.settings.update({ fontScale: 1.25, alignmentMode: "left", reduceMotion: true });
+
+		await internals.applySettings();
+
+		expect(applySessionSettings).toHaveBeenCalledOnce();
+		expect(applyRendererSettings).toHaveBeenCalledOnce();
+		expect(updateSettings).not.toHaveBeenCalled();
+		expect(mount).not.toHaveBeenCalled();
+	});
+
+	test("rebuilds ready lyrics for a structural setting change", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const snapshot = readySnapshot();
+		const mount = vi.fn();
+		const updateSettings = vi.fn(async () => snapshot);
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: () => void };
+			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
+			settings: { update: (patch: unknown) => void };
+			trackSession: { updateSettings: typeof updateSettings; isCurrent: () => boolean };
+			renderer: { applySettings: () => void; mount: typeof mount };
+			applySettings: () => Promise<void>;
+		};
+		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
+		internals.currentTrack = snapshot.loadState.track;
+		internals.trackSession = { updateSettings, isCurrent: () => true };
+		internals.renderer = { applySettings: vi.fn(), mount };
+		internals.settings.update({ showTranslation: false });
+
+		await internals.applySettings();
+
+		expect(updateSettings).toHaveBeenCalledOnce();
+		expect(mount).toHaveBeenCalledOnce();
+	});
+
+	test("mounts only the latest result when structural setting rebuilds overlap", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const snapshot = readySnapshot();
+		const first = deferred<TrackSessionSnapshot | undefined>();
+		const second = deferred<TrackSessionSnapshot | undefined>();
+		const mount = vi.fn();
+		const updateSettings = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: () => void };
+			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
+			settings: { update: (patch: unknown) => void };
+			trackSession: { updateSettings: typeof updateSettings; isCurrent: () => boolean };
+			renderer: { applySettings: () => void; mount: typeof mount };
+			applySettings: () => Promise<void>;
+		};
+		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
+		internals.currentTrack = snapshot.loadState.track;
+		internals.trackSession = { updateSettings, isCurrent: () => true };
+		internals.renderer = { applySettings: vi.fn(), mount };
+
+		internals.settings.update({ showTranslation: false });
+		const firstApply = internals.applySettings();
+		internals.settings.update({ showTranslation: true });
+		const secondApply = internals.applySettings();
+		second.resolve(snapshot);
+		await secondApply;
+		first.resolve(snapshot);
+		await firstApply;
+
+		expect(updateSettings).toHaveBeenCalledTimes(2);
+		expect(mount).toHaveBeenCalledOnce();
 	});
 
 	test("invalidates track sessions on track change, PiP close, and destroy", async () => {
@@ -821,13 +908,14 @@ describe("ExtensionApp", () => {
 				applyTheme: (theme?: TrackTheme) => void;
 			};
 			currentTrack?: TrackIdentity;
-			lyricsService: { load: (track: TrackIdentity) => Promise<LyricsLoadState> };
+			lyricsService: { invalidate: () => void; load: (track: TrackIdentity) => Promise<LyricsLoadState> };
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
 		};
 		internals.session = { root, setCover, applyTheme };
 		internals.currentTrack = track;
 		internals.lyricsService = {
+			invalidate: vi.fn(),
 			load: vi.fn(async (currentTrack): Promise<LyricsLoadState> => ({ status: "empty", track: currentTrack, reason: "no-lyrics" })),
 		};
 

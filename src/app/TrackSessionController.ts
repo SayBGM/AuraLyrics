@@ -26,6 +26,7 @@ export type TrackSessionSnapshot = NonReadyTrackSessionSnapshot | ReadyTrackSess
 export type TrackSessionLyricsService = {
 	load(track: TrackIdentity, settings: ExtensionSettings, refresh: boolean): Promise<LyricsLoadState>;
 	refreshCooldowns(): void;
+	invalidate(): void;
 };
 
 export type TrackSessionWaveformService = {
@@ -88,6 +89,7 @@ export class TrackSessionController {
 	public invalidate(): void {
 		this.generation += 1;
 		this.snapshot = idleSnapshot();
+		this.lyricsService.invalidate();
 	}
 
 	public async load(track: TrackIdentity, settings: ExtensionSettings, refresh: boolean): Promise<TrackSessionSnapshot | undefined> {

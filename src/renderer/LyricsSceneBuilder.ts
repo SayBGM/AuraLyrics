@@ -79,6 +79,7 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, { lyrics, settings, w
 		if (translatedText) {
 			group.append(createTranslationElement(translatedText, ownerDocument));
 		}
+		let liveSettings = settings;
 		const animated: AnimatedGroup = {
 			element: group,
 			startTime,
@@ -87,14 +88,21 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, { lyrics, settings, w
 				animated.endTime = Math.max(holdEndTime, ...vocalRanges.map((vocal) => vocal.endTime));
 			},
 			animate: (timestamp, deltaTime) => {
-				lead.animate(timestamp, deltaTime, settings.reduceMotion);
+				lead.animate(timestamp, deltaTime, liveSettings.reduceMotion || !liveSettings.motionEnabled);
 				for (const background of backgrounds) {
-					background.animate(timestamp, deltaTime, settings.reduceMotion);
+					background.animate(timestamp, deltaTime, liveSettings.reduceMotion || !liveSettings.motionEnabled);
 				}
 				const active = timestamp >= startTime && timestamp < animated.endTime;
 				group.classList.toggle("active", active);
 				group.classList.toggle("sung", timestamp >= animated.endTime);
 				group.classList.toggle("idle", timestamp < startTime);
+			},
+			applySettings: (nextSettings) => {
+				liveSettings = nextSettings;
+				lead.applySettings(nextSettings);
+				for (const background of backgrounds) {
+					background.applySettings(nextSettings);
+				}
 			},
 		};
 		groups.push(animated);

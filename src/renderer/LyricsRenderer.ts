@@ -102,6 +102,22 @@ export class LyricsRenderer {
 		this.viewportController?.update();
 	}
 
+	public applySettings(settings: ExtensionSettings): void {
+		if (this.container) {
+			this.applyRootSettings(this.container, settings);
+		}
+		if (this.lyricsTrack) {
+			for (const alignment of ["natural", "center", "left"] as const) {
+				this.lyricsTrack.classList.toggle(`align-${alignment}`, settings.alignmentMode === alignment);
+			}
+		}
+		this.viewportController?.applySettings(settings);
+		this.viewportController?.update();
+		for (const group of this.groups) {
+			group.applySettings?.(settings);
+		}
+	}
+
 	public destroy(): void {
 		this.interludeFrameController?.destroy();
 		this.setAlbumArtMode(this.hostRoot, false);
@@ -123,7 +139,9 @@ export class LyricsRenderer {
 		root.style.setProperty("--vignette-strength", String(settings.vignetteStrength));
 		root.style.setProperty("--inactive-blur", `${settings.inactiveBlurPx}px`);
 		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
+		root.style.setProperty("--spring-softness", String(settings.springSoftness));
 		root.style.fontFamily = `${settings.fontFamily}, sans-serif`;
+		root.classList.toggle("reduce-motion", settings.reduceMotion || !settings.motionEnabled);
 	}
 
 	private applyRhythmProfile(root: HTMLElement, rhythm: RhythmProfile | undefined): void {

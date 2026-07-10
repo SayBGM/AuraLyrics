@@ -18,6 +18,127 @@ const mountRenderer = (
 };
 
 describe("LyricsRenderer", () => {
+	test("applies visual settings to an existing lyrics scene without replacing its DOM", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 10,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 10,
+						syllables: [{ text: "Aurora", startTime: 0, endTime: 10, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS });
+		const scene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const row = root.querySelector<HTMLElement>(".syllable-row");
+		const vocals = root.querySelector<HTMLElement>(".vocals.lead");
+
+		renderer.applySettings({
+			...DEFAULT_SETTINGS,
+			fontScale: 1.32,
+			fontFamily: "Inter",
+			backgroundBlurPx: 24,
+			backgroundDim: 0.62,
+			backgroundSaturation: 0.74,
+			vignetteStrength: 0.48,
+			inactiveBlurPx: 1.4,
+			motionIntensity: 0.45,
+			springSoftness: 0.9,
+			glowStrength: 0.25,
+			reduceMotion: true,
+			alignmentMode: "left",
+			visibleContextLines: 2,
+		});
+
+		expect(root.querySelector(".aura-lyrics")).toBe(scene);
+		expect(root.querySelector(".syllable-row")).toBe(row);
+		expect(scene?.style.getPropertyValue("--font-scale")).toBe("1.32");
+		expect(scene?.style.getPropertyValue("--background-blur")).toBe("24px");
+		expect(scene?.style.getPropertyValue("--background-dim")).toBe("0.62");
+		expect(scene?.style.getPropertyValue("--background-saturation")).toBe("0.74");
+		expect(scene?.style.getPropertyValue("--vignette-strength")).toBe("0.48");
+		expect(scene?.style.getPropertyValue("--inactive-blur")).toBe("1.4px");
+		expect(scene?.style.getPropertyValue("--motion-intensity")).toBe("0.45");
+		expect(scene?.style.getPropertyValue("--spring-softness")).toBe("0.9");
+		expect(scene?.style.fontFamily).toBe("Inter, sans-serif");
+		expect(scene?.classList.contains("reduce-motion")).toBe(true);
+		expect(root.querySelector(".lyrics-track")?.classList.contains("align-left")).toBe(true);
+		expect(vocals?.style.getPropertyValue("--glow-strength")).toBe("0.25");
+		renderer.applySettings({ ...DEFAULT_SETTINGS, motionIntensity: 0, glowStrength: 0, reduceMotion: true });
+		renderer.update(5, 1 / 60);
+		const syllable = root.querySelector<HTMLElement>(".syllable.synced");
+		expect(syllable?.style.scale).toBe("1");
+		expect(syllable?.style.transform).toBe("translateY(calc(var(--lyrics-size) * 0))");
+		expect(syllable?.style.getPropertyValue("--text-shadow-opacity")).toBe("0%");
+	});
+
+	test.each(["status", "metadata"] as const)("applies live font and motion settings to a %s scene", (sceneKind) => {
+		const root = document.createElement("div");
+		const renderer = new LyricsRenderer();
+		if (sceneKind === "status") {
+			renderer.showStatus(root, { title: "Waiting" }, DEFAULT_SETTINGS);
+		} else {
+			renderer.showTrackMetadata(
+				root,
+				{
+					mode: "loading",
+					track: {
+						uri: "spotify:track:settings",
+						title: "Settings",
+						artist: "Aura",
+						album: "Live",
+						durationMs: 1,
+						isLocal: false,
+					},
+				},
+				DEFAULT_SETTINGS
+			);
+		}
+		const scene = root.firstElementChild;
+
+		renderer.applySettings({ ...DEFAULT_SETTINGS, fontFamily: "Arial", fontScale: 1.2, motionIntensity: 0.3, reduceMotion: true });
+
+		expect(root.firstElementChild).toBe(scene);
+		expect((scene as HTMLElement).style.fontFamily).toBe("Arial, sans-serif");
+		expect((scene as HTMLElement).style.getPropertyValue("--font-scale")).toBe("1.2");
+		expect((scene as HTMLElement).style.getPropertyValue("--motion-intensity")).toBe("0.3");
+		expect(scene?.classList.contains("reduce-motion")).toBe(true);
+	});
+
+	test("updates context visibility live without replacing line rows", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 25,
+			content: Array.from({ length: 5 }, (_, index) => ({
+				type: "vocal" as const,
+				text: String(index + 1),
+				startTime: index * 5,
+				endTime: (index + 1) * 5,
+				oppositeAligned: false,
+			})),
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: { ...DEFAULT_SETTINGS, visibleContextLines: 0 } });
+		renderer.update(11, 1 / 60);
+		const rows = Array.from(root.querySelectorAll<HTMLElement>(".line-group"));
+		expect(rows.map((row) => row.classList.contains("out-of-context"))).toEqual([true, true, false, true, true]);
+
+		renderer.applySettings({ ...DEFAULT_SETTINGS, visibleContextLines: 2 });
+
+		expect(Array.from(root.querySelectorAll(".line-group"))).toEqual(rows);
+		expect(rows.every((row) => !row.classList.contains("out-of-context"))).toBe(true);
+	});
 	test("renders the loading track metadata once with a decorative progress line", () => {
 		const root = document.createElement("div");
 		const track: TrackIdentity = {

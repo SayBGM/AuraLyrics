@@ -41,13 +41,21 @@ export const contextStateForRow = (index: number, focusedIndex: number | undefin
 };
 
 export class LyricsViewportController {
+	private settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">;
+
 	public constructor(
 		private readonly lyricsTrack: HTMLElement,
 		private readonly lyricsViewport: HTMLElement,
 		private readonly container: HTMLElement,
-		private readonly settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">,
+		settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">,
 		private readonly groups: AnimatedGroup[]
-	) {}
+	) {
+		this.settings = settings;
+	}
+
+	public applySettings(settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">): void {
+		this.settings = settings;
+	}
 
 	public update(): void {
 		const previewRow = this.settings.interludeStyle === "frame" ? this.getInterludePreviewRow() : undefined;

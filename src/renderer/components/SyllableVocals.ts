@@ -33,6 +33,8 @@ export class SyllableVocals {
 	public hasParenthetical = false;
 	private readonly liveSyllables: LiveSyllable[] = [];
 	private readonly liveRows: LiveRow[] = [];
+	private motionIntensity = 1;
+	private glowStrength = 0.8;
 
 	public constructor(
 		private readonly vocal: SyllableVocal,
@@ -64,8 +66,8 @@ export class SyllableVocals {
 
 		for (const live of this.liveSyllables) {
 			const progress = clamp((timestamp - live.metadata.startTime) / Math.max(live.metadata.endTime - live.metadata.startTime, 0.001), 0, 1);
-			const scale = scaleCurve.at(progress);
-			const yOffset = yOffsetCurve.at(progress);
+			const scale = 1 + (scaleCurve.at(progress) - 1) * this.motionIntensity;
+			const yOffset = yOffsetCurve.at(progress) * this.motionIntensity;
 			const glow = glowCurve.at(progress);
 			if (immediate) {
 				live.scale.set(scale);
@@ -81,8 +83,8 @@ export class SyllableVocals {
 			let nextGlow = live.glow.update(deltaTime);
 			if (live.element.classList.contains("korean-melisma-sustain")) {
 				const melisma = melismaBoostForProgress(progress);
-				nextScale += melisma.scale;
-				nextYOffset += melisma.yOffset;
+				nextScale += melisma.scale * this.motionIntensity;
+				nextYOffset += melisma.yOffset * this.motionIntensity;
 				nextGlow = Math.max(nextGlow, melisma.glow);
 				live.element.style.setProperty("--melisma-step", String(melisma.step));
 			}
@@ -90,13 +92,16 @@ export class SyllableVocals {
 			live.element.classList.toggle("sung", timestamp > live.metadata.endTime);
 			live.element.style.scale = nextScale.toString();
 			live.element.style.transform = `translateY(calc(var(--lyrics-size) * ${nextYOffset}))`;
-			live.element.style.setProperty("--text-shadow-opacity", `${nextGlow * 100}%`);
-			live.element.style.setProperty("--text-shadow-blur-radius", `${4 + nextGlow * 8}px`);
+			const effectiveGlow = nextGlow * (this.glowStrength / 0.8);
+			live.element.style.setProperty("--text-shadow-opacity", `${effectiveGlow * 100}%`);
+			live.element.style.setProperty("--text-shadow-blur-radius", `${4 + effectiveGlow * 8}px`);
 			live.element.style.setProperty("--gradient-progress", `${progress * 100}%`);
 		}
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
+		this.motionIntensity = Math.max(0, settings.motionIntensity);
+		this.glowStrength = Math.max(0, settings.glowStrength);
 		this.element.style.setProperty("--font-scale", String(settings.fontScale));
 		this.element.style.setProperty("--glow-strength", String(settings.glowStrength));
 	}

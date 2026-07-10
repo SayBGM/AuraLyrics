@@ -80,15 +80,24 @@ const createController = (
 	} = {}
 ) => {
 	const refreshCooldowns = vi.fn();
+	const invalidate = vi.fn();
 	const load = vi.fn(options.load ?? (async (currentTrack) => ready(currentTrack, lineLyrics())));
 	const loadProfile = vi.fn(options.loadProfile ?? (async (currentTrack) => profile(currentTrack)));
 	const getAnalysis = vi.fn(options.getAnalysis ?? (async () => undefined));
 	const buildPseudoKaraoke = vi.fn(options.buildPseudoKaraoke ?? (() => syllableLyrics()));
-	const controller = new TrackSessionController({ load, refreshCooldowns }, { loadProfile, getAnalysis }, buildPseudoKaraoke);
-	return { buildPseudoKaraoke, controller, getAnalysis, load, loadProfile, refreshCooldowns };
+	const controller = new TrackSessionController({ load, refreshCooldowns, invalidate }, { loadProfile, getAnalysis }, buildPseudoKaraoke);
+	return { buildPseudoKaraoke, controller, getAnalysis, invalidate, load, loadProfile, refreshCooldowns };
 };
 
 describe("TrackSessionController", () => {
+	test("invalidates the underlying lyrics pipeline together with the track generation", () => {
+		const { controller, invalidate } = createController();
+
+		controller.invalidate();
+
+		expect(invalidate).toHaveBeenCalledOnce();
+		expect(controller.getSnapshot().loadState).toEqual({ status: "idle" });
+	});
 	test.each([
 		{ name: "static", lyrics: staticLyrics() },
 		{ name: "line", lyrics: lineLyrics() },
