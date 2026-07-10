@@ -1,15 +1,32 @@
 import { describe, expect, test } from "vitest";
-import { baseStyles, controlsStyles, interludeStyles, lyricsStyles, pipStyleModules, pipStyles, statusStyles } from "../../src/styles/pipStyles";
+import {
+	baseStyles,
+	controlsStyles,
+	interludeStyles,
+	lyricsStyles,
+	metadataStyles,
+	pipStyleModules,
+	pipStyles,
+	statusStyles,
+} from "../../src/styles/pipStyles";
 
 describe("pipStyles", () => {
 	test("assembles the final CSS from focused style modules in display order", () => {
-		expect(pipStyleModules).toEqual([baseStyles, controlsStyles, lyricsStyles, interludeStyles, statusStyles]);
+		expect(pipStyleModules).toEqual([baseStyles, controlsStyles, lyricsStyles, interludeStyles, metadataStyles, statusStyles]);
 		expect(pipStyles).toBe(pipStyleModules.join("\n"));
 		expect(baseStyles).toContain("#aura-lyrics-root");
 		expect(controlsStyles).toContain(".pip-controls");
 		expect(lyricsStyles).toContain(".lyrics-viewport");
 		expect(interludeStyles).toContain(".interlude");
+		expect(metadataStyles).toContain(".track-metadata-scene");
 		expect(statusStyles).toContain(".status-card");
+	});
+
+	test("animates loading progress for three seconds with themed foreground and scrim colors", () => {
+		expect(metadataStyles).toContain("animation: track-metadata-progress 3s");
+		expect(metadataStyles).toContain("var(--pip-foreground-color)");
+		expect(metadataStyles).toContain("rgba(var(--pip-scrim-rgb)");
+		expect(metadataStyles).not.toContain(["NOW", "PLAYING"].join(" "));
 	});
 
 	test("keeps focused module boundaries free of unrelated selectors", () => {

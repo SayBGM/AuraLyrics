@@ -21,6 +21,7 @@ import type { ExtensionSettings } from "../settings/settingsSchema";
 import { pipStyles } from "../styles/pipStyles";
 import { MusicStateMachine } from "./MusicStateMachine";
 import { TopbarController } from "./TopbarController";
+import { presentationStateForSnapshot, type TrackPresentationState } from "./TrackPresentationState";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "./TrackSessionController";
 import { TrackThemeService } from "./TrackThemeService";
 
@@ -226,7 +227,7 @@ export class ExtensionApp {
 		this.session.setCover(track.coverUrl);
 		void this.applyTrackTheme(track, themeGeneration);
 		this.stateMachine.dispatch({ type: "validTrack" });
-		this.showStatus("Loading lyrics", track.title);
+		this.renderPresentationState({ kind: "loading", track });
 		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh);
 		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.session || this.currentTrack?.uri !== track.uri) return;
 		this.playbackSynchronizer.resync();
@@ -258,27 +259,33 @@ export class ExtensionApp {
 	}
 
 	private renderLoadState(snapshot: TrackSessionSnapshot): void {
-		if (!this.session) {
-			return;
+		const presentation = presentationStateForSnapshot(snapshot);
+		if (presentation) {
+			this.renderPresentationState(presentation);
 		}
-		if (isReadyTrackSessionSnapshot(snapshot)) {
-			this.stateMachine.dispatch({ type: "lyricsReady" });
-			this.mountReadySnapshot(snapshot);
-			return;
-		}
-		const state = snapshot.loadState;
-		if (state.status === "empty") {
-			this.stateMachine.dispatch({ type: "noLyrics", message: state.reason });
-			if (state.reason === "instrumental") {
+	}
+
+	private renderPresentationState(state: TrackPresentationState): void {
+		if (!this.session) return;
+		switch (state.kind) {
+			case "loading":
+				this.renderer.showTrackMetadata(this.session.root, { mode: "loading", track: state.track }, this.settings.get());
+				return;
+			case "lyrics":
+				this.stateMachine.dispatch({ type: "lyricsReady" });
+				this.mountReadySnapshot(state.snapshot);
+				return;
+			case "instrumental":
+				this.stateMachine.dispatch({ type: "noLyrics", message: "instrumental" });
 				this.renderer.showAlbumArt(this.session.root);
 				return;
-			}
-			this.showStatus("No synced lyrics", state.track.title, "Retry current track");
-			return;
-		}
-		if (state.status === "error") {
-			this.stateMachine.dispatch({ type: "providerError", message: state.message });
-			this.showStatus("Lyrics failed", state.message, "Retry current track", "danger");
+			case "metadata":
+				if (state.reason === "error") {
+					this.stateMachine.dispatch({ type: "providerError", message: state.message ?? "error" });
+				} else {
+					this.stateMachine.dispatch({ type: "noLyrics", message: state.reason });
+				}
+				this.renderer.showTrackMetadata(this.session.root, { mode: "persistent", track: state.track }, this.settings.get());
 		}
 	}
 

@@ -6,6 +6,7 @@ import { clamp } from "./animation/Spline";
 import { InterludeView } from "./components/Interlude";
 import { LineVocals } from "./components/LineVocals";
 import { SyllableVocals } from "./components/SyllableVocals";
+import { createTrackMetadataScene, type TrackMetadataViewModel } from "./components/TrackMetadata";
 import type { FrameProgressDimensions } from "./interludeProgress";
 import { frameSizeForViewport, interludeKey, progressPercent, splitFrameProgress } from "./interludeProgress";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
@@ -103,6 +104,15 @@ export class LyricsRenderer {
 			card.append(button);
 		}
 		this.container.append(card);
+		root.replaceChildren(this.container);
+	}
+
+	public showTrackMetadata(root: HTMLElement, metadata: TrackMetadataViewModel, settings: ExtensionSettings): void {
+		this.destroy();
+		this.hostRoot = root;
+		this.setAlbumArtMode(root, false);
+		this.container = createTrackMetadataScene(root.ownerDocument, metadata);
+		this.applyRootSettings(this.container, settings);
 		root.replaceChildren(this.container);
 	}
 

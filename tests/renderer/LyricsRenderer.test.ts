@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { LineLyrics, SyllableLyrics } from "../../src/lyrics/types";
+import type { LineLyrics, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
 import { interludeKey, LyricsRenderer } from "../../src/renderer/LyricsRenderer";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
 
@@ -18,6 +18,73 @@ const mountRenderer = (
 };
 
 describe("LyricsRenderer", () => {
+	test("renders the loading track metadata once with a decorative progress line", () => {
+		const root = document.createElement("div");
+		const track: TrackIdentity = {
+			uri: "spotify:track:loading",
+			title: "Northern Lights",
+			artist: "Aura",
+			album: "Aurora Album",
+			durationMs: 180_000,
+			coverUrl: "https://example.com/aurora.jpg",
+			isLocal: false,
+		};
+		const renderer = new LyricsRenderer();
+
+		renderer.showTrackMetadata(root, { mode: "loading", track }, DEFAULT_SETTINGS);
+
+		const text = root.textContent ?? "";
+		expect(text.match(/LOADING/g)).toHaveLength(1);
+		expect(text.match(/Aurora Album/g)).toHaveLength(1);
+		expect(text).not.toContain(["NOW", "PLAYING"].join(" "));
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe("Northern Lights");
+		expect(root.querySelector(".track-metadata-byline")?.textContent).toBe("Aura · Aurora Album");
+		expect(root.querySelector<HTMLImageElement>(".track-metadata-cover")?.src).toBe("https://example.com/aurora.jpg");
+		expect(root.querySelector(".track-metadata-progress")?.getAttribute("aria-hidden")).toBe("true");
+	});
+
+	test("keeps failed track metadata without a label, progress line, or retry card", () => {
+		const root = document.createElement("div");
+		const track: TrackIdentity = {
+			uri: "spotify:track:failed",
+			title: "Quiet Signal",
+			artist: "Aura",
+			album: "Offline",
+			durationMs: 180_000,
+			isLocal: false,
+		};
+		const renderer = new LyricsRenderer();
+
+		renderer.showTrackMetadata(root, { mode: "persistent", track }, DEFAULT_SETTINGS);
+
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe("Quiet Signal");
+		expect(root.querySelector(".track-metadata-byline")?.textContent).toBe("Aura · Offline");
+		expect(root.querySelector(".track-metadata-eyebrow")).toBeNull();
+		expect(root.querySelector(".track-metadata-progress")).toBeNull();
+		expect(root.querySelector(".status-card")).toBeNull();
+		expect(root.querySelector("button")).toBeNull();
+	});
+
+	test("omits empty metadata separators and a missing cover while preserving the title", () => {
+		const root = document.createElement("div");
+		const track: TrackIdentity = {
+			uri: "spotify:track:sparse",
+			title: "Title Only",
+			artist: "",
+			album: "",
+			durationMs: 0,
+			isLocal: false,
+		};
+		const renderer = new LyricsRenderer();
+
+		renderer.showTrackMetadata(root, { mode: "loading", track }, DEFAULT_SETTINGS);
+
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe("Title Only");
+		expect(root.querySelector(".track-metadata-byline")).toBeNull();
+		expect(root.querySelector(".track-metadata-cover")).toBeNull();
+		expect(root.textContent).not.toContain("·");
+	});
+
 	test("shows a folded-corner marker only for synthesized karaoke", () => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {

@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
 import type { ReadyTrackSessionSnapshot, TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
-import type { LineLyrics } from "../../src/lyrics/types";
+import type { LineLyrics, LyricsLoadState, TrackIdentity } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
@@ -65,7 +65,157 @@ const readySnapshot = (): ReadyTrackSessionSnapshot => ({
 	timingSource: "native",
 });
 
+const metadataTrack = (uri = "spotify:track:metadata", overrides: Partial<TrackIdentity> = {}): TrackIdentity => ({
+	uri,
+	title: "Aurora Signal",
+	artist: "Aura",
+	album: "Night Edition",
+	durationMs: 180_000,
+	coverUrl: "https://example.com/aurora.jpg",
+	isLocal: false,
+	...overrides,
+});
+
+const readyLoadState = (track: TrackIdentity, source: "cache" | "network" = "network"): LyricsLoadState => ({
+	status: "ready",
+	track,
+	lyrics: {
+		type: "line",
+		startTime: 0,
+		endTime: 4,
+		content: [{ type: "vocal", text: "Ready", startTime: 0, endTime: 4, oppositeAligned: false }],
+	},
+	provider: "lrclib",
+	source,
+	diagnostics: { cache: source === "cache" ? { status: "hit", provider: "lrclib" } : { status: "miss" }, attempts: [] },
+});
+
 describe("ExtensionApp", () => {
+	test("shows track metadata while lyrics are unresolved and replaces it immediately when ready", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack();
+		const result = deferred<LyricsLoadState>();
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState> };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = { load: vi.fn(() => result.promise) };
+
+		const loading = internals.loadCurrentTrack(false);
+
+		expect(root.querySelector(".track-metadata-eyebrow")?.textContent).toBe("LOADING");
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
+		expect(root.querySelector(".track-metadata-progress")).not.toBeNull();
+
+		result.resolve(readyLoadState(track));
+		await loading;
+
+		expect(root.querySelector(".lyrics-track")?.textContent).toContain("Ready");
+		expect(root.querySelector(".track-metadata-scene")).toBeNull();
+	});
+
+	test("does not leave a metadata overlay after a same-turn cache hit", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:cached");
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState> };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = { load: vi.fn(async () => readyLoadState(track, "cache")) };
+
+		await internals.loadCurrentTrack(false);
+
+		expect(root.querySelector(".lyrics-track")?.textContent).toContain("Ready");
+		expect(root.querySelector(".track-metadata-scene")).toBeNull();
+	});
+
+	test.each([
+		{
+			name: "provider error",
+			track: metadataTrack("spotify:track:error"),
+			state: (track: TrackIdentity): LyricsLoadState => ({ status: "error", track, message: "offline" }),
+		},
+		{
+			name: "missing lyrics",
+			track: metadataTrack("spotify:track:empty"),
+			state: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "no-lyrics" }),
+		},
+		{
+			name: "unsupported local track",
+			track: metadataTrack("spotify:local:aura:night:signal:180", { isLocal: true }),
+			state: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "unsupported-local" }),
+		},
+	])("keeps plain track metadata for $name", async ({ track, state }) => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState> };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = { load: vi.fn(async () => state(track)) };
+
+		await internals.loadCurrentTrack(false);
+
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
+		expect(root.querySelector(".track-metadata-byline")?.textContent).toBe(`${track.artist} · ${track.album}`);
+		expect(root.querySelector(".track-metadata-eyebrow")).toBeNull();
+		expect(root.querySelector(".track-metadata-progress")).toBeNull();
+		expect(root.querySelector(".status-card")).toBeNull();
+		expect(root.querySelector("button")).toBeNull();
+	});
+
+	test("ignores an older track result after a newer loading scene has replaced it", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const firstTrack = metadataTrack("spotify:track:first", { title: "First Track" });
+		const secondTrack = metadataTrack("spotify:track:second", { title: "Second Track" });
+		const firstResult = deferred<LyricsLoadState>();
+		const secondResult = deferred<LyricsLoadState>();
+		const root = document.createElement("main");
+		const load = vi.fn().mockReturnValueOnce(firstResult.promise).mockReturnValueOnce(secondResult.promise);
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState> };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.lyricsService = { load };
+		internals.currentTrack = firstTrack;
+		const firstLoad = internals.loadCurrentTrack(false);
+		internals.currentTrack = secondTrack;
+		const secondLoad = internals.loadCurrentTrack(false);
+
+		firstResult.resolve(readyLoadState(firstTrack));
+		await firstLoad;
+
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe("Second Track");
+		expect(root.querySelector(".lyrics-track")).toBeNull();
+
+		secondResult.resolve({ status: "empty", track: secondTrack, reason: "no-lyrics" });
+		await secondLoad;
+
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe("Second Track");
+		expect(root.querySelector(".track-metadata-eyebrow")).toBeNull();
+	});
+
 	test("does not render a load snapshot resolved immediately before destroy", async () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
@@ -88,7 +238,7 @@ describe("ExtensionApp", () => {
 			};
 			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
 			trackSession: typeof trackSession;
-			renderer: { showStatus: () => void; mount: typeof mount; destroy: () => void };
+			renderer: { showTrackMetadata: () => void; mount: typeof mount; destroy: () => void };
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
 		internals.session = {
@@ -98,7 +248,7 @@ describe("ExtensionApp", () => {
 		};
 		internals.currentTrack = snapshot.loadState.track;
 		internals.trackSession = trackSession;
-		internals.renderer = { showStatus: vi.fn(), mount, destroy: vi.fn() };
+		internals.renderer = { showTrackMetadata: vi.fn(), mount, destroy: vi.fn() };
 
 		const loading = internals.loadCurrentTrack(false);
 		snapshotResult.resolve(snapshot);
