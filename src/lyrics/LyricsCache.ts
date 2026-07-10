@@ -61,7 +61,6 @@ export class LyricsCache {
 			updatedAt: this.resolvedOptions().now(),
 		};
 		if (this.serializedSize([uri, entry]) > this.resolvedOptions().maxEntryBytes) {
-			this.values.delete(uri);
 			return;
 		}
 		this.values.set(uri, entry);
@@ -104,6 +103,7 @@ export class LyricsCache {
 				}
 			}
 			this.prune(false);
+			this.serializedValues();
 		} catch {
 			this.values.clear();
 		}
@@ -117,16 +117,15 @@ export class LyricsCache {
 			this.storage.set(CACHE_KEY, this.serializedValues());
 		} catch {
 			// Keep memory cache intact when persistent storage is unavailable.
-			try {
-				this.storage.set(CACHE_KEY, this.serializedValues());
-			} catch {
-				/* best effort */
-			}
+			const snapshot = new Map(this.values);
+			const oldest = [...this.values.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)[0]?.[0];
+			if (oldest) this.values.delete(oldest);
+			try { this.storage.set(CACHE_KEY, this.serializedValues()); } catch { this.values.clear(); for (const entry of snapshot) this.values.set(entry[0], entry[1]); }
 		}
 	}
 
 	private serializedSize(entry: [string, CachedLyrics]): number {
-		return JSON.stringify(entry).length;
+		return new TextEncoder().encode(JSON.stringify(entry)).length;
 	}
 
 	private serializedValues(): string {
