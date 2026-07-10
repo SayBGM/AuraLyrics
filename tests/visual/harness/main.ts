@@ -1,6 +1,7 @@
 import type { LineLyrics, LyricsDocument, SyllableLyrics } from "../../../src/lyrics/types";
 import { LyricsRenderer } from "../../../src/renderer/LyricsRenderer";
-import { DEFAULT_SETTINGS, type ExtensionSettings } from "../../../src/settings/SettingsStore";
+import { DEFAULT_SETTINGS, type ExtensionSettings, SettingsStore } from "../../../src/settings/SettingsStore";
+import { SettingsView } from "../../../src/settings/SettingsView";
 import { pipStyles } from "../../../src/styles/pipStyles";
 
 type ScenarioName =
@@ -9,14 +10,17 @@ type ScenarioName =
 	| "frame-interlude"
 	| "line-sync"
 	| "word-sync"
+	| "synthetic-word-sync"
 	| "korean-tail"
-	| "multiline-active-row";
+	| "multiline-active-row"
+	| "settings-general";
 
 type Scenario = {
 	lyrics?: LyricsDocument;
 	settings?: Partial<ExtensionSettings>;
 	timestamp: number;
-	mode?: "album-art" | "lyrics";
+	timingSource?: "native" | "synthetic";
+	mode?: "album-art" | "lyrics" | "settings";
 };
 
 declare global {
@@ -41,6 +45,23 @@ style.textContent = `${pipStyles}
 #aura-visual-root {
 	width: 100%;
 	height: 100%;
+}
+
+body {
+	margin: 0;
+	min-width: 100vw;
+	min-height: 100vh;
+	background: #070708;
+}
+
+.harness-settings-overlay {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	box-sizing: border-box;
+	padding: 16px;
+	background: rgba(0, 0, 0, 0.72);
 }
 
 .pip-content {
@@ -158,6 +179,28 @@ const scenarios: Record<ScenarioName, Scenario> = {
 			],
 		]),
 	},
+	"synthetic-word-sync": {
+		timestamp: 4.2,
+		settings: settingsForVisuals,
+		timingSource: "synthetic",
+		lyrics: syllableLyrics([
+			[
+				["먼", 0, 0.5],
+				["저", 0.5, 1],
+				["지나간", 1, 2],
+			],
+			[
+				["빛", 3, 3.6],
+				["이", 3.6, 4.1, true],
+				["나는", 4.1, 4.9],
+				["밤", 4.9, 5.8],
+			],
+			[
+				["다시", 6, 6.8],
+				["돌아와", 6.8, 8],
+			],
+		]),
+	},
 	"korean-tail": {
 		timestamp: 4.9,
 		settings: settingsForVisuals,
@@ -183,6 +226,10 @@ const scenarios: Record<ScenarioName, Scenario> = {
 			["After the long line", 11, 13],
 		]),
 	},
+	"settings-general": {
+		timestamp: 0,
+		mode: "settings",
+	},
 };
 
 window.auraVisualHarness = {
@@ -190,6 +237,10 @@ window.auraVisualHarness = {
 		const scenario = scenarios[name];
 		if (!scenario) {
 			throw new Error(`Unknown visual scenario: ${name}`);
+		}
+		if (scenario.mode === "settings") {
+			renderSettingsScenario();
+			return;
 		}
 		pipRoot.className = "is-playing";
 		if (scenario.mode === "album-art") {
@@ -206,12 +257,49 @@ window.auraVisualHarness = {
 				...scenario.settings,
 			},
 			provider: "visual",
+			timingSource: scenario.timingSource,
 		});
 		for (let frame = 0; frame < 3; frame += 1) {
 			renderer.update(timestamp ?? scenario.timestamp, 1 / 60);
 		}
 	},
 };
+
+function renderSettingsScenario(): void {
+	const values = new Map<string, string>();
+	const store = new SettingsStore({
+		get: (key) => values.get(key),
+		set: (key, value) => {
+			values.set(key, value);
+			return true;
+		},
+	});
+	window.Spicetify = {
+		PopupModal: {
+			display: ({ content }) => {
+				const overlay = document.createElement("div");
+				overlay.className = "harness-settings-overlay";
+				const modal = document.createElement("div");
+				modal.className = "main-trackCreditsModal-container";
+				const main = document.createElement("div");
+				main.className = "main-trackCreditsModal-mainSection";
+				const originalCredits = document.createElement("div");
+				originalCredits.className = "main-trackCreditsModal-originalCredits";
+				originalCredits.append(content);
+				main.append(originalCredits);
+				modal.append(main);
+				overlay.append(modal);
+				document.body.replaceChildren(overlay);
+			},
+		},
+	} as NonNullable<typeof window.Spicetify>;
+	const settingsView = new SettingsView(store, [], {
+		onRefreshLyrics: () => undefined,
+		onClearCache: () => undefined,
+		onRefreshMusixmatchToken: async () => undefined,
+	});
+	settingsView.open();
+}
 
 function lineLyrics(lines: Array<[text: string, startTime: number, endTime: number]>): LineLyrics {
 	return {

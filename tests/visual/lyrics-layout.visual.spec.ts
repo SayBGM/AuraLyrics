@@ -6,8 +6,10 @@ type ScenarioName =
 	| "frame-interlude"
 	| "line-sync"
 	| "word-sync"
+	| "synthetic-word-sync"
 	| "korean-tail"
-	| "multiline-active-row";
+	| "multiline-active-row"
+	| "settings-general";
 
 declare global {
 	interface Window {
@@ -31,6 +33,69 @@ test.use({
 test.beforeEach(async ({ page }) => {
 	await page.goto(baseUrl);
 	await expect(page.locator("#aura-lyrics-root")).toBeVisible();
+});
+
+test("settings modal keeps its dark desktop sidebar layout within the viewport", async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 760 });
+	await renderScenario(page, "settings-general");
+
+	const metrics = await page.evaluate(() => {
+		const modal = document.querySelector<HTMLElement>(".main-trackCreditsModal-container");
+		const navigation = document.querySelector<HTMLElement>(".settings-navigation");
+		const panel = document.querySelector<HTMLElement>(".settings-panel-scroll");
+		if (!modal || !navigation || !panel) {
+			throw new Error("Missing settings modal elements.");
+		}
+		const modalRect = modal.getBoundingClientRect();
+		const navigationRect = navigation.getBoundingClientRect();
+		const panelRect = panel.getBoundingClientRect();
+
+		return {
+			modalBottom: modalRect.bottom,
+			modalTop: modalRect.top,
+			navigationWidth: Math.round(navigationRect.width),
+			panelWidth: Math.round(panelRect.width),
+			orientation: navigation.getAttribute("aria-orientation"),
+			background: getComputedStyle(modal).backgroundColor,
+		};
+	});
+
+	expect(metrics.modalTop).toBeGreaterThanOrEqual(16);
+	expect(metrics.modalBottom).toBeLessThanOrEqual(744);
+	expect(metrics.navigationWidth).toBe(200);
+	expect(metrics.panelWidth).toBeGreaterThan(600);
+	expect(metrics.orientation).toBe("vertical");
+	expect(metrics.background).toBe("rgb(13, 13, 15)");
+	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-dark-sidebar.png", screenshotTolerance);
+});
+
+test("synthetic karaoke shows a small folded corner inside the lyrics surface", async ({ page }) => {
+	await renderScenario(page, "synthetic-word-sync");
+
+	const metrics = await page.evaluate(() => {
+		const marker = document.querySelector<HTMLElement>("[data-aura-timing-marker]");
+		const lyrics = document.querySelector<HTMLElement>(".aura-lyrics");
+		if (!marker || !lyrics) {
+			throw new Error("Missing synthetic timing marker.");
+		}
+		const markerRect = marker.getBoundingClientRect();
+		const lyricsRect = lyrics.getBoundingClientRect();
+		return {
+			label: marker.getAttribute("aria-label"),
+			leftOffset: Math.round(markerRect.left - lyricsRect.left),
+			topOffset: Math.round(markerRect.top - lyricsRect.top),
+			width: Math.round(markerRect.width),
+			height: Math.round(markerRect.height),
+		};
+	});
+
+	expect(metrics.label).toBe("Synthesized karaoke sync");
+	expect(metrics.leftOffset).toBeGreaterThanOrEqual(0);
+	expect(metrics.topOffset).toBeGreaterThanOrEqual(0);
+	expect(metrics.width).toBeGreaterThanOrEqual(12);
+	expect(metrics.width).toBeLessThanOrEqual(14);
+	expect(metrics.height).toBe(metrics.width);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("synthetic-timing-marker.png", screenshotTolerance);
 });
 
 test("line-sync rows stay centered without changing lyric layout width", async ({ page }) => {
@@ -258,6 +323,10 @@ const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => 
 		}
 		window.auraVisualHarness.renderScenario(scenarioName);
 	}, name);
+	if (name === "settings-general") {
+		await expect(page.locator(".aura-lyrics-settings")).toBeVisible();
+		return;
+	}
 	if (name === "album-art-instrumental") {
 		await expect(page.locator("#aura-lyrics-root.album-art-mode")).toBeVisible();
 		return;
