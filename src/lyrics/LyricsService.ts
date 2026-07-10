@@ -2,6 +2,7 @@ import type { ExtensionSettings } from "../settings/SettingsStore";
 import { addInterludes, rebuildInterludes } from "./InterludeBuilder";
 import type { LyricsCache } from "./LyricsCache";
 import { normalizeLyrics } from "./LyricsNormalizer";
+import { validateLyrics } from "./LyricsValidator";
 import type { ProviderRegistry } from "./providers/ProviderRegistry";
 import { splitHangulSyllables } from "./splitHangulSyllables";
 import type {
@@ -88,6 +89,10 @@ export class LyricsService {
 		};
 	}
 
+	public refreshCooldowns(): void {
+		this.cooldownUntil.clear();
+	}
+
 	private async tryLoadOnce(
 		track: TrackIdentity,
 		settings: ExtensionSettings,
@@ -115,7 +120,7 @@ export class LyricsService {
 					return { status: "idle" };
 				}
 				if (result.ok) {
-					const lyrics = addInterludes(normalizeLyrics(result.lyrics));
+					const lyrics = validateLyrics(addInterludes(normalizeLyrics(result.lyrics)));
 					if (provider.id === primaryProvider?.id) {
 						this.cache.set(track.uri, lyrics, provider.id);
 					}
@@ -147,12 +152,7 @@ export class LyricsService {
 						status: "instrumental",
 						message: result.message,
 					});
-					return {
-						status: "empty",
-						track,
-						reason: "instrumental",
-						diagnostics,
-					};
+					continue;
 				}
 				diagnostics.attempts.push({
 					provider: provider.id,

@@ -7,6 +7,7 @@ export const buildInterlude = (startTime: number, endTime: number): Interlude =>
 	type: "interlude",
 	startTime,
 	endTime: Math.max(startTime, endTime),
+	generated: true,
 });
 
 export const stripInterludes = (lyrics: LyricsDocument): LyricsDocument => {

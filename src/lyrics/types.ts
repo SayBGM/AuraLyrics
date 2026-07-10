@@ -13,6 +13,8 @@ export type TextMetadata = {
 
 export type Interlude = TimeRange & {
 	type: "interlude";
+	/** True when synthesized from a gap rather than supplied by a provider. */
+	generated?: boolean;
 };
 
 export type StaticLyrics = {

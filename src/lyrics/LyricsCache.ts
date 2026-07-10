@@ -14,6 +14,8 @@ type CacheStorage = {
 
 type LyricsCacheOptions = {
 	maxEntries: number;
+	maxEntryBytes: number;
+	maxTotalBytes: number;
 	now: () => number;
 	ttlMs: number;
 };
@@ -22,7 +24,9 @@ type LyricsCacheOptions = {
 const CACHE_KEY = "aura-lyrics:lyrics-cache-v2";
 const STALE_CACHE_KEYS = ["aura-lyrics:lyrics-cache-v1", "dynamic-popup-lyrics:lyrics-cache-v1"];
 const DEFAULT_OPTIONS: LyricsCacheOptions = {
-	maxEntries: 80,
+	maxEntries: 30,
+	maxEntryBytes: 256 * 1024,
+	maxTotalBytes: 2 * 1024 * 1024,
 	now: () => Date.now(),
 	ttlMs: 1000 * 60 * 60 * 24 * 14,
 };
@@ -51,11 +55,16 @@ export class LyricsCache {
 	}
 
 	public set(uri: string, lyrics: LyricsDocument, provider: ProviderId): void {
-		this.values.set(uri, {
+		const entry: CachedLyrics = {
 			lyrics,
 			provider,
 			updatedAt: this.resolvedOptions().now(),
-		});
+		};
+		if (this.serializedSize([uri, entry]) > this.resolvedOptions().maxEntryBytes) {
+			this.values.delete(uri);
+			return;
+		}
+		this.values.set(uri, entry);
 		this.prune();
 		this.persist();
 	}
@@ -105,10 +114,34 @@ export class LyricsCache {
 			return;
 		}
 		try {
-			this.storage.set(CACHE_KEY, JSON.stringify([...this.values.entries()]));
+			this.storage.set(CACHE_KEY, this.serializedValues());
 		} catch {
-			// Keep the in-memory cache warm even when persistent storage is unavailable.
+			// Keep memory cache intact when persistent storage is unavailable.
+			try {
+				this.storage.set(CACHE_KEY, this.serializedValues());
+			} catch {
+				/* best effort */
+			}
 		}
+	}
+
+	private serializedSize(entry: [string, CachedLyrics]): number {
+		return JSON.stringify(entry).length;
+	}
+
+	private serializedValues(): string {
+		const options = this.resolvedOptions();
+		const entries = [...this.values.entries()].sort((a, b) => b[1].updatedAt - a[1].updatedAt);
+		const kept: Array<[string, CachedLyrics]> = [];
+		for (const entry of entries) {
+			if (this.serializedSize(entry) > options.maxEntryBytes) continue;
+			const candidate = JSON.stringify([...kept, entry]);
+			if (candidate.length > options.maxTotalBytes) continue;
+			kept.push(entry);
+		}
+		this.values.clear();
+		for (const entry of kept) this.values.set(entry[0], entry[1]);
+		return JSON.stringify(kept);
 	}
 
 	private prune(shouldPersist = true): void {

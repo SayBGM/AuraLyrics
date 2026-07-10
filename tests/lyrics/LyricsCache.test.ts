@@ -110,4 +110,17 @@ describe("LyricsCache", () => {
 		expect(new LyricsCache(storage).get("spotify:track:2")?.provider).toBe("lrclib");
 		expect(new LyricsCache(storage).get("spotify:track:3")?.provider).toBe("musixmatch");
 	});
+
+	test("enforces serialized entry and total size caps", () => {
+		const storage = new MemoryStorage();
+		const cache = new LyricsCache(storage, { maxEntryBytes: 256, maxTotalBytes: 600 });
+		cache.set(
+			"spotify:track:large",
+			{ ...lyrics, content: [{ type: "vocal", text: "x".repeat(1000), startTime: 0, endTime: 1, oppositeAligned: false }] },
+			"spotify"
+		);
+		expect(cache.get("spotify:track:large")).toBeUndefined();
+		for (let index = 0; index < 10; index += 1) cache.set(`spotify:track:${index}`, lyrics, "spotify");
+		expect(storage.values.get("aura-lyrics:lyrics-cache-v2")?.length).toBeLessThanOrEqual(600);
+	});
 });

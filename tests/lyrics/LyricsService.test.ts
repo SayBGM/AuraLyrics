@@ -329,4 +329,29 @@ describe("LyricsService", () => {
 		}
 		expect(state.message).toContain("failure 3");
 	});
+
+	test("falls back after an instrumental provider result", async () => {
+		const instrumental: LyricsProvider = { id: "spotify", supports: () => true, fetch: async () => ({ ok: false, reason: "instrumental" }) };
+		const fallback: LyricsProvider = { id: "lrclib", supports: () => true, fetch: async () => ({ ok: true, lyrics: lineLyrics("Fallback") }) };
+		const service = new LyricsService(new ProviderRegistry([instrumental, fallback]), new LyricsCache(), () => context, { retryDelayMs: 0 });
+		const state = await service.load(track, DEFAULT_SETTINGS, true);
+		expect(state.status).toBe("ready");
+	});
+
+	test("manual refresh bypasses a provider cooldown", async () => {
+		let calls = 0;
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => {
+				calls += 1;
+				return calls === 1 ? { ok: false, reason: "temporarily-unavailable", cooldownMs: 60000 } : { ok: true, lyrics: lineLyrics("Recovered") };
+			},
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), new LyricsCache(), () => context, { retryDelayMs: 0 });
+		await service.load(track, DEFAULT_SETTINGS, true);
+		service.refreshCooldowns();
+		const state = await service.load({ ...track, uri: "spotify:track:refresh" }, DEFAULT_SETTINGS, true);
+		expect(state.status).toBe("ready");
+	});
 });
