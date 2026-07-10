@@ -21,6 +21,7 @@ export class SettingsPanelRenderer {
 	) {
 		this.controls = new SettingsControlFactory(ownerDocument, () => this.store.commit());
 		this.providerPanel = new SettingsProviderPanel(ownerDocument, store, providers, this.controls, {
+			onMusixmatchTokenAccepted: callbacks.onMusixmatchTokenAccepted,
 			onRefreshMusixmatchToken: callbacks.onRefreshMusixmatchToken,
 			onScheduleRefresh: () => callbacks.onScheduleRefresh(),
 		});

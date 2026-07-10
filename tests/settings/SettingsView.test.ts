@@ -84,6 +84,7 @@ const providers: LyricsProvider[] = [
 const callbacks = (onRefreshMusixmatchToken: () => Promise<string | undefined> = vi.fn()) => ({
 	onRefreshLyrics: vi.fn(),
 	onClearCache: vi.fn(),
+	onMusixmatchTokenAccepted: vi.fn(),
 	onRefreshMusixmatchToken,
 });
 

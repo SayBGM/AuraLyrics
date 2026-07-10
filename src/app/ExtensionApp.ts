@@ -100,7 +100,8 @@ export class ExtensionApp {
 				this.cache.clear();
 				this.spicetify.showNotification?.("AuraLyrics cache cleared.");
 			},
-			onRefreshMusixmatchToken: () => this.refreshMusixmatchToken(),
+			onMusixmatchTokenAccepted: () => this.spicetify.showNotification?.("Musixmatch token updated."),
+			onRefreshMusixmatchToken: () => this.fetchMusixmatchToken(),
 		});
 		this.topbar = new TopbarController(
 			spicetify,
@@ -253,10 +254,8 @@ export class ExtensionApp {
 		}
 	}
 
-	private async refreshMusixmatchToken(): Promise<string | undefined> {
-		const token = await this.musixmatchTokenService.refresh(this.resolveMusixmatchProxyBaseUrl(this.settings.get().providers));
-		this.spicetify.showNotification?.("Musixmatch token updated.");
-		return token;
+	private fetchMusixmatchToken(): Promise<string | undefined> {
+		return this.musixmatchTokenService.refresh(this.resolveMusixmatchProxyBaseUrl(this.settings.get().providers));
 	}
 
 	private showSettingsPersistenceFailure(): void {

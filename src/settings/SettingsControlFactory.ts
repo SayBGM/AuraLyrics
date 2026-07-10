@@ -26,7 +26,10 @@ export class SettingsControlFactory {
 			element.selected = option === value;
 			select.append(element);
 		}
-		select.addEventListener("change", () => onChange(select.value));
+		select.addEventListener("change", () => {
+			onChange(select.value);
+			this.markPersistenceComplete();
+		});
 		return this.row(label, select);
 	}
 
@@ -37,6 +40,7 @@ export class SettingsControlFactory {
 		input.dataset.controlId = controlId;
 		input.addEventListener("change", () => {
 			input.value = String(onChange(Number(input.value)));
+			this.markPersistenceComplete();
 		});
 		return this.row(label, input);
 	}
@@ -89,7 +93,10 @@ export class SettingsControlFactory {
 		input.type = "text";
 		input.value = value;
 		input.dataset.controlId = controlId;
-		input.addEventListener("change", () => onChange(input.value));
+		input.addEventListener("change", () => {
+			onChange(input.value);
+			this.markPersistenceComplete();
+		});
 		return this.row(label, input);
 	}
 
@@ -98,7 +105,10 @@ export class SettingsControlFactory {
 		input.type = "checkbox";
 		input.checked = value;
 		input.dataset.controlId = controlId;
-		input.addEventListener("change", () => onChange(input.checked));
+		input.addEventListener("change", () => {
+			onChange(input.checked);
+			this.markPersistenceComplete();
+		});
 		return this.row(label, input);
 	}
 
@@ -156,5 +166,9 @@ export class SettingsControlFactory {
 		span.textContent = label;
 		row.append(span, control);
 		return row;
+	}
+
+	private markPersistenceComplete(): void {
+		this.committedPreviewRevision = this.previewRevision;
 	}
 }

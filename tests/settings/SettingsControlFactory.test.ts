@@ -64,4 +64,24 @@ describe("SettingsControlFactory", () => {
 
 		expect(commit).toHaveBeenCalledOnce();
 	});
+
+	test("clears preview revisions when a non-range control persists the same settings state", () => {
+		const commit = vi.fn(() => true);
+		const persistedToggle = vi.fn();
+		const controls = new SettingsControlFactory(document, commit);
+		const range = controls.range("dim", "Dim", 0.4, 0, 1, 0.05, vi.fn()).querySelector<HTMLInputElement>("input");
+		const toggle = controls.toggle("motion", "Motion", true, persistedToggle).querySelector<HTMLInputElement>("input");
+		if (!range || !toggle) {
+			throw new Error("Settings controls were not rendered.");
+		}
+
+		range.value = "0.5";
+		range.dispatchEvent(new Event("input", { bubbles: true }));
+		toggle.checked = false;
+		toggle.dispatchEvent(new Event("change", { bubbles: true }));
+		range.dispatchEvent(new Event("pointerup", { bubbles: true }));
+
+		expect(persistedToggle).toHaveBeenCalledOnce();
+		expect(commit).not.toHaveBeenCalled();
+	});
 });

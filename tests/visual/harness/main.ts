@@ -296,6 +296,7 @@ function renderSettingsScenario(): void {
 	const settingsView = new SettingsView(store, [], {
 		onRefreshLyrics: () => undefined,
 		onClearCache: () => undefined,
+		onMusixmatchTokenAccepted: () => undefined,
 		onRefreshMusixmatchToken: async () => undefined,
 	});
 	settingsView.open();

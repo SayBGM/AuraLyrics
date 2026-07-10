@@ -4,6 +4,7 @@ import type { TranslationKey } from "./settingsTranslations";
 export type SettingsCallbacks = {
 	onRefreshLyrics(): void;
 	onClearCache(): void;
+	onMusixmatchTokenAccepted(token: string): void;
 	onRefreshMusixmatchToken(): Promise<string | undefined>;
 };
 

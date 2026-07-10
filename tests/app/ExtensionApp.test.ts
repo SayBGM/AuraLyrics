@@ -435,6 +435,51 @@ describe("ExtensionApp", () => {
 		expect(internals.closePip).not.toHaveBeenCalled();
 	});
 
+	test("notifies about a generated Musixmatch token only after the settings panel adopts it", async () => {
+		const { showNotification, spicetify } = createSpicetify();
+		let modal: HTMLElement | undefined;
+		spicetify.PopupModal = {
+			display: ({ content }) => {
+				modal = document.createElement("div");
+				modal.className = "main-trackCreditsModal-container";
+				modal.append(content);
+				document.body.append(modal);
+			},
+			hide: () => modal?.remove(),
+		};
+		window.Spicetify = spicetify;
+		const app = new ExtensionApp(spicetify);
+		const result = deferred<string | undefined>();
+		const internals = app as unknown as {
+			musixmatchTokenService: { refresh: () => Promise<string | undefined> };
+			settings: { get: () => { providers: { musixmatchToken?: string } } };
+			settingsView: { destroy: () => void; open: () => void };
+		};
+		internals.musixmatchTokenService = { refresh: vi.fn(() => result.promise) };
+		const tokensAtNotification: Array<string | undefined> = [];
+		showNotification.mockImplementation((message) => {
+			if (message === "Musixmatch token updated.") {
+				tokensAtNotification.push(internals.settings.get().providers.musixmatchToken);
+			}
+		});
+
+		try {
+			internals.settingsView.open();
+			const content = document.querySelector<HTMLElement>(".aura-lyrics-settings");
+			content?.querySelector<HTMLButtonElement>('[data-section="providers"]')?.click();
+			content?.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
+			result.resolve("accepted-token");
+			await result.promise;
+			await vi.waitFor(() => expect(showNotification).toHaveBeenCalledWith("Musixmatch token updated."));
+
+			expect(tokensAtNotification).toEqual(["accepted-token"]);
+			expect(internals.settings.get().providers.musixmatchToken).toBe("accepted-token");
+		} finally {
+			internals.settingsView.destroy();
+			window.Spicetify = undefined;
+		}
+	});
+
 	test("surfaces constructor persistence failures when the app starts", () => {
 		const { showNotification, spicetify } = createSpicetify();
 		if (!spicetify.LocalStorage) {

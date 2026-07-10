@@ -25,6 +25,7 @@ describe("SettingsPanelRenderer", () => {
 		const store = new SettingsStore(new MemoryStorage());
 		const renderer = new SettingsPanelRenderer(document, store, providers, {
 			onClearCache: vi.fn(),
+			onMusixmatchTokenAccepted: vi.fn(),
 			onRefreshLyrics: vi.fn(),
 			onRefreshMusixmatchToken: vi.fn(),
 			onScheduleRefresh: vi.fn(),

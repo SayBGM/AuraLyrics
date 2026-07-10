@@ -4,6 +4,7 @@ import type { ExtensionSettings, SettingsStore, UiLanguage } from "./SettingsSto
 import { formatTranslation, type TranslationKey, translate, translatedOptionLabel } from "./settingsTranslations";
 
 type SettingsProviderPanelCallbacks = {
+	onMusixmatchTokenAccepted(token: string): void;
 	onRefreshMusixmatchToken(): Promise<string | undefined>;
 	onScheduleRefresh(): void;
 };
@@ -36,6 +37,7 @@ export class SettingsProviderPanel {
 			this.t("musixmatchToken", language),
 			settings.providers.musixmatchToken ?? "",
 			(value) => {
+				this.clearTokenStatus();
 				this.update({ providers: { ...this.store.get().providers, musixmatchToken: value || undefined } });
 			}
 		);
@@ -147,6 +149,7 @@ export class SettingsProviderPanel {
 
 	private async refreshMusixmatchToken(): Promise<void> {
 		const request = ++this.tokenRequestGeneration;
+		let acceptedToken: string | undefined;
 		this.activeTokenRequest = request;
 		this.tokenStatus = { key: "requestingToken" };
 		this.updateTokenStatus();
@@ -161,6 +164,7 @@ export class SettingsProviderPanel {
 				this.store.update({ providers: { ...this.store.get().providers, musixmatchToken: token } });
 				this.patchMusixmatchTokenInput(token);
 				this.tokenStatus = { key: "tokenUpdated" };
+				acceptedToken = token;
 			}
 		} catch (error) {
 			if (!this.isCurrentTokenRequest(request)) {
@@ -170,6 +174,9 @@ export class SettingsProviderPanel {
 		}
 		this.activeTokenRequest = undefined;
 		this.updateTokenStatus();
+		if (acceptedToken) {
+			this.callbacks.onMusixmatchTokenAccepted(acceptedToken);
+		}
 	}
 
 	private isCurrentTokenRequest(request: number): boolean {
