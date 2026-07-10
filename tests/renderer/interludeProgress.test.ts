@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { interludeKey, progressPercent, splitFrameProgress } from "../../src/renderer/interludeProgress";
+import { interludeKey, interludeProgressAt, progressPercent, splitFrameProgress } from "../../src/renderer/interludeProgress";
 
 describe("interludeProgress", () => {
 	test("creates stable rounded keys for interlude waveform maps", () => {
@@ -35,5 +35,12 @@ describe("interludeProgress", () => {
 	test("formats CSS percent values with two decimal precision when needed", () => {
 		expect(progressPercent(0.5)).toBe("50%");
 		expect(progressPercent(0.12345)).toBe("12.35%");
+	});
+
+	test("calculates and clamps timestamp progress independently from the DOM component", () => {
+		expect(interludeProgressAt(2, 4, 10)).toBe(0);
+		expect(interludeProgressAt(7, 4, 10)).toBe(0.5);
+		expect(interludeProgressAt(12, 4, 10)).toBe(1);
+		expect(interludeProgressAt(4, 4, 4)).toBe(0);
 	});
 });

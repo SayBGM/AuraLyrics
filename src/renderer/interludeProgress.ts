@@ -17,6 +17,9 @@ export const interludeKey = (interlude: Interlude): string => `${roundTime(inter
 
 export const progressPercent = (progress: number): string => `${Math.round(clampProgress(progress) * 10000) / 100}%`;
 
+export const interludeProgressAt = (timestamp: number, startTime: number, endTime: number): number =>
+	clampProgress((timestamp - startTime) / Math.max(0.001, endTime - startTime));
+
 export const frameSizeForViewport = (dimensions: Pick<FrameProgressDimensions, "width" | "height">): number =>
 	clampValue(Math.min(dimensions.width, dimensions.height) * 0.034, 12, 18);
 

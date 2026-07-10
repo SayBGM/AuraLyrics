@@ -1,6 +1,7 @@
 import type { Interlude as InterludeMetadata } from "../../lyrics/types";
 import type { InterludeStyle } from "../../settings/SettingsStore";
 import type { InterludeWaveform } from "../AudioAnalysisWaveformService";
+import { interludeProgressAt, progressPercent } from "../interludeProgress";
 
 export class InterludeView {
 	public readonly element: HTMLDivElement;
@@ -13,11 +14,12 @@ export class InterludeView {
 	public constructor(
 		private readonly interlude: InterludeMetadata,
 		private readonly style: InterludeStyle,
-		waveform?: InterludeWaveform
+		waveform?: InterludeWaveform,
+		private readonly ownerDocument: Document = document
 	) {
 		this.startTime = interlude.startTime;
 		this.endTime = interlude.endTime;
-		this.element = document.createElement("div");
+		this.element = this.ownerDocument.createElement("div");
 		this.element.className = `vocals-group interlude interlude-style-${style}`;
 		this.element.setAttribute("aria-label", "Instrumental break");
 		this.element.dataset.interludeStyle = style;
@@ -37,20 +39,19 @@ export class InterludeView {
 		this.element.classList.toggle("active", active);
 		this.element.classList.toggle("sung", timestamp > this.interlude.endTime);
 		this.element.classList.toggle("idle", timestamp < this.interlude.startTime);
-		const duration = Math.max(0.001, this.interlude.endTime - this.interlude.startTime);
-		const progress = Math.min(1, Math.max(0, (timestamp - this.interlude.startTime) / duration));
+		const progress = interludeProgressAt(timestamp, this.interlude.startTime, this.interlude.endTime);
 		this.progress = progress;
-		this.element.style.setProperty("--interlude-progress", `${Math.round(progress * 10000) / 100}%`);
+		this.element.style.setProperty("--interlude-progress", progressPercent(progress));
 		if (this.style === "wave") {
 			this.updateBarProgress(progress);
 		}
 	}
 
 	private createWaveform(bars: number[]): HTMLSpanElement {
-		const wrapper = document.createElement("span");
+		const wrapper = this.ownerDocument.createElement("span");
 		wrapper.className = "interlude-wave";
 		for (const [index, height] of bars.entries()) {
-			const bar = document.createElement("span");
+			const bar = this.ownerDocument.createElement("span");
 			bar.className = "interlude-wave-bar";
 			bar.style.setProperty("--bar-index", String(index));
 			bar.style.setProperty("--bar-height", String(Math.min(1, Math.max(0.14, height))));

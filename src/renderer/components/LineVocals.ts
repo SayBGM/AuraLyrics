@@ -10,22 +10,23 @@ export class LineVocals {
 
 	public constructor(
 		private readonly line: LineVocal,
-		settings: ExtensionSettings
+		settings: ExtensionSettings,
+		private readonly ownerDocument: Document = document
 	) {
 		this.startTime = line.startTime;
 		this.endTime = line.endTime;
 		this.holdEndTime = line.endTime;
-		this.element = document.createElement("div");
+		this.element = this.ownerDocument.createElement("div");
 		this.element.className = "vocals-group line-group";
 		this.element.classList.toggle("opposite-aligned", line.oppositeAligned);
 		this.element.dataset.startTime = String(line.startTime);
 		this.element.dataset.endTime = String(line.endTime);
-		const span = document.createElement("span");
+		const span = this.ownerDocument.createElement("span");
 		span.className = "lyric line";
-		appendLineTokens(span, line.romanizedText ?? line.text);
+		appendLineTokens(span, line.romanizedText ?? line.text, this.ownerDocument);
 		this.element.append(span);
 		if (settings.showTranslation && line.translatedText) {
-			this.element.append(createTranslationElement(line.translatedText));
+			this.element.append(createTranslationElement(line.translatedText, this.ownerDocument));
 		}
 		this.applySettings(settings);
 	}
@@ -47,16 +48,16 @@ export class LineVocals {
 	}
 }
 
-const appendLineTokens = (line: HTMLSpanElement, text: string): void => {
+const appendLineTokens = (line: HTMLSpanElement, text: string, ownerDocument: Document): void => {
 	const parts = text.match(/\S+|\s+/gu) ?? [];
 	for (const part of parts) {
 		if (/^\s+$/u.test(part)) {
-			line.append(document.createTextNode(part));
+			line.append(ownerDocument.createTextNode(part));
 			continue;
 		}
-		const word = document.createElement("span");
+		const word = ownerDocument.createElement("span");
 		word.className = "word";
-		const token = document.createElement("span");
+		const token = ownerDocument.createElement("span");
 		token.className = "lyric line-token";
 		token.textContent = part;
 		word.append(token);

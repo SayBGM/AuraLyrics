@@ -39,9 +39,10 @@ export class SyllableVocals {
 		isBackground: boolean,
 		settings: ExtensionSettings,
 		private readonly rhythm?: RhythmProfile,
-		private readonly rowsOptions?: SyllableRowsOptions
+		private readonly rowsOptions?: SyllableRowsOptions,
+		private readonly ownerDocument: Document = document
 	) {
-		this.element = document.createElement("div");
+		this.element = this.ownerDocument.createElement("div");
 		this.element.className = `vocals ${isBackground ? "background" : "lead"}`;
 		this.build(settings);
 	}
@@ -105,7 +106,7 @@ export class SyllableVocals {
 		this.hasParenthetical = model.hasParenthetical;
 		this.element.classList.toggle("has-parenthetical", this.hasParenthetical);
 		for (const rowModel of model.rows) {
-			const row = createSyllableRow();
+			const row = createSyllableRow(this.ownerDocument);
 			row.element.dataset.scrollRow = "true";
 			for (const className of rowModel.rowClasses) {
 				row.element.classList.add(className);
@@ -125,7 +126,7 @@ export class SyllableVocals {
 
 	private appendGroup(parent: HTMLSpanElement, group: SyllableVisualGroup): void {
 		for (const wordModel of group.words) {
-			const word = createWord(wordModel.isParenthetical);
+			const word = createWord(wordModel.isParenthetical, this.ownerDocument);
 			for (const className of wordModel.extraClasses) {
 				word.classList.add(className);
 			}
@@ -137,7 +138,7 @@ export class SyllableVocals {
 	}
 
 	private appendLiveSyllable(word: HTMLSpanElement, text: string, metadata: Syllable, isParenthetical: boolean, extraClasses: string[] = []): void {
-		const span = document.createElement("span");
+		const span = this.ownerDocument.createElement("span");
 		span.className = "lyric syllable synced";
 		span.textContent = text;
 		span.classList.toggle("parenthetical-syllable", isParenthetical);
@@ -155,19 +156,19 @@ export class SyllableVocals {
 	}
 }
 
-const createSyllableRow = (): SyllableRow => {
-	const row = document.createElement("span");
+const createSyllableRow = (ownerDocument: Document): SyllableRow => {
+	const row = ownerDocument.createElement("span");
 	row.className = "syllable-row";
-	const main = document.createElement("span");
+	const main = ownerDocument.createElement("span");
 	main.className = "syllable-main";
-	const echo = document.createElement("span");
+	const echo = ownerDocument.createElement("span");
 	echo.className = "syllable-echo";
 	row.append(main, echo);
 	return { element: row, main, echo };
 };
 
-const createWord = (isParenthetical: boolean): HTMLSpanElement => {
-	const word = document.createElement("span");
+const createWord = (isParenthetical: boolean, ownerDocument: Document): HTMLSpanElement => {
+	const word = ownerDocument.createElement("span");
 	word.className = `word${isParenthetical ? " parenthetical-word" : ""}`;
 	return word;
 };
