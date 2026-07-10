@@ -15,6 +15,11 @@ export {
 	type UiLanguage,
 } from "./settingsSchema";
 
+export type SettingsUpdateResult = {
+	persisted: boolean;
+	settings: ExtensionSettings;
+};
+
 export class SettingsStore {
 	private readonly persistence: SettingsPersistence;
 	private settings: ExtensionSettings;
@@ -32,10 +37,14 @@ export class SettingsStore {
 	}
 
 	public update(patch: Partial<ExtensionSettings>, markCustom = true): ExtensionSettings {
+		return this.updateWithResult(patch, markCustom).settings;
+	}
+
+	public updateWithResult(patch: Partial<ExtensionSettings>, markCustom = true): SettingsUpdateResult {
 		this.settings = this.merge(patch, markCustom);
-		this.persist();
+		const persisted = this.persist();
 		this.emit();
-		return this.get();
+		return { persisted, settings: this.get() };
 	}
 
 	public preview(patch: Partial<ExtensionSettings>, markCustom = true): ExtensionSettings {
@@ -53,14 +62,22 @@ export class SettingsStore {
 	}
 
 	public applyPreset(preset: Exclude<LyricsVisualPreset, "custom">): ExtensionSettings {
-		return this.update({ ...PRESETS[preset], preset }, false);
+		return this.applyPresetWithResult(preset).settings;
+	}
+
+	public applyPresetWithResult(preset: Exclude<LyricsVisualPreset, "custom">): SettingsUpdateResult {
+		return this.updateWithResult({ ...PRESETS[preset], preset }, false);
 	}
 
 	public reset(): ExtensionSettings {
+		return this.resetWithResult().settings;
+	}
+
+	public resetWithResult(): SettingsUpdateResult {
 		this.settings = structuredClone(DEFAULT_SETTINGS);
-		this.persist();
+		const persisted = this.persist();
 		this.emit();
-		return this.get();
+		return { persisted, settings: this.get() };
 	}
 
 	public subscribe(listener: (settings: ExtensionSettings) => void): () => void {

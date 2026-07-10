@@ -15,6 +15,13 @@ class MemoryStorage {
 	}
 }
 
+class ToggleFailStorage extends MemoryStorage {
+	public failWrites = false;
+	public override set(key: string, value: string) {
+		return this.failWrites ? false : super.set(key, value);
+	}
+}
+
 const providers: LyricsProvider[] = ["spotify", "lrclib", "musixmatch"].map((id) => ({
 	id: id as LyricsProvider["id"],
 	supports: () => true,
@@ -199,6 +206,94 @@ describe("SettingsProviderPanel", () => {
 		expect(store.get().providers.musixmatchToken).toBe("manual-token");
 		expect(input.value).toBe("manual-token");
 		expect(status.textContent).toBe("");
+		expect(accepted).not.toHaveBeenCalled();
+	});
+
+	test("typing into the token field invalidates a pending request before change persistence", async () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const controls = new SettingsControlFactory(document, () => store.commit());
+		const request = deferred<string | undefined>();
+		const accepted = vi.fn();
+		const panel = new SettingsProviderPanel(document, store, providers, controls, {
+			onMusixmatchTokenAccepted: accepted,
+			onRefreshMusixmatchToken: () => request.promise,
+			onScheduleRefresh: vi.fn(),
+		});
+		const root = document.createElement("div");
+		root.append(...panel.render(store.get()));
+		document.body.append(root);
+		const input = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
+		const status = root.querySelector<HTMLElement>('[role="status"]');
+		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
+		if (!input || !status) {
+			throw new Error("Provider token controls were not rendered.");
+		}
+
+		input.value = "typing-token";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		expect(store.get().providers.musixmatchToken).toBeUndefined();
+		expect(status.textContent).toBe("");
+
+		request.resolve("generated-token");
+		await flushPromise(request.promise);
+		expect(store.get().providers.musixmatchToken).toBeUndefined();
+		expect(input.value).toBe("typing-token");
+		expect(accepted).not.toHaveBeenCalled();
+
+		input.dispatchEvent(new Event("change", { bubbles: true }));
+		expect(store.get().providers.musixmatchToken).toBe("typing-token");
+	});
+
+	test("does not accept or notify a fetched token when settings persistence fails", async () => {
+		const storage = new ToggleFailStorage();
+		const store = new SettingsStore(storage);
+		storage.failWrites = true;
+		const persistenceFailed = vi.fn();
+		store.persistenceFailed.subscribe(persistenceFailed);
+		const controls = new SettingsControlFactory(document, () => store.commit());
+		const accepted = vi.fn();
+		const panel = new SettingsProviderPanel(document, store, providers, controls, {
+			onMusixmatchTokenAccepted: accepted,
+			onRefreshMusixmatchToken: async () => "runtime-token",
+			onScheduleRefresh: vi.fn(),
+		});
+		const root = document.createElement("div");
+		root.append(...panel.render(store.get()));
+		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(store.get().providers.musixmatchToken).toBe("runtime-token");
+		expect(persistenceFailed).toHaveBeenCalledOnce();
+		expect(accepted).not.toHaveBeenCalled();
+	});
+
+	test.each([
+		{ name: "undefined", fetch: async () => undefined, status: "was not returned" },
+		{
+			name: "rejection",
+			fetch: async () => {
+				throw new Error("token offline");
+			},
+			status: "token offline",
+		},
+	])("does not accept or notify a token fetch $name", async ({ fetch, status }) => {
+		const store = new SettingsStore(new MemoryStorage());
+		const controls = new SettingsControlFactory(document, () => store.commit());
+		const accepted = vi.fn();
+		const panel = new SettingsProviderPanel(document, store, providers, controls, {
+			onMusixmatchTokenAccepted: accepted,
+			onRefreshMusixmatchToken: fetch,
+			onScheduleRefresh: vi.fn(),
+		});
+		const root = document.createElement("div");
+		root.append(...panel.render(store.get()));
+		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(store.get().providers.musixmatchToken).toBeUndefined();
+		expect(root.querySelector('[role="status"]')?.textContent).toContain(status);
 		expect(accepted).not.toHaveBeenCalled();
 	});
 });

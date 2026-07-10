@@ -1,6 +1,6 @@
 import type { LyricsProvider } from "../lyrics/types";
 import type { SettingsControlFactory } from "./SettingsControlFactory";
-import type { ExtensionSettings, SettingsStore, UiLanguage } from "./SettingsStore";
+import type { ExtensionSettings, SettingsStore, SettingsUpdateResult, UiLanguage } from "./SettingsStore";
 import { formatTranslation, type TranslationKey, translate, translatedOptionLabel } from "./settingsTranslations";
 
 type SettingsProviderPanelCallbacks = {
@@ -38,8 +38,9 @@ export class SettingsProviderPanel {
 			settings.providers.musixmatchToken ?? "",
 			(value) => {
 				this.clearTokenStatus();
-				this.update({ providers: { ...this.store.get().providers, musixmatchToken: value || undefined } });
-			}
+				return this.update({ providers: { ...this.store.get().providers, musixmatchToken: value || undefined } }).persisted;
+			},
+			() => this.clearTokenStatus()
 		);
 		this.musixmatchTokenInput = tokenRow.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]') ?? undefined;
 		rows.push(tokenRow);
@@ -53,13 +54,14 @@ export class SettingsProviderPanel {
 				settings.providers.musixmatchProxyMode,
 				["default", "custom"],
 				(value) => {
-					this.update({
+					const result = this.update({
 						providers: {
 							...this.store.get().providers,
 							musixmatchProxyMode: value as ExtensionSettings["providers"]["musixmatchProxyMode"],
 						},
 					});
 					this.callbacks.onScheduleRefresh();
+					return result.persisted;
 				},
 				(value) => translatedOptionLabel("musixmatchProxyMode", value, language)
 			)
@@ -75,7 +77,7 @@ export class SettingsProviderPanel {
 		if (settings.providers.musixmatchProxyMode === "custom") {
 			rows.push(
 				this.controls.input("proxy-url", this.t("musixmatchProxyBaseUrl", language), settings.providers.musixmatchProxyBaseUrl ?? "", (value) => {
-					this.update({ providers: { ...this.store.get().providers, musixmatchProxyBaseUrl: value || undefined } });
+					return this.update({ providers: { ...this.store.get().providers, musixmatchProxyBaseUrl: value || undefined } }).persisted;
 				})
 			);
 		}
@@ -161,10 +163,10 @@ export class SettingsProviderPanel {
 			if (!token) {
 				this.tokenStatus = { key: "tokenMissing" };
 			} else {
-				this.store.update({ providers: { ...this.store.get().providers, musixmatchToken: token } });
+				const result = this.store.updateWithResult({ providers: { ...this.store.get().providers, musixmatchToken: token } });
 				this.patchMusixmatchTokenInput(token);
 				this.tokenStatus = { key: "tokenUpdated" };
-				acceptedToken = token;
+				acceptedToken = result.persisted ? token : undefined;
 			}
 		} catch (error) {
 			if (!this.isCurrentTokenRequest(request)) {
@@ -218,8 +220,8 @@ export class SettingsProviderPanel {
 		return this.providers.find((item) => item.id === provider)?.id ?? provider;
 	}
 
-	private update(patch: Partial<ExtensionSettings>): ExtensionSettings {
-		return this.store.update(patch);
+	private update(patch: Partial<ExtensionSettings>): SettingsUpdateResult {
+		return this.store.updateWithResult(patch);
 	}
 
 	private t(key: TranslationKey, language: UiLanguage): string {

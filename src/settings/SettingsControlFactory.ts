@@ -1,5 +1,10 @@
 import { createSettingsIcon } from "./settingsIcons";
 
+export type NumberControlChange = {
+	persisted: boolean;
+	value: number;
+};
+
 export class SettingsControlFactory {
 	private committedPreviewRevision = 0;
 	private previewRevision = 0;
@@ -14,7 +19,7 @@ export class SettingsControlFactory {
 		label: string,
 		value: string,
 		options: string[],
-		onChange: (value: string) => void,
+		onChange: (value: string) => boolean,
 		optionLabel = (option: string): string => option
 	): HTMLElement {
 		const select = this.ownerDocument.createElement("select");
@@ -27,20 +32,20 @@ export class SettingsControlFactory {
 			select.append(element);
 		}
 		select.addEventListener("change", () => {
-			onChange(select.value);
-			this.markPersistenceComplete();
+			this.markPersistenceComplete(onChange(select.value));
 		});
 		return this.row(label, select);
 	}
 
-	public number(controlId: string, label: string, value: number, onChange: (value: number) => number): HTMLElement {
+	public number(controlId: string, label: string, value: number, onChange: (value: number) => NumberControlChange): HTMLElement {
 		const input = this.ownerDocument.createElement("input");
 		input.type = "number";
 		input.value = String(value);
 		input.dataset.controlId = controlId;
 		input.addEventListener("change", () => {
-			input.value = String(onChange(Number(input.value)));
-			this.markPersistenceComplete();
+			const result = onChange(Number(input.value));
+			input.value = String(result.value);
+			this.markPersistenceComplete(result.persisted);
 		});
 		return this.row(label, input);
 	}
@@ -88,26 +93,31 @@ export class SettingsControlFactory {
 		return this.row(label, input);
 	}
 
-	public input(controlId: string, label: string, value: string, onChange: (value: string) => void): HTMLElement {
+	public input(
+		controlId: string,
+		label: string,
+		value: string,
+		onChange: (value: string) => boolean,
+		onInput?: (value: string) => void
+	): HTMLElement {
 		const input = this.ownerDocument.createElement("input");
 		input.type = "text";
 		input.value = value;
 		input.dataset.controlId = controlId;
+		input.addEventListener("input", () => onInput?.(input.value));
 		input.addEventListener("change", () => {
-			onChange(input.value);
-			this.markPersistenceComplete();
+			this.markPersistenceComplete(onChange(input.value));
 		});
 		return this.row(label, input);
 	}
 
-	public toggle(controlId: string, label: string, value: boolean, onChange: (value: boolean) => void): HTMLElement {
+	public toggle(controlId: string, label: string, value: boolean, onChange: (value: boolean) => boolean): HTMLElement {
 		const input = this.ownerDocument.createElement("input");
 		input.type = "checkbox";
 		input.checked = value;
 		input.dataset.controlId = controlId;
 		input.addEventListener("change", () => {
-			onChange(input.checked);
-			this.markPersistenceComplete();
+			this.markPersistenceComplete(onChange(input.checked));
 		});
 		return this.row(label, input);
 	}
@@ -168,7 +178,9 @@ export class SettingsControlFactory {
 		return row;
 	}
 
-	private markPersistenceComplete(): void {
-		this.committedPreviewRevision = this.previewRevision;
+	private markPersistenceComplete(persisted: boolean): void {
+		if (persisted) {
+			this.committedPreviewRevision = this.previewRevision;
+		}
 	}
 }

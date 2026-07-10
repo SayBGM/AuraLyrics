@@ -251,6 +251,20 @@ describe("SettingsStore", () => {
 		expect(store.consumePersistenceFailure()).toBe(true);
 	});
 
+	test("reports update persistence without changing the existing update return contract", () => {
+		const storage = new MemoryStorage();
+		const store = new SettingsStore(storage);
+		vi.spyOn(storage, "set").mockReturnValue(false);
+
+		const result = store.updateWithResult({ lyricsDelayMs: 375 });
+		const settings = store.update({ lyricsDelayMs: 500 });
+
+		expect(result.persisted).toBe(false);
+		expect(result.settings.lyricsDelayMs).toBe(375);
+		expect(store.get().lyricsDelayMs).toBe(500);
+		expect(settings.lyricsDelayMs).toBe(500);
+	});
+
 	test("reports persistence failures without exposing stored values", () => {
 		const storage = new MemoryStorage();
 		const store = new SettingsStore(storage);

@@ -480,6 +480,50 @@ describe("ExtensionApp", () => {
 		}
 	});
 
+	test("keeps persistence failure as the final notification when a fetched token cannot be saved", async () => {
+		const { showNotification, spicetify } = createSpicetify();
+		let modal: HTMLElement | undefined;
+		spicetify.PopupModal = {
+			display: ({ content }) => {
+				modal = document.createElement("div");
+				modal.className = "main-trackCreditsModal-container";
+				modal.append(content);
+				document.body.append(modal);
+			},
+			hide: () => modal?.remove(),
+		};
+		window.Spicetify = spicetify;
+		const app = new ExtensionApp(spicetify);
+		const internals = app as unknown as {
+			musixmatchTokenService: { refresh: () => Promise<string | undefined> };
+			settings: { get: () => { providers: { musixmatchToken?: string } } };
+			settingsView: { open: () => void };
+		};
+		internals.musixmatchTokenService = { refresh: vi.fn(async () => "runtime-token") };
+		app.start();
+		if (!spicetify.LocalStorage) {
+			throw new Error("LocalStorage fixture is missing.");
+		}
+		spicetify.LocalStorage.set = vi.fn(() => {
+			throw new Error("quota exceeded");
+		});
+
+		try {
+			internals.settingsView.open();
+			const content = document.querySelector<HTMLElement>(".aura-lyrics-settings");
+			content?.querySelector<HTMLButtonElement>('[data-section="providers"]')?.click();
+			content?.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
+			await vi.waitFor(() => expect(showNotification).toHaveBeenCalledWith("AuraLyrics settings could not be saved.", true));
+
+			expect(internals.settings.get().providers.musixmatchToken).toBe("runtime-token");
+			expect(showNotification).toHaveBeenCalledTimes(1);
+			expect(showNotification).not.toHaveBeenCalledWith("Musixmatch token updated.");
+		} finally {
+			app.destroy();
+			window.Spicetify = undefined;
+		}
+	});
+
 	test("surfaces constructor persistence failures when the app starts", () => {
 		const { showNotification, spicetify } = createSpicetify();
 		if (!spicetify.LocalStorage) {
