@@ -340,6 +340,8 @@ export class ExtensionApp {
 	}
 
 	private async applySettings(): Promise<void> {
+		const generation = this.loadGeneration;
+		const session = this.session;
 		this.session?.applySettings(this.settings.get());
 		this.resyncPlaybackTimestamp();
 		const state = this.lastLoadState;
@@ -347,8 +349,9 @@ export class ExtensionApp {
 			if (this.shouldSynthesizeKaraoke(state) && this.currentTrack) {
 				await this.ensurePseudoKaraoke(this.currentTrack, state.lyrics as LineLyrics);
 			}
+			if (generation !== this.loadGeneration || this.session !== session || this.lastLoadState !== state) return;
 			const lyrics = this.displayLyricsFor(state);
-			this.renderer.mount(this.session.root, {
+			this.renderer.mount(session?.root ?? this.session.root, {
 				lyrics,
 				settings: this.settings.get(),
 				provider: state.provider,
