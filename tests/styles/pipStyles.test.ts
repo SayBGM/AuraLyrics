@@ -20,6 +20,37 @@ describe("pipStyles", () => {
 		expect(interludeStyles).not.toContain(".status-card");
 	});
 
+	test("themes PiP content while keeping playback and close controls on fixed glass contrast", () => {
+		const rootRule = baseStyles.match(/#aura-lyrics-root \{[^}]+\}/)?.[0] ?? "";
+		const scrimRule = baseStyles.match(/\.pip-scrim \{[^}]+\}/)?.[0] ?? "";
+		const auraLyricsRule = baseStyles.match(/\.aura-lyrics \{[^}]+\}/)?.[0] ?? "";
+		const activeLineRule = lyricsStyles.match(/\.line-group\.active \.line \{[^}]+\}/)?.[0] ?? "";
+		const syllableRule = lyricsStyles.match(/(?:^|\n)\.syllable \{[^}]+\}/)?.[0] ?? "";
+		const providerRule = lyricsStyles.match(/\.provider-source \{[^}]+\}/)?.[0] ?? "";
+		const interludeRule = interludeStyles.match(/\.interlude-pill \{[^}]+\}/)?.[0] ?? "";
+		const statusRule = statusStyles.match(/\.status-card \{[^}]+\}/)?.[0] ?? "";
+
+		expect(rootRule).toContain("--pip-foreground-color: #ffffff");
+		expect(rootRule).toContain("--pip-muted-foreground-color:");
+		expect(rootRule).toContain("background: var(--pip-background-color)");
+		expect(scrimRule).toContain("rgba(var(--pip-scrim-rgb)");
+		expect(scrimRule).toContain("var(--pip-scrim-opacity)");
+		expect(auraLyricsRule).toContain("color: var(--pip-foreground-color)");
+		expect(activeLineRule).toContain("color: var(--pip-foreground-color)");
+		expect(activeLineRule).toContain("rgba(var(--pip-glow-rgb)");
+		expect(syllableRule).toContain("var(--pip-foreground-color)");
+		expect(syllableRule).toContain("var(--pip-muted-foreground-color)");
+		expect(providerRule).toContain("color: var(--pip-muted-foreground-color)");
+		expect(interludeRule).toContain("rgba(var(--pip-foreground-rgb)");
+		expect(statusRule).toContain("rgba(var(--pip-scrim-rgb)");
+
+		expect(controlsStyles).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 246, 248, 0.82))");
+		expect(controlsStyles).toContain("color: #050505");
+		expect(controlsStyles).toContain("color: #111418");
+		expect(controlsStyles).not.toContain("--pip-foreground");
+		expect(controlsStyles).not.toContain("--pip-scrim");
+	});
+
 	test("keeps album art unscaled by default and pulls it inward during interludes", () => {
 		expect(pipStyles).toContain("inset: 0");
 		expect(pipStyles).toContain("width: 100%");
@@ -173,7 +204,7 @@ describe("pipStyles", () => {
 		expect(vocalsNextRule).toContain("filter: blur(calc(var(--inactive-blur) * 0.55))");
 		expect(syllablePreviousRule).toContain("opacity: 0.48");
 		expect(syllableNextRule).toContain("opacity: 0.48");
-		expect(contextLineRule).toContain("color: rgba(255, 255, 255, 0.72)");
+		expect(contextLineRule).toContain("color: var(--pip-muted-foreground-color)");
 	});
 
 	test("styles parenthetical word lyrics as right-aligned lowered echoes without reserving lyric width", () => {
@@ -202,10 +233,10 @@ describe("pipStyles", () => {
 
 		expect(translationRule).toContain("display: block");
 		expect(translationRule).toContain("font-size: calc(var(--lyrics-size) * 0.52)");
-		expect(translationRule).toContain("color: rgba(255, 255, 255, 0.5)");
+		expect(translationRule).toContain("color: var(--pip-muted-foreground-color)");
 		expect(translationRule).toContain("word-break: keep-all");
-		expect(activeRule).toContain("color: rgba(255, 255, 255, 0.8)");
-		expect(sungRule).toContain("color: rgba(255, 255, 255, 0.4)");
+		expect(activeRule).toContain("color: var(--pip-muted-foreground-color)");
+		expect(sungRule).toContain("color: var(--pip-muted-foreground-color)");
 	});
 
 	test("styles Korean long-tail syllables without changing word layout", () => {
@@ -241,8 +272,8 @@ describe("pipStyles", () => {
 		expect(pipStyles).toContain("--pip-interlude-progress-percent: 0%");
 		expect(pipStyles).toContain("rgba(var(--pip-accent-rgb, 248, 248, 244), calc(0.36 + var(--pip-interlude-progress, 0) * 0.52))");
 		expect(pipStyles).toContain("brightness(calc(0.92 + var(--pip-interlude-progress, 0) * 0.22))");
-		expect(pipStyles).toContain("inset 0 18px 28px rgba(255, 255, 255, 0.16)");
-		expect(pipStyles).toContain("inset 0 -18px 32px rgba(0, 0, 0, 0.26)");
+		expect(pipStyles).toContain("inset 0 18px 28px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.16)");
+		expect(pipStyles).toContain("inset 0 -18px 32px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.26)");
 		expect(pipStyles).not.toContain(".pip-border-progress");
 		expect(pipStyles).not.toContain("stroke-dashoffset");
 		expect(pipStyles).not.toContain("conic-gradient(");

@@ -21,8 +21,8 @@ import type { ExtensionSettings } from "../settings/settingsSchema";
 import { pipStyles } from "../styles/pipStyles";
 import { MusicStateMachine } from "./MusicStateMachine";
 import { TopbarController } from "./TopbarController";
-import { TrackAccentService } from "./TrackAccentService";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "./TrackSessionController";
+import { TrackThemeService } from "./TrackThemeService";
 
 const SETTINGS_PERSISTENCE_ERROR = "AuraLyrics settings could not be saved.";
 
@@ -40,7 +40,7 @@ export class ExtensionApp {
 	private readonly musixmatchTokenService: MusixmatchTokenService;
 	private readonly waveformService: AudioAnalysisWaveformService;
 	private readonly trackSession: TrackSessionController;
-	private readonly trackAccentService: TrackAccentService;
+	private readonly trackThemeService: TrackThemeService;
 	private readonly settingsView: SettingsView;
 	private readonly topbar: TopbarController;
 	private readonly disposers: Array<() => void> = [];
@@ -48,6 +48,7 @@ export class ExtensionApp {
 	private openPipPromise?: Promise<void>;
 	private session?: PipSession;
 	private currentTrack?: TrackIdentity;
+	private themeGeneration = 0;
 	private started = false;
 	private isPlaybackActive = false;
 
@@ -58,7 +59,7 @@ export class ExtensionApp {
 		this.player = new SpicetifyPlayerAdapter(spicetify);
 		this.playbackSynchronizer = new PlaybackSynchronizer(() => this.player.getTimestamp(this.settings.get().lyricsDelayMs));
 		this.waveformService = new AudioAnalysisWaveformService(async (uri) => this.spicetify.getAudioData?.(uri));
-		this.trackAccentService = new TrackAccentService(spicetify.colorExtractor);
+		this.trackThemeService = new TrackThemeService(spicetify.colorExtractor);
 		this.musixmatchTokenService = new MusixmatchTokenService((url, body, headers) => {
 			if (!this.spicetify.CosmosAsync) {
 				throw new Error("Spicetify.CosmosAsync is not available.");
@@ -121,6 +122,7 @@ export class ExtensionApp {
 
 	public destroy(): void {
 		this.trackSession.invalidate();
+		this.themeGeneration += 1;
 		this.session = undefined;
 		this.started = false;
 		this.clock?.stop();
@@ -185,6 +187,7 @@ export class ExtensionApp {
 
 	private closePip(closeWindow = true): void {
 		this.trackSession.invalidate();
+		this.themeGeneration += 1;
 		this.clock?.stop();
 		this.clock = undefined;
 		this.renderer.destroy();
@@ -211,6 +214,7 @@ export class ExtensionApp {
 		if (!this.session) {
 			return;
 		}
+		const themeGeneration = ++this.themeGeneration;
 		const track = this.currentTrack ?? this.player.getCurrentTrack();
 		this.currentTrack = track;
 		if (!track) {
@@ -220,7 +224,7 @@ export class ExtensionApp {
 			return;
 		}
 		this.session.setCover(track.coverUrl);
-		void this.applyTrackAccent(track);
+		void this.applyTrackTheme(track, themeGeneration);
 		this.stateMachine.dispatch({ type: "validTrack" });
 		this.showStatus("Loading lyrics", track.title);
 		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh);
@@ -295,12 +299,16 @@ export class ExtensionApp {
 		);
 	}
 
-	private async applyTrackAccent(track: TrackIdentity): Promise<void> {
+	private async applyTrackTheme(track: TrackIdentity, generation: number): Promise<void> {
 		const session = this.session;
 		if (!session) {
 			return;
 		}
-		await this.trackAccentService.apply(track, session, () => this.session === session && this.currentTrack?.uri === track.uri);
+		await this.trackThemeService.apply(
+			track,
+			session,
+			() => this.themeGeneration === generation && this.session === session && this.currentTrack?.uri === track.uri
+		);
 	}
 
 	private tick(deltaTime: number): void {

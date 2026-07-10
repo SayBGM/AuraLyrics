@@ -1,3 +1,4 @@
+import type { TrackTheme } from "../app/TrackThemeService";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import { EventEmitter } from "../shared/EventEmitter";
 
@@ -6,7 +7,7 @@ export type PipSession = {
 	root: HTMLElement;
 	setCover(url?: string): void;
 	setPlaying(isPlaying: boolean): void;
-	setAccentColor(color?: string): void;
+	applyTheme(theme?: TrackTheme): void;
 	applySettings(settings: ExtensionSettings): void;
 };
 
@@ -117,7 +118,7 @@ export class DocumentPipController {
 				root.classList.toggle("is-playing", isPlaying);
 				this.updatePlayControl(controlsElement, isPlaying);
 			},
-			setAccentColor: (color) => this.applyAccentColor(root, color),
+			applyTheme: (theme) => this.applyTheme(root, theme),
 			applySettings,
 		};
 		session.applySettings(settings);
@@ -232,16 +233,31 @@ export class DocumentPipController {
 		root.classList.toggle("background-disabled", !settings.backgroundEnabled);
 	}
 
-	private applyAccentColor(root: HTMLElement, color: string | undefined): void {
-		const normalized = color ? normalizeHexColor(color) : undefined;
-		const rgb = normalized ? hexToRgb(normalized) : undefined;
-		if (!normalized || !rgb) {
-			root.style.removeProperty("--pip-accent-color");
-			root.style.removeProperty("--pip-accent-rgb");
+	private applyTheme(root: HTMLElement, theme: TrackTheme | undefined): void {
+		if (!theme) {
+			for (const property of THEME_CSS_PROPERTIES) {
+				root.style.removeProperty(property);
+			}
+			delete root.dataset.surfaceTone;
 			return;
 		}
-		root.style.setProperty("--pip-accent-color", normalized);
-		root.style.setProperty("--pip-accent-rgb", `${rgb.red}, ${rgb.green}, ${rgb.blue}`);
+		const values: Record<(typeof THEME_CSS_PROPERTIES)[number], string> = {
+			"--pip-accent-color": theme.accent,
+			"--pip-accent-rgb": theme.accentRgb,
+			"--pip-background-color": theme.background,
+			"--pip-surface-tone": theme.surfaceTone,
+			"--pip-foreground-color": theme.foreground,
+			"--pip-foreground-rgb": theme.foregroundRgb,
+			"--pip-muted-foreground-color": theme.mutedForeground,
+			"--pip-muted-rgb": theme.mutedRgb,
+			"--pip-glow-rgb": theme.glowRgb,
+			"--pip-scrim-rgb": theme.scrimRgb,
+			"--pip-scrim-opacity": String(theme.scrimOpacity),
+		};
+		for (const property of THEME_CSS_PROPERTIES) {
+			root.style.setProperty(property, values[property]);
+		}
+		root.dataset.surfaceTone = theme.surfaceTone;
 	}
 
 	private icon(name: "close" | "next" | "pause" | "play" | "previous"): string {
@@ -256,22 +272,16 @@ export class DocumentPipController {
 	}
 }
 
-const normalizeHexColor = (hex: string): string | undefined => {
-	const normalized = hex.trim().replace(/^#/, "");
-	if (!/^[\da-f]{6}$/i.test(normalized)) {
-		return undefined;
-	}
-	return `#${normalized.toLowerCase()}`;
-};
-
-const hexToRgb = (hex: string): { red: number; green: number; blue: number } | undefined => {
-	const normalized = hex.trim().replace(/^#/, "");
-	if (!/^[\da-f]{6}$/i.test(normalized)) {
-		return undefined;
-	}
-	return {
-		red: Number.parseInt(normalized.slice(0, 2), 16),
-		green: Number.parseInt(normalized.slice(2, 4), 16),
-		blue: Number.parseInt(normalized.slice(4, 6), 16),
-	};
-};
+const THEME_CSS_PROPERTIES = [
+	"--pip-accent-color",
+	"--pip-accent-rgb",
+	"--pip-background-color",
+	"--pip-surface-tone",
+	"--pip-foreground-color",
+	"--pip-foreground-rgb",
+	"--pip-muted-foreground-color",
+	"--pip-muted-rgb",
+	"--pip-glow-rgb",
+	"--pip-scrim-rgb",
+	"--pip-scrim-opacity",
+] as const;

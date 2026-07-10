@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
 import type { ReadyTrackSessionSnapshot, TrackSessionSnapshot } from "../../src/app/TrackSessionController";
+import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
 import type { LineLyrics } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
@@ -83,7 +84,7 @@ describe("ExtensionApp", () => {
 			session?: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
 			trackSession: typeof trackSession;
@@ -93,7 +94,7 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root: document.createElement("main"),
 			setCover: vi.fn(),
-			setAccentColor: vi.fn(),
+			applyTheme: vi.fn(),
 		};
 		internals.currentTrack = snapshot.loadState.track;
 		internals.trackSession = trackSession;
@@ -205,7 +206,7 @@ describe("ExtensionApp", () => {
 			root: document.createElement("main"),
 			setCover: vi.fn(),
 			setPlaying: vi.fn(),
-			setAccentColor: vi.fn(),
+			applyTheme: vi.fn(),
 			applySettings: vi.fn(),
 		});
 		await Promise.all([firstOpen, secondOpen]);
@@ -385,7 +386,7 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
-	test("applies extracted track colors to the PiP accent without blocking lyrics loading", async () => {
+	test("starts and applies the complete track theme without blocking lyrics loading", async () => {
 		const { spicetify } = createSpicetify();
 		spicetify.Player.data = {
 			item: {
@@ -403,21 +404,26 @@ describe("ExtensionApp", () => {
 			isTrack: () => true,
 			isLocalTrack: () => false,
 		};
-		spicetify.colorExtractor = vi.fn(async () => ({
+		const colors = {
 			DARK_VIBRANT: "#101010",
 			DESATURATED: "#777777",
 			LIGHT_VIBRANT: "#eeeeee",
 			PROMINENT: "#abcdef",
 			VIBRANT: "#ff00aa",
 			VIBRANT_NON_ALARMING: "#2d9cdb",
-		}));
+		};
+		spicetify.colorExtractor = vi.fn(async () => colors);
 		const app = new ExtensionApp(spicetify);
-		const setAccentColor = vi.fn();
+		const applyTheme = vi.fn();
+		let resolveLyrics!: (value: { status: "empty"; reason: "no-synced-lyrics"; track: { title: string } }) => void;
+		const lyricsResult = new Promise<{ status: "empty"; reason: "no-synced-lyrics"; track: { title: string } }>((resolve) => {
+			resolveLyrics = resolve;
+		});
 		const internals = app as unknown as {
 			session: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			lyricsService: {
 				load: () => Promise<{ status: "empty"; reason: "no-synced-lyrics"; track: { title: string } }>;
@@ -427,16 +433,81 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root: document.createElement("main"),
 			setCover: vi.fn(),
-			setAccentColor,
+			applyTheme,
 		};
 		internals.lyricsService = {
-			load: vi.fn(async () => ({ status: "empty", reason: "no-synced-lyrics", track: { title: "Accent Track" } }) as const),
+			load: vi.fn(() => lyricsResult),
+		};
+
+		const loading = internals.loadCurrentTrack(false);
+		await vi.waitFor(() => expect(applyTheme).toHaveBeenCalledOnce());
+
+		expect(spicetify.colorExtractor).toHaveBeenCalledWith("spotify:track:accent");
+		expect(applyTheme).toHaveBeenCalledWith(buildTrackTheme(colors));
+		resolveLyrics({ status: "empty", reason: "no-synced-lyrics", track: { title: "Accent Track" } });
+		await loading;
+	});
+
+	test("does not apply an older theme generation when the same track is reloaded", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:same-theme",
+				metadata: {
+					title: "Same Theme",
+					artist_name: "Aura",
+					album_title: "Generations",
+					duration: "180000",
+				},
+			},
+		};
+		spicetify.URI = {
+			isTrack: () => true,
+			isLocalTrack: () => false,
+		};
+		const olderColors = {
+			DARK_VIBRANT: "#101010",
+			DESATURATED: "#777777",
+			LIGHT_VIBRANT: "#eeeeee",
+			PROMINENT: "#112233",
+			VIBRANT: "#ff00aa",
+			VIBRANT_NON_ALARMING: "#2d9cdb",
+		};
+		const newerColors = { ...olderColors, PROMINENT: "#f0e2c4", VIBRANT_NON_ALARMING: "#8a4fff" };
+		const olderResult = deferred<typeof olderColors>();
+		const newerResult = deferred<typeof newerColors>();
+		spicetify.colorExtractor = vi.fn().mockReturnValueOnce(olderResult.promise).mockReturnValueOnce(newerResult.promise);
+		const app = new ExtensionApp(spicetify);
+		const applyTheme = vi.fn();
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
+			};
+			lyricsService: {
+				load: () => Promise<{ status: "empty"; reason: "no-synced-lyrics"; track: { title: string } }>;
+			};
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			applyTheme,
+		};
+		internals.lyricsService = {
+			load: vi.fn(async () => ({ status: "empty", reason: "no-synced-lyrics", track: { title: "Same Theme" } }) as const),
 		};
 
 		await internals.loadCurrentTrack(false);
+		await internals.loadCurrentTrack(false);
+		newerResult.resolve(newerColors);
+		await vi.waitFor(() => expect(applyTheme).toHaveBeenCalledWith(buildTrackTheme(newerColors)));
+		olderResult.resolve(olderColors);
+		await Promise.resolve();
+		await Promise.resolve();
 
-		expect(spicetify.colorExtractor).toHaveBeenCalledWith("spotify:track:accent");
-		expect(setAccentColor).toHaveBeenCalledWith("#2d9cdb");
+		expect(applyTheme).toHaveBeenCalledTimes(1);
 	});
 
 	test("ignores invalid extracted colors and falls back to the next valid palette color", async () => {
@@ -468,12 +539,12 @@ describe("ExtensionApp", () => {
 				}) as never
 		);
 		const app = new ExtensionApp(spicetify);
-		const setAccentColor = vi.fn();
+		const applyTheme = vi.fn();
 		const internals = app as unknown as {
 			session: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			lyricsService: {
 				load: () => Promise<{ status: "empty"; reason: "no-synced-lyrics"; track: { title: string } }>;
@@ -483,7 +554,7 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root: document.createElement("main"),
 			setCover: vi.fn(),
-			setAccentColor,
+			applyTheme,
 		};
 		internals.lyricsService = {
 			load: vi.fn(async () => ({ status: "empty", reason: "no-synced-lyrics", track: { title: "Accent Fallback" } }) as const),
@@ -491,7 +562,9 @@ describe("ExtensionApp", () => {
 
 		await internals.loadCurrentTrack(false);
 
-		expect(setAccentColor).toHaveBeenCalledWith("#101010");
+		expect(applyTheme).toHaveBeenCalledWith(
+			expect.objectContaining({ accent: "#101010", background: "#101010", foreground: "#ffffff", surfaceTone: "dark" })
+		);
 	});
 
 	test("shows instrumental tracks as plain album art instead of a status card", async () => {
@@ -521,7 +594,7 @@ describe("ExtensionApp", () => {
 			session: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			lyricsService: {
 				load: () => Promise<{ status: "empty"; reason: "instrumental"; track: { title: string; coverUrl?: string } }>;
@@ -531,7 +604,7 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root: content,
 			setCover,
-			setAccentColor: vi.fn(),
+			applyTheme: vi.fn(),
 		};
 		internals.lyricsService = {
 			load: vi.fn(
@@ -572,7 +645,7 @@ describe("ExtensionApp", () => {
 			session: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			currentTrack: {
 				uri: string;
@@ -588,7 +661,7 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root: document.createElement("main"),
 			setCover: vi.fn(),
-			setAccentColor: vi.fn(),
+			applyTheme: vi.fn(),
 		};
 		internals.currentTrack = {
 			uri: "spotify:track:refresh",
@@ -648,7 +721,7 @@ describe("ExtensionApp", () => {
 			session: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			settings: { update: (patch: unknown) => void };
 			lyricsService: {
@@ -659,7 +732,7 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root,
 			setCover: vi.fn(),
-			setAccentColor: vi.fn(),
+			applyTheme: vi.fn(),
 		};
 		internals.settings.update({ interludeStyle: "wave" });
 		internals.lyricsService = {
@@ -721,7 +794,7 @@ describe("ExtensionApp", () => {
 			session: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			lyricsService: { load: () => Promise<ReturnType<typeof readyState>> };
 			trackSession: { getSnapshot: () => TrackSessionSnapshot };
@@ -730,7 +803,7 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root: document.createElement("main"),
 			setCover: vi.fn(),
-			setAccentColor: vi.fn(),
+			applyTheme: vi.fn(),
 		};
 		internals.lyricsService = {
 			load: vi.fn().mockResolvedValueOnce(readyState(lyricsA)).mockResolvedValueOnce(readyState(lyricsB)),
@@ -786,7 +859,7 @@ describe("ExtensionApp", () => {
 			session: {
 				root: HTMLElement;
 				setCover: (url?: string) => void;
-				setAccentColor: (color?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
 			};
 			settings: { update: (patch: unknown) => void };
 			lyricsService: {
@@ -797,7 +870,7 @@ describe("ExtensionApp", () => {
 		internals.session = {
 			root,
 			setCover: vi.fn(),
-			setAccentColor: vi.fn(),
+			applyTheme: vi.fn(),
 		};
 		internals.settings.update({ interludeStyle: "wave" });
 		internals.lyricsService = {

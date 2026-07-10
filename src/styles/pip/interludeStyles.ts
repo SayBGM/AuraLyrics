@@ -21,16 +21,16 @@ export const interludeStyles = `
 	align-items: center;
 	justify-content: center;
 	padding: 0.34em 0.58em;
-	border: 1px solid rgba(255, 255, 255, 0.18);
+	border: 1px solid rgba(var(--pip-foreground-rgb), 0.18);
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.1);
-	box-shadow: 0 0 24px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+	background: rgba(var(--pip-foreground-rgb), 0.1);
+	box-shadow: 0 0 24px rgba(var(--pip-glow-rgb), 0.1), inset 0 1px 0 rgba(var(--pip-foreground-rgb), 0.14);
 	backdrop-filter: blur(12px);
 }
 
 .interlude.active .interlude-pill {
-	background: rgba(255, 255, 255, 0.18);
-	box-shadow: 0 0 calc(28px * var(--motion-intensity, 1)) rgba(255, 255, 255, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+	background: rgba(var(--pip-foreground-rgb), 0.18);
+	box-shadow: 0 0 calc(28px * var(--motion-intensity, 1)) rgba(var(--pip-glow-rgb), 0.2), inset 0 1px 0 rgba(var(--pip-foreground-rgb), 0.22);
 }
 
 .interlude-dot {
@@ -72,10 +72,10 @@ export const interludeStyles = `
 	height: calc(var(--lyrics-size) * 1.18);
 	padding: 0 calc(var(--lyrics-size) * 0.42);
 	overflow: hidden;
-	border: 1px solid rgba(255, 255, 255, 0.18);
+	border: 1px solid rgba(var(--pip-foreground-rgb), 0.18);
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.085);
-	box-shadow: 0 0 24px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+	background: rgba(var(--pip-foreground-rgb), 0.085);
+	box-shadow: 0 0 24px rgba(var(--pip-glow-rgb), 0.1), inset 0 1px 0 rgba(var(--pip-foreground-rgb), 0.14);
 	backdrop-filter: blur(12px);
 }
 
@@ -88,20 +88,20 @@ export const interludeStyles = `
 	background:
 		linear-gradient(
 			180deg,
-			rgba(255, 255, 255, calc(0.34 + var(--bar-fill-ratio, 0) * 0.56)),
-			rgba(255, 255, 255, calc(0.18 + var(--bar-fill-ratio, 0) * 0.5))
+			rgba(var(--pip-foreground-rgb), calc(0.34 + var(--bar-fill-ratio, 0) * 0.56)),
+			rgba(var(--pip-muted-rgb), calc(0.18 + var(--bar-fill-ratio, 0) * 0.5))
 		);
 	opacity: calc(0.52 + var(--bar-fill-ratio, 0) * 0.46);
 	box-shadow:
-		0 0 calc((4px + var(--bar-fill-ratio, 0) * 12px) * var(--motion-intensity, 1)) rgba(255, 255, 255, calc(0.06 + var(--bar-fill-ratio, 0) * 0.18)),
-		inset 0 1px 0 rgba(255, 255, 255, calc(0.1 + var(--bar-fill-ratio, 0) * 0.2));
+		0 0 calc((4px + var(--bar-fill-ratio, 0) * 12px) * var(--motion-intensity, 1)) rgba(var(--pip-glow-rgb), calc(0.06 + var(--bar-fill-ratio, 0) * 0.18)),
+		inset 0 1px 0 rgba(var(--pip-foreground-rgb), calc(0.1 + var(--bar-fill-ratio, 0) * 0.2));
 	transform-origin: center;
 	transition: background 120ms linear, opacity 120ms linear, box-shadow 120ms linear;
 }
 
 .interlude.active .interlude-wave {
-	background: rgba(255, 255, 255, 0.1);
-	box-shadow: 0 0 calc(26px * var(--motion-intensity, 1)) rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+	background: rgba(var(--pip-foreground-rgb), 0.1);
+	box-shadow: 0 0 calc(26px * var(--motion-intensity, 1)) rgba(var(--pip-glow-rgb), 0.14), inset 0 1px 0 rgba(var(--pip-foreground-rgb), 0.18);
 }
 
 #aura-lyrics-root.is-playing .interlude.active .interlude-wave-bar {

@@ -16,7 +16,19 @@ body {
 	position: fixed;
 	inset: 0;
 	overflow: hidden;
-	background: #050505;
+	--pip-accent-color: #f8f8f4;
+	--pip-accent-rgb: 248, 248, 244;
+	--pip-background-color: #050505;
+	--pip-surface-tone: dark;
+	--pip-foreground-color: #ffffff;
+	--pip-foreground-rgb: 255, 255, 255;
+	--pip-muted-foreground-color: #919191;
+	--pip-muted-rgb: 145, 145, 145;
+	--pip-glow-rgb: 248, 248, 244;
+	--pip-scrim-rgb: 0, 0, 0;
+	--pip-scrim-opacity: 0.62;
+	background: var(--pip-background-color);
+	color: var(--pip-foreground-color);
 	-webkit-app-region: drag;
 	--pip-frame-size: clamp(12px, 3.4vmin, 18px);
 	--pip-interlude-progress: 0;
@@ -45,23 +57,27 @@ body {
 	filter: none;
 	transform: scale(1);
 	opacity: 1;
-	background: #050505;
+	background: var(--pip-background-color);
 }
 
 .pip-scrim {
 	position: absolute;
 	inset: 0;
 	background:
-		radial-gradient(circle at center, rgba(0, 0, 0, 0.24) 0%, rgba(0, 0, 0, var(--background-dim, 0.62)) 72%),
-		rgba(0, 0, 0, var(--background-dim, 0.62));
+		radial-gradient(
+			circle at center,
+			rgba(var(--pip-scrim-rgb), calc(max(var(--pip-scrim-opacity), var(--background-dim, 0.62)) * 0.55)) 0%,
+			rgba(var(--pip-scrim-rgb), max(var(--pip-scrim-opacity), var(--background-dim, 0.62))) 72%
+		),
+		rgba(var(--pip-scrim-rgb), max(var(--pip-scrim-opacity), var(--background-dim, 0.62)));
 }
 
 .pip-vignette {
 	position: absolute;
 	inset: 0;
 	background:
-		linear-gradient(180deg, rgba(0, 0, 0, 0.38), transparent 24%, transparent 76%, rgba(0, 0, 0, 0.5)),
-		radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, var(--vignette-strength, 0.55)) 78%);
+		linear-gradient(180deg, rgba(var(--pip-scrim-rgb), 0.38), transparent 24%, transparent 76%, rgba(var(--pip-scrim-rgb), 0.5)),
+		radial-gradient(circle at center, transparent 0%, rgba(var(--pip-scrim-rgb), var(--vignette-strength, 0.55)) 78%);
 }
 
 #aura-lyrics-root.album-art-mode .pip-scrim,
@@ -94,11 +110,11 @@ body {
 	border-radius: 0;
 	background: transparent;
 	box-shadow:
-		inset 0 0 0 1px rgba(255, 255, 255, 0.52),
-		inset 0 18px 28px rgba(255, 255, 255, 0.16),
-		inset 0 -18px 32px rgba(0, 0, 0, 0.26),
+		inset 0 0 0 1px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.52),
+		inset 0 18px 28px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.16),
+		inset 0 -18px 32px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.26),
 		0 0 calc((18px + 32px * var(--pip-interlude-progress, 0)) * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.1 + var(--pip-interlude-progress, 0) * 0.18)),
-		0 20px 44px rgba(0, 0, 0, 0.42);
+		0 20px 44px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.42);
 	filter:
 		saturate(calc(0.9 + var(--pip-interlude-progress, 0) * 0.6))
 		brightness(calc(0.92 + var(--pip-interlude-progress, 0) * 0.22));
@@ -117,16 +133,16 @@ body {
 .pip-frame-surface::before {
 	border: 1px solid rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.44 + var(--pip-interlude-progress, 0) * 0.36));
 	box-shadow:
-		inset 0 1px 0 rgba(255, 255, 255, 0.75),
-		inset 1px 0 0 rgba(255, 255, 255, 0.34),
-		inset -1px 0 0 rgba(0, 0, 0, 0.2),
-		inset 0 -1px 0 rgba(0, 0, 0, 0.34);
+		inset 0 1px 0 rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.75),
+		inset 1px 0 0 rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.34),
+		inset -1px 0 0 rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.2),
+		inset 0 -1px 0 rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.34);
 }
 
 .pip-frame-surface::after {
 	border: var(--pip-frame-size) solid rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.08 + var(--pip-interlude-progress, 0) * 0.2));
 	box-shadow:
-		inset 0 0 34px rgba(0, 0, 0, 0.58),
+		inset 0 0 34px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.58),
 		0 0 calc((16px + 26px * var(--pip-interlude-progress, 0)) * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.1 + var(--pip-interlude-progress, 0) * 0.18));
 }
 
@@ -135,8 +151,8 @@ body {
 	inset: var(--pip-frame-size);
 	border-radius: 0;
 	box-shadow:
-		inset 0 0 42px rgba(0, 0, 0, 0.68),
-		inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+		inset 0 0 42px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.68),
+		inset 0 0 0 1px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.08);
 }
 
 .pip-frame-progress {
@@ -148,10 +164,10 @@ body {
 .pip-frame-progress-segment {
 	position: absolute;
 	background:
-		linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(var(--pip-accent-rgb, 255, 255, 255), 0.9));
+		linear-gradient(90deg, rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.96), rgba(var(--pip-accent-rgb, 255, 255, 255), 0.9));
 	box-shadow:
 		0 0 calc((16px + 26px * var(--pip-interlude-progress, 0)) * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), 0.28),
-		inset 0 0 0 1px rgba(255, 255, 255, 0.46);
+		inset 0 0 0 1px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.46);
 	opacity: calc(0.72 + var(--pip-interlude-progress, 0) * 0.28);
 	transition: width 80ms linear, height 80ms linear, opacity 120ms linear;
 }
@@ -236,7 +252,7 @@ body {
 	height: 100%;
 	display: grid;
 	place-items: center;
-	color: rgba(255, 255, 255, 0.96);
+	color: var(--pip-foreground-color);
 	-webkit-app-region: drag;
 	font-family: "DM Sans", Inter, spotify-circular, sans-serif;
 }

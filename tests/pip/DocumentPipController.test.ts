@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { buildTrackTheme } from "../../src/app/TrackThemeService";
 import { DocumentPipController } from "../../src/pip/DocumentPipController";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
 
@@ -238,18 +239,53 @@ describe("DocumentPipController", () => {
 		expect(frame?.querySelector(".pip-border-progress")).toBeNull();
 	});
 
-	test("applies extracted accent color to PiP CSS variables", async () => {
+	test("applies and safely resets the complete track theme as PiP CSS variables", async () => {
 		const pipWindow = createPipWindow();
 		window.documentPictureInPicture = {
 			requestWindow: vi.fn(async () => pipWindow),
 		};
 
 		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "");
-		session.setAccentColor("#2d9cdb");
+		const theme = buildTrackTheme({
+			DARK_VIBRANT: "#101820",
+			DESATURATED: "#778899",
+			LIGHT_VIBRANT: "#f5e6cc",
+			PROMINENT: "#112233",
+			VIBRANT: "#ff6b35",
+			VIBRANT_NON_ALARMING: "#2d9cdb",
+		});
+		session.applyTheme(theme);
 
 		const root = pipWindow.document.querySelector<HTMLElement>("#aura-lyrics-root");
+		expect(root?.style.getPropertyValue("--pip-accent-color")).toBe(theme.accent);
 		expect(root?.style.getPropertyValue("--pip-accent-rgb")).toBe("45, 156, 219");
-		session.setAccentColor(undefined);
-		expect(root?.style.getPropertyValue("--pip-accent-rgb")).toBe("");
+		expect(root?.style.getPropertyValue("--pip-background-color")).toBe(theme.background);
+		expect(root?.style.getPropertyValue("--pip-surface-tone")).toBe(theme.surfaceTone);
+		expect(root?.style.getPropertyValue("--pip-foreground-color")).toBe(theme.foreground);
+		expect(root?.style.getPropertyValue("--pip-foreground-rgb")).toBe(theme.foregroundRgb);
+		expect(root?.style.getPropertyValue("--pip-muted-foreground-color")).toBe(theme.mutedForeground);
+		expect(root?.style.getPropertyValue("--pip-muted-rgb")).toBe(theme.mutedRgb);
+		expect(root?.style.getPropertyValue("--pip-glow-rgb")).toBe(theme.glowRgb);
+		expect(root?.style.getPropertyValue("--pip-scrim-rgb")).toBe(theme.scrimRgb);
+		expect(root?.style.getPropertyValue("--pip-scrim-opacity")).toBe(String(theme.scrimOpacity));
+		expect(root?.dataset.surfaceTone).toBe(theme.surfaceTone);
+
+		session.applyTheme(undefined);
+		for (const property of [
+			"--pip-accent-color",
+			"--pip-accent-rgb",
+			"--pip-background-color",
+			"--pip-surface-tone",
+			"--pip-foreground-color",
+			"--pip-foreground-rgb",
+			"--pip-muted-foreground-color",
+			"--pip-muted-rgb",
+			"--pip-glow-rgb",
+			"--pip-scrim-rgb",
+			"--pip-scrim-opacity",
+		]) {
+			expect(root?.style.getPropertyValue(property)).toBe("");
+		}
+		expect(root?.dataset.surfaceTone).toBeUndefined();
 	});
 });

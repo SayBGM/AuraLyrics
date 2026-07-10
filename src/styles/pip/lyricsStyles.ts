@@ -33,8 +33,8 @@ export const lyricsStyles = `
 	width: 13px;
 	height: 13px;
 	border-radius: 2px 0 2px 0;
-	background: var(--accent-color, #ff7457);
-	box-shadow: 0 0 10px color-mix(in srgb, var(--accent-color, #ff7457) 45%, transparent);
+	background: var(--pip-accent-color, #ff7457);
+	box-shadow: 0 0 10px rgba(var(--pip-glow-rgb, 255, 116, 87), 0.45);
 	clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 70%, 70% 100%, 0 100%);
 	pointer-events: none;
 	z-index: 2;
@@ -130,7 +130,7 @@ export const lyricsStyles = `
 	letter-spacing: var(--lyric-letter-spacing);
 	word-spacing: var(--lyric-word-spacing);
 	line-height: 1.1;
-	text-shadow: 0 0 var(--text-shadow-blur-radius, 4px) rgba(255, 255, 255, var(--text-shadow-opacity, 0%));
+	text-shadow: 0 0 var(--text-shadow-blur-radius, 4px) rgba(var(--pip-glow-rgb), var(--text-shadow-opacity, 0%));
 	white-space: normal;
 	overflow-wrap: break-word;
 	word-break: keep-all;
@@ -142,27 +142,27 @@ export const lyricsStyles = `
 	display: block;
 	letter-spacing: var(--lyric-letter-spacing);
 	word-spacing: var(--lyric-word-spacing);
-	color: rgba(255, 255, 255, 0.74);
+	color: var(--pip-muted-foreground-color);
 	transition: color 420ms ease, text-shadow 520ms ease;
 }
 
 .line-group.active .line {
 	--text-shadow-opacity: 34%;
 	--text-shadow-blur-radius: calc(12px * var(--motion-intensity, 1));
-	color: rgba(255, 255, 255, 0.98);
+	color: var(--pip-foreground-color);
 	text-shadow:
-		0 0 var(--text-shadow-blur-radius) rgba(255, 255, 255, var(--text-shadow-opacity)),
-		0 0 calc(18px * var(--motion-intensity, 1)) rgba(255, 255, 255, 0.22),
-		0 16px 44px rgba(0, 0, 0, 0.32);
+		0 0 var(--text-shadow-blur-radius) rgba(var(--pip-glow-rgb), var(--text-shadow-opacity)),
+		0 0 calc(18px * var(--motion-intensity, 1)) rgba(var(--pip-glow-rgb), 0.22),
+		0 16px 44px rgba(var(--pip-scrim-rgb), 0.32);
 }
 
 .line-group.sung .line {
-	color: rgba(255, 255, 255, 0.52);
+	color: var(--pip-muted-foreground-color);
 }
 
 .line-group.context-previous .line,
 .line-group.context-next .line {
-	color: rgba(255, 255, 255, 0.72);
+	color: var(--pip-muted-foreground-color);
 }
 
 .lyric-translation {
@@ -173,8 +173,8 @@ export const lyricsStyles = `
 	letter-spacing: -0.01em;
 	word-spacing: 0.04em;
 	line-height: 1.3;
-	color: rgba(255, 255, 255, 0.5);
-	text-shadow: 0 1px 12px rgba(0, 0, 0, 0.28);
+	color: var(--pip-muted-foreground-color);
+	text-shadow: 0 1px 12px rgba(var(--pip-scrim-rgb), 0.28);
 	transition: color 420ms ease;
 	white-space: normal;
 	overflow-wrap: break-word;
@@ -182,11 +182,11 @@ export const lyricsStyles = `
 }
 
 .vocals-group.active .lyric-translation {
-	color: rgba(255, 255, 255, 0.8);
+	color: var(--pip-muted-foreground-color);
 }
 
 .vocals-group.sung .lyric-translation {
-	color: rgba(255, 255, 255, 0.4);
+	color: var(--pip-muted-foreground-color);
 }
 
 .vocals {
@@ -322,15 +322,15 @@ export const lyricsStyles = `
 .korean-tail-sustain.active {
 	filter: saturate(1.08);
 	text-shadow:
-		0 0 calc(var(--text-shadow-blur-radius, 8px) * 1.25) rgba(255, 255, 255, var(--text-shadow-opacity, 0%)),
-		0 10px 28px rgba(255, 255, 255, 0.12);
+		0 0 calc(var(--text-shadow-blur-radius, 8px) * 1.25) rgba(var(--pip-glow-rgb), var(--text-shadow-opacity, 0%)),
+		0 10px 28px rgba(var(--pip-glow-rgb), 0.12);
 }
 
 .korean-melisma-sustain.active {
 	filter: saturate(calc(1.08 + var(--melisma-step, 0) * 0.025));
 	text-shadow:
-		0 0 calc(var(--text-shadow-blur-radius, 8px) * (1.25 + var(--melisma-step, 0) * 0.08)) rgba(255, 255, 255, var(--text-shadow-opacity, 0%)),
-		0 10px 34px rgba(255, 255, 255, calc(0.12 + var(--melisma-step, 0) * 0.025));
+		0 0 calc(var(--text-shadow-blur-radius, 8px) * (1.25 + var(--melisma-step, 0) * 0.08)) rgba(var(--pip-glow-rgb), var(--text-shadow-opacity, 0%)),
+		0 10px 34px rgba(var(--pip-glow-rgb), calc(0.12 + var(--melisma-step, 0) * 0.025));
 }
 
 .parenthetical-word {
@@ -361,7 +361,11 @@ export const lyricsStyles = `
 	display: inline-block;
 	letter-spacing: var(--lyric-letter-spacing);
 	word-spacing: var(--lyric-word-spacing);
-	background: linear-gradient(90deg, rgba(255, 255, 255, 1) var(--gradient-progress, 0%), rgba(226, 229, 234, 0.36) var(--gradient-progress, 0%));
+	background: linear-gradient(
+		90deg,
+		var(--pip-foreground-color) var(--gradient-progress, 0%),
+		var(--pip-muted-foreground-color) var(--gradient-progress, 0%)
+	);
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
@@ -374,8 +378,8 @@ export const lyricsStyles = `
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
-	color: rgba(255, 255, 255, 0.42);
-	text-shadow: 0 1px 10px rgba(0, 0, 0, 0.28);
+	color: var(--pip-muted-foreground-color);
+	text-shadow: 0 1px 10px rgba(var(--pip-scrim-rgb), 0.28);
 }
 
 .provider-diagnostics {
@@ -385,7 +389,7 @@ export const lyricsStyles = `
 	font-weight: 650;
 	letter-spacing: 0.02em;
 	line-height: 1.35;
-	color: rgba(255, 255, 255, 0.36);
-	text-shadow: 0 1px 10px rgba(0, 0, 0, 0.28);
+	color: var(--pip-muted-foreground-color);
+	text-shadow: 0 1px 10px rgba(var(--pip-scrim-rgb), 0.28);
 }
 `;

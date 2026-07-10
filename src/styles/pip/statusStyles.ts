@@ -4,9 +4,9 @@ export const statusStyles = `
 	gap: 10px;
 	place-items: center;
 	padding: 24px;
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	border: 1px solid rgba(var(--pip-foreground-rgb), 0.12);
 	border-radius: 24px;
-	background: rgba(10, 10, 10, 0.42);
+	background: rgba(var(--pip-scrim-rgb), 0.42);
 	backdrop-filter: blur(18px);
 	text-align: center;
 }
@@ -25,8 +25,8 @@ export const statusStyles = `
 	border: 0;
 	border-radius: 999px;
 	padding: 8px 14px;
-	background: rgba(255, 255, 255, 0.92);
-	color: #111;
+	background: var(--pip-foreground-color);
+	color: rgb(var(--pip-scrim-rgb));
 	font-weight: 700;
 }
 `;
