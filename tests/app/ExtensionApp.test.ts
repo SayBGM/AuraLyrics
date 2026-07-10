@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
 import type { LineLyrics, SyllableLyrics } from "../../src/lyrics/types";
+import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
 
@@ -152,7 +153,7 @@ describe("ExtensionApp", () => {
 		const { spicetify } = createSpicetify();
 		let playbackListener: (() => void) | undefined;
 		let isPlaying = true;
-		const getProgress = vi.fn(() => 0);
+		const getProgress = vi.fn(() => 12000);
 		spicetify.Player.getProgress = getProgress;
 		spicetify.Player.isPlaying = () => isPlaying;
 		spicetify.Player.addEventListener = vi.fn((event: string, listener: () => void) => {
@@ -167,7 +168,7 @@ describe("ExtensionApp", () => {
 			lastLoadState: { status: string };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
-			playbackTimestampSec: number;
+			playbackSynchronizer: PlaybackSynchronizer;
 			tick: (deltaTime: number) => void;
 		};
 		app.start();
@@ -175,7 +176,8 @@ describe("ExtensionApp", () => {
 		internals.lastLoadState = { status: "ready" };
 		internals.renderer = { destroy: vi.fn(), update: vi.fn() };
 		internals.isPlaybackActive = true;
-		internals.playbackTimestampSec = 12;
+		internals.playbackSynchronizer.resync();
+		getProgress.mockClear();
 
 		internals.tick(1 / 60);
 		isPlaying = false;
@@ -189,7 +191,7 @@ describe("ExtensionApp", () => {
 
 	test("advances lyrics from a sampled timestamp and resyncs player progress every 20 seconds", () => {
 		const { spicetify } = createSpicetify();
-		const getProgress = vi.fn().mockReturnValueOnce(11000).mockReturnValueOnce(5000);
+		const getProgress = vi.fn().mockReturnValueOnce(10000).mockReturnValueOnce(11000).mockReturnValueOnce(5000);
 		spicetify.Player.getProgress = getProgress;
 		const app = new ExtensionApp(spicetify);
 		const update = vi.fn();
@@ -198,8 +200,7 @@ describe("ExtensionApp", () => {
 			lastLoadState: { status: string };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
-			playbackTimestampSec: number;
-			playbackResyncElapsedSec: number;
+			playbackSynchronizer: PlaybackSynchronizer;
 			tick: (deltaTime: number) => void;
 		};
 		app.start();
@@ -207,8 +208,8 @@ describe("ExtensionApp", () => {
 		internals.lastLoadState = { status: "ready" };
 		internals.renderer = { destroy: vi.fn(), update };
 		internals.isPlaybackActive = true;
-		internals.playbackTimestampSec = 10;
-		internals.playbackResyncElapsedSec = 0;
+		internals.playbackSynchronizer.resync();
+		getProgress.mockClear();
 
 		internals.tick(1);
 		expect(getProgress).toHaveBeenCalledTimes(1);
@@ -222,7 +223,7 @@ describe("ExtensionApp", () => {
 
 	test("quickly snaps lyrics to a seeked player position without waiting for the 20 second resync", () => {
 		const { spicetify } = createSpicetify();
-		const getProgress = vi.fn(() => 45000);
+		const getProgress = vi.fn().mockReturnValueOnce(10000).mockReturnValue(45000);
 		spicetify.Player.getProgress = getProgress;
 		const app = new ExtensionApp(spicetify);
 		const update = vi.fn();
@@ -231,9 +232,7 @@ describe("ExtensionApp", () => {
 			lastLoadState: { status: string };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
-			playbackTimestampSec: number;
-			playbackResyncElapsedSec: number;
-			playbackSeekProbeElapsedSec: number;
+			playbackSynchronizer: PlaybackSynchronizer;
 			tick: (deltaTime: number) => void;
 		};
 		app.start();
@@ -241,9 +240,8 @@ describe("ExtensionApp", () => {
 		internals.lastLoadState = { status: "ready" };
 		internals.renderer = { destroy: vi.fn(), update };
 		internals.isPlaybackActive = true;
-		internals.playbackTimestampSec = 10;
-		internals.playbackResyncElapsedSec = 0;
-		internals.playbackSeekProbeElapsedSec = 0;
+		internals.playbackSynchronizer.resync();
+		getProgress.mockClear();
 
 		internals.tick(0.25);
 

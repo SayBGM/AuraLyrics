@@ -10,6 +10,7 @@ import type { LineLyrics, LyricsDocument, LyricsLoadState, SyllableLyrics, Track
 import { DocumentPipController, type PipSession } from "../pip/DocumentPipController";
 import { SpicetifyStorageAdapter } from "../platform/SpicetifyStorageAdapter";
 import { PlaybackClock } from "../player/PlaybackClock";
+import { PlaybackSynchronizer } from "../player/PlaybackSynchronizer";
 import { SpicetifyPlayerAdapter } from "../player/SpicetifyPlayerAdapter";
 import { AudioAnalysisWaveformService, type TrackWaveformProfile } from "../renderer/AudioAnalysisWaveformService";
 import { buildInterludeWaveformMap, type InterludeWaveformMap } from "../renderer/interludeWaveforms";
@@ -29,6 +30,7 @@ export class ExtensionApp {
 	private readonly storage: SpicetifyStorageAdapter;
 	private readonly settings: SettingsStore;
 	private readonly player: SpicetifyPlayerAdapter;
+	private readonly playbackSynchronizer: PlaybackSynchronizer;
 	private readonly pip = new DocumentPipController();
 	private readonly renderer = new LyricsRenderer();
 	private readonly stateMachine = new MusicStateMachine();
@@ -52,19 +54,14 @@ export class ExtensionApp {
 	private readonly pseudoKaraokeByUri = new Map<string, { source: LineLyrics; lyrics: SyllableLyrics | null }>();
 	private started = false;
 	private isPlaybackActive = false;
-	private playbackTimestampSec = 0;
-	private playbackResyncElapsedSec = 0;
-	private playbackSeekProbeElapsedSec = 0;
 	private loadGeneration = 0;
-	private readonly playbackResyncIntervalSec = 20;
-	private readonly playbackSeekProbeIntervalSec = 0.25;
-	private readonly playbackSeekSnapThresholdSec = 1.25;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
 		this.settings = new SettingsStore(this.storage);
 		this.cache = new LyricsCache(this.storage);
 		this.player = new SpicetifyPlayerAdapter(spicetify);
+		this.playbackSynchronizer = new PlaybackSynchronizer(() => this.player.getTimestamp(this.settings.get().lyricsDelayMs));
 		this.waveformService = new AudioAnalysisWaveformService(async (uri) => this.spicetify.getAudioData?.(uri));
 		this.trackAccentService = new TrackAccentService(spicetify.colorExtractor);
 		this.musixmatchTokenService = new MusixmatchTokenService((url, body, headers) => {
@@ -170,7 +167,7 @@ export class ExtensionApp {
 			this.topbar.setActive(true);
 			this.clock = new PlaybackClock(this.session.window, (deltaTime) => this.tick(deltaTime));
 			this.clock.start();
-			this.resyncPlaybackTimestamp();
+			this.playbackSynchronizer.resync();
 			this.currentTrack = this.player.getCurrentTrack();
 			await this.loadCurrentTrack(false);
 		} catch (error) {
@@ -196,10 +193,10 @@ export class ExtensionApp {
 	private async onTrackChanged(track: TrackIdentity | undefined): Promise<void> {
 		this.loadGeneration++;
 		this.currentTrack = track;
-		this.resyncPlaybackTimestamp();
 		if (!this.session) {
 			return;
 		}
+		this.playbackSynchronizer.resync();
 		this.stateMachine.dispatch({ type: "trackChanged" });
 		await this.loadCurrentTrack(false);
 	}
@@ -236,14 +233,16 @@ export class ExtensionApp {
 			await this.ensurePseudoKaraoke(track, this.lastLoadState.lyrics as LineLyrics);
 			if (!isCurrent() || this.currentTrack?.uri !== track.uri) return;
 		}
-		this.resyncPlaybackTimestamp();
+		this.playbackSynchronizer.resync();
 		this.renderLoadState(this.lastLoadState);
 	}
 
 	private onPlaybackChanged(isPlaying: boolean): void {
 		this.isPlaybackActive = isPlaying;
 		this.session?.setPlaying(isPlaying);
-		this.resyncPlaybackTimestamp();
+		if (this.session) {
+			this.playbackSynchronizer.resync();
+		}
 	}
 
 	private async refreshMusixmatchToken(): Promise<string | undefined> {
@@ -326,42 +325,17 @@ export class ExtensionApp {
 			return;
 		}
 		const settings = this.settings.get();
-		if (this.isPlaybackActive) {
-			this.playbackTimestampSec = Math.max(0, this.playbackTimestampSec + deltaTime);
-			this.playbackResyncElapsedSec += deltaTime;
-			this.playbackSeekProbeElapsedSec += deltaTime;
-			if (this.playbackResyncElapsedSec >= this.playbackResyncIntervalSec) {
-				this.resyncPlaybackTimestamp();
-			} else if (this.playbackSeekProbeElapsedSec >= this.playbackSeekProbeIntervalSec) {
-				this.snapToPlayerTimestampIfNeeded();
-			}
-		}
-		this.renderer.update(this.playbackTimestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
-	}
-
-	private resyncPlaybackTimestamp(): void {
-		if (!this.session) {
-			return;
-		}
-		this.playbackTimestampSec = this.player.getTimestamp(this.settings.get().lyricsDelayMs);
-		this.playbackResyncElapsedSec = 0;
-		this.playbackSeekProbeElapsedSec = 0;
-	}
-
-	private snapToPlayerTimestampIfNeeded(): void {
-		this.playbackSeekProbeElapsedSec = 0;
-		const playerTimestampSec = this.player.getTimestamp(this.settings.get().lyricsDelayMs);
-		if (Math.abs(playerTimestampSec - this.playbackTimestampSec) >= this.playbackSeekSnapThresholdSec) {
-			this.playbackTimestampSec = playerTimestampSec;
-			this.playbackResyncElapsedSec = 0;
-		}
+		this.playbackSynchronizer.update(deltaTime, this.isPlaybackActive);
+		this.renderer.update(this.playbackSynchronizer.timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
 	}
 
 	private async applySettings(): Promise<void> {
 		const generation = this.loadGeneration;
 		const session = this.session;
 		this.session?.applySettings(this.settings.get());
-		this.resyncPlaybackTimestamp();
+		if (this.session) {
+			this.playbackSynchronizer.resync();
+		}
 		const state = this.lastLoadState;
 		if (this.session && state.status === "ready") {
 			if (this.shouldSynthesizeKaraoke(state) && this.currentTrack) {
