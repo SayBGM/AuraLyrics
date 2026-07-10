@@ -4,8 +4,20 @@ const finiteRange = (startTime: number, endTime: number, label: string): void =>
 	if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) throw new Error(`Invalid lyric timing: ${label}`);
 };
 
+const validateTextMetadata = (value: unknown, label: string): void => {
+	if (typeof value !== "object" || value === null) throw new Error(`Invalid lyric text: ${label}`);
+	const text = value as { text?: unknown; romanizedText?: unknown; translatedText?: unknown };
+	if (typeof text.text !== "string") throw new Error(`Invalid lyric text: ${label}`);
+	if (text.romanizedText !== undefined && typeof text.romanizedText !== "string") throw new Error(`Invalid romanized lyric text: ${label}`);
+	if (text.translatedText !== undefined && typeof text.translatedText !== "string") throw new Error(`Invalid translated lyric text: ${label}`);
+};
+
 export const validateLyrics = <T extends LyricsDocument>(lyrics: T): T => {
-	if (lyrics.type === "static") return lyrics;
+	if (lyrics.type === "static") {
+		if (!Array.isArray(lyrics.lines)) throw new Error("Invalid static lyric lines");
+		for (const line of lyrics.lines) validateTextMetadata(line, "static line");
+		return lyrics;
+	}
 	finiteRange(lyrics.startTime, lyrics.endTime, "document");
 	const startOf = (item: (typeof lyrics.content)[number]) => (item.type === "vocal" && "lead" in item ? item.lead.startTime : item.startTime);
 	const content = [...lyrics.content].sort((a, b) => {

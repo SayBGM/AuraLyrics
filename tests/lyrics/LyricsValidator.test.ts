@@ -20,4 +20,9 @@ describe("validateLyrics", () => {
 		expect(() => validateLyrics({ ...base, endTime: 0 })).toThrow();
 		expect(() => validateLyrics({ ...base, content: [{ ...base.content[0], endTime: Number.POSITIVE_INFINITY }] })).toThrow();
 	});
+	test("rejects malformed static lyric lines", () => {
+		expect(() => validateLyrics({ type: "static", lines: null } as never)).toThrow();
+		expect(() => validateLyrics({ type: "static", lines: [{ text: 42 }] } as never)).toThrow();
+		expect(() => validateLyrics({ type: "static", lines: [{ text: "ok", translatedText: 7 }] } as never)).toThrow();
+	});
 });
