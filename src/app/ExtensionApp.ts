@@ -121,6 +121,7 @@ export class ExtensionApp {
 
 	public destroy(): void {
 		this.trackSession.invalidate();
+		this.session = undefined;
 		this.started = false;
 		this.clock?.stop();
 		this.clock = undefined;
@@ -223,7 +224,7 @@ export class ExtensionApp {
 		this.stateMachine.dispatch({ type: "validTrack" });
 		this.showStatus("Loading lyrics", track.title);
 		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh);
-		if (!snapshot || !this.session || this.currentTrack?.uri !== track.uri) return;
+		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.session || this.currentTrack?.uri !== track.uri) return;
 		this.playbackSynchronizer.resync();
 		this.renderLoadState(snapshot);
 	}
@@ -319,7 +320,14 @@ export class ExtensionApp {
 			this.playbackSynchronizer.resync();
 		}
 		const snapshot = await this.trackSession.updateSettings(settings);
-		if (!snapshot || this.session !== session || !isReadyTrackSessionSnapshot(snapshot)) return;
+		if (
+			!snapshot ||
+			!this.trackSession.isCurrent(snapshot) ||
+			this.session !== session ||
+			!isReadyTrackSessionSnapshot(snapshot) ||
+			this.currentTrack?.uri !== snapshot.loadState.track.uri
+		)
+			return;
 		this.mountReadySnapshot(snapshot);
 	}
 

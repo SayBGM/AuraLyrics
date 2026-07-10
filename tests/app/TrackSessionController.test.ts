@@ -235,4 +235,17 @@ describe("TrackSessionController", () => {
 		expect(snapshot).toEqual({ loadState: { status: "empty", track: currentTrack, reason: "no-lyrics" }, timingSource: "native" });
 		expect(controller.getSnapshot().waveformProfile).toBeUndefined();
 	});
+
+	test("reports whether a returned snapshot is still current", async () => {
+		const currentTrack = track("spotify:track:revision");
+		const { controller } = createController();
+		const snapshot = await controller.load(currentTrack, settings({ pseudoKaraoke: false }), false);
+		if (!snapshot) throw new Error("Expected a track session snapshot.");
+
+		expect(controller.isCurrent(snapshot)).toBe(true);
+
+		controller.invalidate();
+
+		expect(controller.isCurrent(snapshot)).toBe(false);
+	});
 });

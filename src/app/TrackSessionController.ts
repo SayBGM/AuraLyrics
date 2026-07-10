@@ -61,6 +61,10 @@ export class TrackSessionController {
 		return this.snapshot;
 	}
 
+	public isCurrent(snapshot: TrackSessionSnapshot): boolean {
+		return snapshot === this.snapshot;
+	}
+
 	public invalidate(): void {
 		this.generation += 1;
 		this.snapshot = idleSnapshot();
@@ -80,7 +84,7 @@ export class TrackSessionController {
 			this.pseudoKaraokeByUri.delete(track.uri);
 		}
 		const loadState = await this.lyricsService.load(track, settings, refresh);
-		if (!this.isCurrent(generation)) {
+		if (!this.isGenerationCurrent(generation)) {
 			return undefined;
 		}
 		if (loadState.status !== "ready") {
@@ -89,7 +93,7 @@ export class TrackSessionController {
 		}
 
 		const waveformProfile = await waveformProfilePromise;
-		if (!this.isCurrent(generation)) {
+		if (!this.isGenerationCurrent(generation)) {
 			return undefined;
 		}
 		return this.present(loadState, waveformProfile, generation);
@@ -113,7 +117,7 @@ export class TrackSessionController {
 		if (this.shouldSynthesize(loadState)) {
 			await this.ensurePseudoKaraoke(loadState.track, loadState.lyrics as LineLyrics, generation);
 		}
-		if (!this.isCurrent(generation)) {
+		if (!this.isGenerationCurrent(generation)) {
 			return undefined;
 		}
 
@@ -141,7 +145,7 @@ export class TrackSessionController {
 			return;
 		}
 		const analysis = await this.waveformService.getAnalysis(track);
-		if (!this.isCurrent(generation)) {
+		if (!this.isGenerationCurrent(generation)) {
 			return;
 		}
 		this.pseudoKaraokeByUri.set(track.uri, {
@@ -158,7 +162,7 @@ export class TrackSessionController {
 		return entry?.source === loadState.lyrics ? (entry.lyrics ?? loadState.lyrics) : loadState.lyrics;
 	}
 
-	private isCurrent(generation: number): boolean {
+	private isGenerationCurrent(generation: number): boolean {
 		return generation === this.generation;
 	}
 }

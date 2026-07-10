@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
-import type { TrackSessionSnapshot } from "../../src/app/TrackSessionController";
+import type { ReadyTrackSessionSnapshot, TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import type { LineLyrics } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
@@ -36,7 +36,119 @@ const createSpicetify = () => {
 	return { showNotification, spicetify, topbarButtons };
 };
 
+const deferred = <T>() => {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((next) => {
+		resolve = next;
+	});
+	return { promise, resolve };
+};
+
+const readySnapshot = (): ReadyTrackSessionSnapshot => ({
+	loadState: {
+		status: "ready",
+		track: {
+			uri: "spotify:track:continuation",
+			title: "Continuation",
+			artist: "Aura",
+			album: "Races",
+			durationMs: 180_000,
+			isLocal: false,
+		},
+		lyrics: { type: "line", startTime: 0, endTime: 4, content: [] },
+		provider: "lrclib",
+		source: "network",
+		diagnostics: { cache: { status: "miss" }, attempts: [] },
+	},
+	lyrics: { type: "line", startTime: 0, endTime: 4, content: [] },
+	timingSource: "native",
+});
+
 describe("ExtensionApp", () => {
+	test("does not render a load snapshot resolved immediately before destroy", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const snapshotResult = deferred<TrackSessionSnapshot | undefined>();
+		const snapshot = readySnapshot();
+		let current = true;
+		const mount = vi.fn();
+		const trackSession = {
+			load: vi.fn(() => snapshotResult.promise),
+			isCurrent: vi.fn(() => current),
+			invalidate: vi.fn(() => {
+				current = false;
+			}),
+		};
+		const internals = app as unknown as {
+			session?: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
+			trackSession: typeof trackSession;
+			renderer: { showStatus: () => void; mount: typeof mount; destroy: () => void };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			setAccentColor: vi.fn(),
+		};
+		internals.currentTrack = snapshot.loadState.track;
+		internals.trackSession = trackSession;
+		internals.renderer = { showStatus: vi.fn(), mount, destroy: vi.fn() };
+
+		const loading = internals.loadCurrentTrack(false);
+		snapshotResult.resolve(snapshot);
+		app.destroy();
+		await loading;
+
+		expect(trackSession.invalidate).toHaveBeenCalledOnce();
+		expect(internals.session).toBeUndefined();
+		expect(mount).not.toHaveBeenCalled();
+	});
+
+	test("does not render a settings snapshot invalidated before its await continuation", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const snapshotResult = deferred<TrackSessionSnapshot | undefined>();
+		const snapshot = readySnapshot();
+		let current = true;
+		const mount = vi.fn();
+		const trackSession = {
+			updateSettings: vi.fn(() => snapshotResult.promise),
+			isCurrent: vi.fn(() => current),
+			invalidate: vi.fn(() => {
+				current = false;
+			}),
+		};
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				applySettings: (settings: unknown) => void;
+			};
+			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
+			trackSession: typeof trackSession;
+			renderer: { mount: typeof mount };
+			applySettings: () => Promise<void>;
+		};
+		internals.session = {
+			root: document.createElement("main"),
+			applySettings: vi.fn(),
+		};
+		internals.currentTrack = snapshot.loadState.track;
+		internals.trackSession = trackSession;
+		internals.renderer = { mount };
+
+		const applying = internals.applySettings();
+		snapshotResult.resolve(snapshot);
+		trackSession.invalidate();
+		await applying;
+
+		expect(mount).not.toHaveBeenCalled();
+	});
+
 	test("invalidates track sessions on track change, PiP close, and destroy", async () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
