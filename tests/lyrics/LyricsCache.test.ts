@@ -11,10 +11,11 @@ class MemoryStorage {
 
 	public set(key: string, value: string) {
 		this.values.set(key, value);
+		return true;
 	}
 
 	public delete(key: string) {
-		this.values.delete(key);
+		return this.values.delete(key);
 	}
 }
 
@@ -40,7 +41,7 @@ describe("LyricsCache", () => {
 			set: () => {
 				throw new Error("quota exceeded");
 			},
-			delete: () => undefined,
+			delete: () => false,
 		};
 		const cache = new LyricsCache(storage);
 

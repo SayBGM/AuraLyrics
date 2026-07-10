@@ -125,10 +125,27 @@ const isProviderId = (value: unknown): value is ProviderId => typeof value === "
 const isInterludeStyle = (value: unknown): value is InterludeStyle => value === "frame" || value === "dots" || value === "wave";
 const isUiLanguage = (value: unknown): value is UiLanguage => value === "en" || value === "ko" || value === "ja";
 const isMusixmatchProxyMode = (value: unknown): value is MusixmatchProxyMode => value === "default" || value === "custom";
+const isLyricsVisualPreset = (value: unknown): value is LyricsVisualPreset =>
+	value === "immersive" || value === "clean" || value === "karaoke" || value === "custom";
+const isSyncPreference = (value: unknown): value is SyncPreference => value === "prefer-syllable" || value === "line-only";
+const isAlignmentMode = (value: unknown): value is AlignmentMode => value === "natural" || value === "center" || value === "left";
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 const clampNumber = (value: unknown, fallback: number, min: number, max: number): number => {
 	const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
 	return Math.min(max, Math.max(min, next));
+};
+
+const roundClampedNumber = (value: unknown, fallback: number, min: number, max: number): number => Math.round(clampNumber(value, fallback, min, max));
+
+const normalizeBoolean = (value: unknown, fallback: boolean): boolean => (typeof value === "boolean" ? value : fallback);
+
+const normalizeString = (value: unknown, maxLength: number): string | undefined => {
+	if (typeof value !== "string") {
+		return undefined;
+	}
+	const trimmed = value.trim();
+	return trimmed.length > 0 && trimmed.length <= maxLength ? trimmed : undefined;
 };
 
 export const normalizeProviderOrder = (value: unknown): ProviderId[] => {
@@ -150,51 +167,52 @@ export const normalizeProviderOrder = (value: unknown): ProviderId[] => {
 
 export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettings => {
 	const defaults = structuredClone(DEFAULT_SETTINGS);
-	const {
-		aspectRatio: _ignoredAspectRatio,
-		fontSizePx,
-		lyricsVerticalPosition: _ignoredLyricsVerticalPosition,
-		...settings
-	} = raw as PersistedSettings & {
-		lyricsVerticalPosition?: unknown;
-	};
-	const fontScale = settings.fontScale ?? (typeof fontSizePx === "number" ? fontSizePx / 25 : defaults.fontScale);
-	const providers = settings.providers ?? {};
-	const enabled: Partial<Record<ProviderId, boolean>> = providers.enabled ?? {};
+	const settings = (isRecord(raw) ? raw : {}) as PersistedSettings;
+	const providers = (isRecord(settings.providers) ? settings.providers : {}) as NonNullable<PersistedSettings["providers"]>;
+	const enabled = (isRecord(providers.enabled) ? providers.enabled : {}) as Partial<Record<ProviderId, unknown>>;
+	const fontScale =
+		typeof settings.fontScale === "number" && Number.isFinite(settings.fontScale)
+			? settings.fontScale
+			: typeof settings.fontSizePx === "number" && Number.isFinite(settings.fontSizePx)
+				? settings.fontSizePx / 25
+				: defaults.fontScale;
 	return {
-		...defaults,
-		...settings,
 		language: isUiLanguage(settings.language) ? settings.language : defaults.language,
-		pseudoKaraoke: typeof settings.pseudoKaraoke === "boolean" ? settings.pseudoKaraoke : defaults.pseudoKaraoke,
-		showTranslation: typeof settings.showTranslation === "boolean" ? settings.showTranslation : defaults.showTranslation,
-		backgroundEnabled: true,
+		preset: isLyricsVisualPreset(settings.preset) ? settings.preset : defaults.preset,
+		lyricsDelayMs: roundClampedNumber(settings.lyricsDelayMs, defaults.lyricsDelayMs, -5000, 5000),
 		fontScale: clampNumber(fontScale, defaults.fontScale, 0.6, 2.4),
-		lyricsDelayMs: clampNumber(settings.lyricsDelayMs, defaults.lyricsDelayMs, -5000, 5000),
+		fontFamily: normalizeString(settings.fontFamily, 256) ?? defaults.fontFamily,
+		backgroundEnabled: true,
 		backgroundBlurPx: clampNumber(settings.backgroundBlurPx, defaults.backgroundBlurPx, 0, 80),
 		backgroundDim: clampNumber(settings.backgroundDim, defaults.backgroundDim, 0, 1),
 		backgroundSaturation: clampNumber(settings.backgroundSaturation, defaults.backgroundSaturation, 0, 2),
 		vignetteStrength: clampNumber(settings.vignetteStrength, defaults.vignetteStrength, 0, 1),
 		inactiveBlurPx: clampNumber(settings.inactiveBlurPx, defaults.inactiveBlurPx, 0, 4),
-		visibleContextLines: Math.round(clampNumber(settings.visibleContextLines, defaults.visibleContextLines, 0, 2)),
+		syncPreference: isSyncPreference(settings.syncPreference) ? settings.syncPreference : defaults.syncPreference,
+		pseudoKaraoke: normalizeBoolean(settings.pseudoKaraoke, defaults.pseudoKaraoke),
+		showTranslation: normalizeBoolean(settings.showTranslation, defaults.showTranslation),
+		alignmentMode: isAlignmentMode(settings.alignmentMode) ? settings.alignmentMode : defaults.alignmentMode,
+		visibleContextLines: roundClampedNumber(settings.visibleContextLines, defaults.visibleContextLines, 0, 2),
+		showInterludes: normalizeBoolean(settings.showInterludes, defaults.showInterludes),
 		interludeStyle: isInterludeStyle(settings.interludeStyle) ? settings.interludeStyle : defaults.interludeStyle,
+		motionEnabled: normalizeBoolean(settings.motionEnabled, defaults.motionEnabled),
 		motionIntensity: clampNumber(settings.motionIntensity, defaults.motionIntensity, 0, 2),
 		springSoftness: clampNumber(settings.springSoftness, defaults.springSoftness, 0, 1),
 		glowStrength: clampNumber(settings.glowStrength, defaults.glowStrength, 0, 1.5),
+		reduceMotion: normalizeBoolean(settings.reduceMotion, defaults.reduceMotion),
 		providers: {
-			...defaults.providers,
-			...providers,
 			order: normalizeProviderOrder(providers.order),
 			enabled: {
-				...defaults.providers.enabled,
-				spotify: enabled.spotify ?? defaults.providers.enabled.spotify,
-				lrclib: enabled.lrclib ?? defaults.providers.enabled.lrclib,
-				musixmatch: enabled.musixmatch ?? defaults.providers.enabled.musixmatch,
+				spotify: normalizeBoolean(enabled.spotify, defaults.providers.enabled.spotify),
+				lrclib: normalizeBoolean(enabled.lrclib, defaults.providers.enabled.lrclib),
+				musixmatch: normalizeBoolean(enabled.musixmatch, defaults.providers.enabled.musixmatch),
 			},
-			musixmatchToken: providers.musixmatchToken,
+			musixmatchToken: normalizeString(providers.musixmatchToken, 4096),
 			musixmatchProxyMode: isMusixmatchProxyMode(providers.musixmatchProxyMode)
 				? providers.musixmatchProxyMode
 				: defaults.providers.musixmatchProxyMode,
-			musixmatchProxyBaseUrl: providers.musixmatchProxyBaseUrl,
+			musixmatchProxyBaseUrl: normalizeString(providers.musixmatchProxyBaseUrl, 2048),
 		},
+		debugMode: normalizeBoolean(settings.debugMode, defaults.debugMode),
 	};
 };

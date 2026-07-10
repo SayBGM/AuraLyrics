@@ -285,7 +285,7 @@ export class SettingsView {
 						settings.lyricsDelayMs,
 						(value) => this.update({ lyricsDelayMs: value }).lyricsDelayMs
 					),
-					this.range("font-scale", this.t("fontScale", language), settings.fontScale, 0.72, 1.5, 0.01, (value) => this.update({ fontScale: value })),
+					this.range("font-scale", this.t("fontScale", language), settings.fontScale, 0.72, 1.5, 0.01, (value) => this.preview({ fontScale: value })),
 					this.select(
 						"sync",
 						this.t("sync", language),
@@ -332,24 +332,26 @@ export class SettingsView {
 						settings.backgroundBlurPx,
 						(value) => this.update({ backgroundBlurPx: value }).backgroundBlurPx
 					),
-					this.range("background-dim", this.t("dim", language), settings.backgroundDim, 0, 1, 0.05, (value) => this.update({ backgroundDim: value })),
+					this.range("background-dim", this.t("dim", language), settings.backgroundDim, 0, 1, 0.05, (value) =>
+						this.preview({ backgroundDim: value })
+					),
 					this.range("background-saturation", this.t("saturation", language), settings.backgroundSaturation, 0, 2, 0.05, (value) =>
-						this.update({ backgroundSaturation: value })
+						this.preview({ backgroundSaturation: value })
 					),
 					this.range("vignette", this.t("vignette", language), settings.vignetteStrength, 0, 1, 0.05, (value) =>
-						this.update({ vignetteStrength: value })
+						this.preview({ vignetteStrength: value })
 					),
 					this.range("inactive-blur", this.t("inactiveBlur", language), settings.inactiveBlurPx, 0, 2, 0.05, (value) =>
-						this.update({ inactiveBlurPx: value })
+						this.preview({ inactiveBlurPx: value })
 					),
 				];
 			case "motion":
 				return [
 					this.toggle("motion-enabled", this.t("animations", language), settings.motionEnabled, (value) => this.update({ motionEnabled: value })),
 					this.range("motion-intensity", this.t("intensity", language), settings.motionIntensity, 0, 1.5, 0.05, (value) =>
-						this.update({ motionIntensity: value })
+						this.preview({ motionIntensity: value })
 					),
-					this.range("glow-strength", this.t("glow", language), settings.glowStrength, 0, 1, 0.05, (value) => this.update({ glowStrength: value })),
+					this.range("glow-strength", this.t("glow", language), settings.glowStrength, 0, 1, 0.05, (value) => this.preview({ glowStrength: value })),
 					this.toggle("reduce-motion", this.t("reduceMotion", language), settings.reduceMotion, (value) => this.update({ reduceMotion: value })),
 				];
 			case "providers":
@@ -500,7 +502,27 @@ export class SettingsView {
 		input.step = String(step);
 		input.value = String(value);
 		input.dataset.controlId = controlId;
-		input.addEventListener("input", () => onChange(Number(input.value)));
+		let dirty = false;
+		let previewedValue = value;
+		const preview = (): void => {
+			const nextValue = Number(input.value);
+			if (nextValue === previewedValue) {
+				return;
+			}
+			previewedValue = nextValue;
+			dirty = true;
+			onChange(nextValue);
+		};
+		const commit = (): void => {
+			preview();
+			if (!dirty) {
+				return;
+			}
+			dirty = !this.store.commit();
+		};
+		input.addEventListener("input", preview);
+		input.addEventListener("change", commit);
+		input.addEventListener("pointerup", commit);
 		return this.row(label, input);
 	}
 
@@ -580,6 +602,10 @@ export class SettingsView {
 
 	private update(patch: Partial<ExtensionSettings>): ExtensionSettings {
 		return this.store.update(patch);
+	}
+
+	private preview(patch: Partial<ExtensionSettings>): ExtensionSettings {
+		return this.store.preview(patch);
 	}
 
 	private moveProvider(provider: ExtensionSettings["providers"]["order"][number], direction: -1 | 1): void {

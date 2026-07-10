@@ -5,13 +5,16 @@ import { SettingsView } from "../../src/settings/SettingsView";
 
 class MemoryStorage {
 	private readonly values = new Map<string, string>();
+	public setCalls = 0;
 
 	public get(key: string) {
 		return this.values.get(key) ?? null;
 	}
 
 	public set(key: string, value: string) {
+		this.setCalls += 1;
 		this.values.set(key, value);
+		return true;
 	}
 }
 
@@ -87,7 +90,8 @@ const callbacks = (onRefreshMusixmatchToken: () => Promise<string | undefined> =
 const openView = (
 	options: { media?: FakeMediaQueryList; onRefreshMusixmatchToken?: () => Promise<string | undefined>; withTrigger?: boolean } = {}
 ) => {
-	const store = new SettingsStore(new MemoryStorage());
+	const storage = new MemoryStorage();
+	const store = new SettingsStore(storage);
 	let content: HTMLElement | undefined;
 	let modal: HTMLElement | undefined;
 	const trigger = options.withTrigger ? document.createElement("button") : undefined;
@@ -134,7 +138,7 @@ const openView = (
 	if (!modal) {
 		throw new Error("Settings modal was not displayed.");
 	}
-	return { content, hide, media, modal, store, trigger, view };
+	return { content, hide, media, modal, storage, store, trigger, view };
 };
 
 const tab = (content: HTMLElement, section: string): HTMLButtonElement => {
@@ -254,16 +258,54 @@ describe("SettingsView", () => {
 	});
 
 	test("keeps a range input node and focus while updating its value", () => {
-		const { content, store } = openView();
+		const { content, storage, store } = openView();
 		tab(content, "lyrics").click();
 		const range = control<HTMLInputElement>(content, "font-scale");
+		storage.setCalls = 0;
 		range.focus();
 		range.value = "1.2";
 		range.dispatchEvent(new Event("input", { bubbles: true }));
 
 		expect(store.get().fontScale).toBe(1.2);
+		expect(storage.setCalls).toBe(0);
 		expect(control(content, "font-scale")).toBe(range);
 		expect(document.activeElement).toBe(range);
+	});
+
+	test("previews multiple range inputs without writes and commits the latest value once", () => {
+		const { content, storage, store } = openView();
+		tab(content, "appearance").click();
+		const dim = control<HTMLInputElement>(content, "background-dim");
+		const saturation = control<HTMLInputElement>(content, "background-saturation");
+		const vignette = control<HTMLInputElement>(content, "vignette");
+		storage.setCalls = 0;
+		vignette.dispatchEvent(new Event("pointerup", { bubbles: true }));
+		expect(storage.setCalls).toBe(0);
+		expect(store.get().preset).toBe("immersive");
+
+		dim.value = "0.5";
+		dim.dispatchEvent(new Event("input", { bubbles: true }));
+		saturation.focus();
+		saturation.value = "1.5";
+		saturation.dispatchEvent(new Event("input", { bubbles: true }));
+
+		expect(store.get().backgroundDim).toBe(0.5);
+		expect(store.get().backgroundSaturation).toBe(1.5);
+		expect(storage.setCalls).toBe(0);
+		expect(control(content, "background-dim")).toBe(dim);
+		expect(control(content, "background-saturation")).toBe(saturation);
+		expect(document.activeElement).toBe(saturation);
+
+		saturation.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(storage.setCalls).toBe(1);
+		expect(document.activeElement).toBe(saturation);
+
+		vignette.value = "0.65";
+		vignette.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get().vignetteStrength).toBe(0.65);
+		expect(storage.setCalls).toBe(2);
 	});
 
 	test("patches normalized number values into the same focused input", () => {

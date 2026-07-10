@@ -1,4 +1,5 @@
 import type { ProviderId } from "../lyrics/types";
+import { EventEmitter } from "../shared/EventEmitter";
 import {
 	DEFAULT_SETTINGS,
 	type ExtensionSettings,
@@ -23,7 +24,7 @@ export {
 
 export type SettingsStorage = {
 	get(key: string): string | null | undefined;
-	set(key: string, value: string): void;
+	set(key: string, value: string): boolean;
 };
 
 const SETTINGS_KEY = "aura-lyrics:settings";
@@ -54,6 +55,7 @@ const sanitizeProviderOrder = (value: string | null | undefined): ProviderId[] =
 export class SettingsStore {
 	private settings: ExtensionSettings;
 	private readonly listeners = new Set<(settings: ExtensionSettings) => void>();
+	public readonly persistenceFailed = new EventEmitter<void>();
 
 	public constructor(private readonly storage: SettingsStorage) {
 		this.settings = this.load();
@@ -64,22 +66,20 @@ export class SettingsStore {
 	}
 
 	public update(patch: Partial<ExtensionSettings>, markCustom = true): ExtensionSettings {
-		this.settings = normalizeLoadedSettings({
-			...this.settings,
-			...patch,
-			preset: markCustom && patch.preset === undefined ? "custom" : (patch.preset ?? this.settings.preset),
-			providers: {
-				...this.settings.providers,
-				...patch.providers,
-				enabled: {
-					...this.settings.providers.enabled,
-					...patch.providers?.enabled,
-				},
-			},
-		});
+		this.settings = this.merge(patch, markCustom);
 		this.persist();
 		this.emit();
 		return this.get();
+	}
+
+	public preview(patch: Partial<ExtensionSettings>, markCustom = true): ExtensionSettings {
+		this.settings = this.merge(patch, markCustom);
+		this.emit();
+		return this.get();
+	}
+
+	public commit(): boolean {
+		return this.persist();
 	}
 
 	public applyPreset(preset: Exclude<LyricsVisualPreset, "custom">): ExtensionSettings {
@@ -112,23 +112,23 @@ export class SettingsStore {
 			try {
 				const migrated = normalizeLoadedSettings(JSON.parse(legacyRaw) as PersistedSettings);
 				this.settings = migrated;
-				this.persist();
+				this.persistMigration(migrated);
 				return migrated;
 			} catch {
 				return structuredClone(DEFAULT_SETTINGS);
 			}
 		}
+		if (this.storage.get(MIGRATED_KEY) === "true" || this.storage.get(LEGACY_MIGRATED_KEY) === "true") {
+			return structuredClone(DEFAULT_SETTINGS);
+		}
 		const migrated = this.migrateLegacy();
 		this.settings = migrated;
-		this.persist();
+		this.persistMigration(migrated);
 		return migrated;
 	}
 
 	private migrateLegacy(): ExtensionSettings {
-		if (this.storage.get(MIGRATED_KEY) === "true" || this.storage.get(LEGACY_MIGRATED_KEY) === "true") {
-			return structuredClone(DEFAULT_SETTINGS);
-		}
-		const migrated: ExtensionSettings = {
+		return {
 			...structuredClone(DEFAULT_SETTINGS),
 			fontScale: parseNumber(this.storage.get("popup-lyrics:font-size"), 25) / 25,
 			lyricsDelayMs: parseNumber(this.storage.get("popup-lyrics:delay"), DEFAULT_SETTINGS.lyricsDelayMs),
@@ -147,12 +147,51 @@ export class SettingsStore {
 				musixmatchToken: this.storage.get("popup-lyrics:services:musixmatch:token") ?? undefined,
 			},
 		};
-		this.storage.set(MIGRATED_KEY, "true");
-		return migrated;
 	}
 
-	private persist(): void {
-		this.storage.set(SETTINGS_KEY, JSON.stringify(this.settings));
+	private merge(patch: Partial<ExtensionSettings>, markCustom: boolean): ExtensionSettings {
+		return normalizeLoadedSettings({
+			...this.settings,
+			...patch,
+			preset: markCustom && patch.preset === undefined ? "custom" : (patch.preset ?? this.settings.preset),
+			providers: {
+				...this.settings.providers,
+				...patch.providers,
+				enabled: {
+					...this.settings.providers.enabled,
+					...patch.providers?.enabled,
+				},
+			},
+		});
+	}
+
+	private persist(): boolean {
+		const saved = this.writeSettings(this.settings);
+		if (!saved) {
+			this.persistenceFailed.emit(undefined);
+		}
+		return saved;
+	}
+
+	private persistMigration(settings: ExtensionSettings): boolean {
+		const serialized = JSON.stringify(settings);
+		if (!this.write(SETTINGS_KEY, serialized) || this.storage.get(SETTINGS_KEY) !== serialized) {
+			this.persistenceFailed.emit(undefined);
+			return false;
+		}
+		return this.write(MIGRATED_KEY, "true");
+	}
+
+	private writeSettings(settings: ExtensionSettings): boolean {
+		return this.write(SETTINGS_KEY, JSON.stringify(settings));
+	}
+
+	private write(key: string, value: string): boolean {
+		try {
+			return this.storage.set(key, value);
+		} catch {
+			return false;
+		}
 	}
 
 	private emit(): void {

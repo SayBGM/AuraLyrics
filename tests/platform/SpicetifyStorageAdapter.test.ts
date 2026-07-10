@@ -14,9 +14,11 @@ describe("SpicetifyStorageAdapter", () => {
 			},
 		} as unknown as SpicetifyGlobal);
 
-		storage.set("key", "value");
+		expect(storage.set("key", "value")).toBe(true);
 
 		expect(storage.get("key")).toBe("value");
+		expect(storage.delete("key")).toBe(true);
+		expect(storage.get("key")).toBe("");
 	});
 
 	test("treats unavailable or failing LocalStorage as empty best-effort storage", () => {
@@ -32,7 +34,15 @@ describe("SpicetifyStorageAdapter", () => {
 		} as unknown as SpicetifyGlobal);
 
 		expect(storage.get("key")).toBeNull();
-		expect(() => storage.set("key", "value")).not.toThrow();
-		expect(() => storage.delete("key")).not.toThrow();
+		expect(storage.set("key", "value")).toBe(false);
+		expect(storage.delete("key")).toBe(false);
+	});
+
+	test("reports unavailable LocalStorage writes as failures", () => {
+		const storage = new SpicetifyStorageAdapter({} as SpicetifyGlobal);
+
+		expect(storage.get("key")).toBeNull();
+		expect(storage.set("key", "value")).toBe(false);
+		expect(storage.delete("key")).toBe(false);
 	});
 });

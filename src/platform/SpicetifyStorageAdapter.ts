@@ -11,19 +11,19 @@ export class SpicetifyStorageAdapter {
 		}
 	}
 
-	public set(key: string, value: string): void {
+	public set(key: string, value: string): boolean {
+		if (!this.spicetify.LocalStorage) {
+			return false;
+		}
 		try {
-			this.spicetify.LocalStorage?.set(key, value);
+			this.spicetify.LocalStorage.set(key, value);
+			return true;
 		} catch {
-			// Spicetify LocalStorage can fail in constrained CEF states; treat it as best-effort.
+			return false;
 		}
 	}
 
-	public delete(key: string): void {
-		try {
-			this.spicetify.LocalStorage?.set(key, "");
-		} catch {
-			// Best-effort cleanup only.
-		}
+	public delete(key: string): boolean {
+		return this.set(key, "");
 	}
 }

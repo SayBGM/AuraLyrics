@@ -8,8 +8,8 @@ type CachedLyrics = {
 
 type CacheStorage = {
 	get(key: string): string | null | undefined;
-	set(key: string, value: string): void;
-	delete?(key: string): void;
+	set(key: string, value: string): boolean;
+	delete?(key: string): boolean;
 };
 
 type LyricsCacheOptions = {

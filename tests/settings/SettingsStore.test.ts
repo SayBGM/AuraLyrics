@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { DEFAULT_SETTINGS, SettingsStore } from "../../src/settings/SettingsStore";
 
 class MemoryStorage {
@@ -10,6 +10,7 @@ class MemoryStorage {
 
 	public set(key: string, value: string) {
 		this.values.set(key, value);
+		return true;
 	}
 }
 
@@ -129,5 +130,119 @@ describe("SettingsStore", () => {
 		expect(settings.fontScale).toBeCloseTo(30 / 25);
 		expect(settings.aspectRatio).toBeUndefined();
 		expect(settings.fontSizePx).toBeUndefined();
+	});
+
+	test("previews normalized settings and emits without persisting", () => {
+		const storage = new MemoryStorage();
+		const set = vi.spyOn(storage, "set");
+		const store = new SettingsStore(storage);
+		set.mockClear();
+		const listener = vi.fn();
+		store.subscribe(listener);
+
+		const settings = store.preview({ fontScale: 99 });
+
+		expect(settings.fontScale).toBe(2.4);
+		expect(settings.preset).toBe("custom");
+		expect(store.get()).toEqual(settings);
+		expect(listener).toHaveBeenCalledOnce();
+		expect(listener).toHaveBeenCalledWith(settings);
+		expect(set).not.toHaveBeenCalled();
+	});
+
+	test("commits the current preview once without changing or re-emitting it", () => {
+		const storage = new MemoryStorage();
+		const set = vi.spyOn(storage, "set");
+		const store = new SettingsStore(storage);
+		set.mockClear();
+		const listener = vi.fn();
+		store.subscribe(listener);
+		const previewed = store.preview({ glowStrength: 0.25 });
+		listener.mockClear();
+
+		const saved = store.commit();
+
+		expect(saved).toBe(true);
+		expect(store.get()).toEqual(previewed);
+		expect(set).toHaveBeenCalledOnce();
+		expect(set).toHaveBeenCalledWith("aura-lyrics:settings", JSON.stringify(previewed));
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	test("keeps update as an immediate persist and emit operation", () => {
+		const storage = new MemoryStorage();
+		const set = vi.spyOn(storage, "set");
+		const store = new SettingsStore(storage);
+		set.mockClear();
+		const listener = vi.fn();
+		store.subscribe(listener);
+
+		const settings = store.update({ motionIntensity: 0.5 });
+
+		expect(settings.motionIntensity).toBe(0.5);
+		expect(set).toHaveBeenCalledOnce();
+		expect(listener).toHaveBeenCalledOnce();
+		expect(listener).toHaveBeenCalledWith(settings);
+	});
+
+	test("reports persistence failures without exposing stored values", () => {
+		const storage = new MemoryStorage();
+		const store = new SettingsStore(storage);
+		vi.spyOn(storage, "set").mockReturnValue(false);
+		const listener = vi.fn();
+		store.persistenceFailed.subscribe(listener);
+
+		store.preview({ providers: { ...store.get().providers, musixmatchToken: "secret-token" } });
+		const saved = store.commit();
+
+		expect(saved).toBe(false);
+		expect(listener).toHaveBeenCalledOnce();
+		expect(listener).toHaveBeenCalledWith(undefined);
+	});
+
+	test("writes the migration marker only after migrated settings are durably readable", () => {
+		const writes: string[] = [];
+		const storage = new MemoryStorage();
+		storage.set("popup-lyrics:delay", "125");
+		vi.spyOn(storage, "set").mockImplementation((key, value) => {
+			writes.push(key);
+			return MemoryStorage.prototype.set.call(storage, key, value);
+		});
+
+		new SettingsStore(storage);
+
+		expect(writes).toEqual(["aura-lyrics:settings", "aura-lyrics:migrated-v1"]);
+		expect(storage.get("aura-lyrics:migrated-v1")).toBe("true");
+	});
+
+	test("does not write the migration marker when migrated settings cannot be saved", () => {
+		const writes: string[] = [];
+		const storage = new MemoryStorage();
+		storage.set("popup-lyrics:delay", "125");
+		vi.spyOn(storage, "set").mockImplementation((key) => {
+			writes.push(key);
+			return false;
+		});
+
+		new SettingsStore(storage);
+
+		expect(writes).toEqual(["aura-lyrics:settings"]);
+		expect(storage.get("aura-lyrics:migrated-v1")).toBeNull();
+	});
+
+	test("does not mark a legacy settings document migrated until read-back succeeds", () => {
+		const writes: string[] = [];
+		const storage = {
+			get: vi.fn((key: string) => (key === "dynamic-popup-lyrics:settings" ? JSON.stringify({ fontScale: 1.2 }) : null)),
+			set: vi.fn((key: string) => {
+				writes.push(key);
+				return true;
+			}),
+		};
+
+		const store = new SettingsStore(storage);
+
+		expect(store.get().fontScale).toBe(1.2);
+		expect(writes).toEqual(["aura-lyrics:settings"]);
 	});
 });
