@@ -64,7 +64,14 @@ export class LyricsCache {
 			return;
 		}
 		this.values.set(uri, entry);
-		this.prune();
+		this.prune(false);
+		this.persist();
+	}
+
+	public delete(uri: string): void {
+		if (!this.values.delete(uri)) {
+			return;
+		}
 		this.persist();
 	}
 
@@ -114,14 +121,18 @@ export class LyricsCache {
 			return;
 		}
 		try {
-			this.storage.set(CACHE_KEY, this.serializedValues());
+			if (!this.storage.set(CACHE_KEY, this.serializedValues())) {
+				throw new Error("Lyrics cache storage rejected the write.");
+			}
 		} catch {
 			// Keep memory cache intact when persistent storage is unavailable.
 			const snapshot = new Map(this.values);
 			const oldest = [...this.values.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)[0]?.[0];
 			if (oldest) this.values.delete(oldest);
 			try {
-				this.storage.set(CACHE_KEY, this.serializedValues());
+				if (!this.storage.set(CACHE_KEY, this.serializedValues())) {
+					throw new Error("Lyrics cache storage rejected the recovery write.");
+				}
 			} catch {
 				this.values.clear();
 				for (const entry of snapshot) this.values.set(entry[0], entry[1]);

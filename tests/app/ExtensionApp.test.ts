@@ -47,6 +47,43 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
+	test("shares concurrent PiP opens so only one playback clock is started", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		let resolveSession: ((session: unknown) => void) | undefined;
+		const sessionPromise = new Promise((resolve) => {
+			resolveSession = resolve;
+		});
+		const open = vi.fn(() => sessionPromise);
+		const loadCurrentTrack = vi.fn(async () => undefined);
+		const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+		const internals = app as unknown as {
+			pip: { open: typeof open; isOpen: () => boolean };
+			openPip: () => Promise<void>;
+			loadCurrentTrack: typeof loadCurrentTrack;
+			closePip: (closeWindow?: boolean) => void;
+		};
+		internals.pip = { open, isOpen: () => false };
+		internals.loadCurrentTrack = loadCurrentTrack;
+
+		const firstOpen = internals.openPip();
+		const secondOpen = internals.openPip();
+		resolveSession?.({
+			window,
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			setPlaying: vi.fn(),
+			setAccentColor: vi.fn(),
+			applySettings: vi.fn(),
+		});
+		await Promise.all([firstOpen, secondOpen]);
+
+		expect(open).toHaveBeenCalledOnce();
+		expect(requestAnimationFrame).toHaveBeenCalledOnce();
+		expect(loadCurrentTrack).toHaveBeenCalledOnce();
+		internals.closePip(false);
+	});
+
 	test("disposes settings and PiP subscriptions on destroy", () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
@@ -380,6 +417,60 @@ describe("ExtensionApp", () => {
 		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
 		expect(content.children).toHaveLength(0);
 		expect(content.textContent).not.toContain("Instrumental");
+	});
+
+	test("clears provider cooldowns before a manual lyrics refresh", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const refreshCooldowns = vi.fn();
+		const load = vi.fn(async () => ({
+			status: "empty" as const,
+			reason: "no-lyrics" as const,
+			track: {
+				uri: "spotify:track:refresh",
+				title: "Refresh Track",
+				artist: "Aura",
+				album: "Manual",
+				durationMs: 180000,
+				isLocal: false,
+			},
+		}));
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setAccentColor: (color?: string) => void;
+			};
+			currentTrack: {
+				uri: string;
+				title: string;
+				artist: string;
+				album: string;
+				durationMs: number;
+				isLocal: boolean;
+			};
+			lyricsService: { refreshCooldowns: () => void; load: typeof load };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = {
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			setAccentColor: vi.fn(),
+		};
+		internals.currentTrack = {
+			uri: "spotify:track:refresh",
+			title: "Refresh Track",
+			artist: "Aura",
+			album: "Manual",
+			durationMs: 180000,
+			isLocal: false,
+		};
+		internals.lyricsService = { refreshCooldowns, load };
+
+		await internals.loadCurrentTrack(true);
+
+		expect(refreshCooldowns).toHaveBeenCalledOnce();
+		expect(refreshCooldowns.mock.invocationCallOrder[0]).toBeLessThan(load.mock.invocationCallOrder[0]);
 	});
 
 	test("renders interlude waveforms from Spicetify audio analysis when wave style is selected", async () => {

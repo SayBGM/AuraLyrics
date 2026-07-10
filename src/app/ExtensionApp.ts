@@ -42,6 +42,7 @@ export class ExtensionApp {
 	private readonly topbar: TopbarController;
 	private readonly disposers: Array<() => void> = [];
 	private clock?: PlaybackClock;
+	private openPipPromise?: Promise<void>;
 	private session?: PipSession;
 	private currentTrack?: TrackIdentity;
 	private lastLoadState: LyricsLoadState = { status: "idle" };
@@ -139,7 +140,22 @@ export class ExtensionApp {
 		await this.openPip();
 	}
 
-	private async openPip(): Promise<void> {
+	private openPip(): Promise<void> {
+		if (this.openPipPromise) {
+			return this.openPipPromise;
+		}
+		const openPromise = this.openPipOnce();
+		this.openPipPromise = openPromise;
+		const clearOpenPromise = () => {
+			if (this.openPipPromise === openPromise) {
+				this.openPipPromise = undefined;
+			}
+		};
+		void openPromise.then(clearOpenPromise, clearOpenPromise);
+		return openPromise;
+	}
+
+	private async openPipOnce(): Promise<void> {
 		try {
 			this.stateMachine.dispatch({ type: "openPiP" });
 			this.isPlaybackActive = this.player.isPlaying();
@@ -208,6 +224,7 @@ export class ExtensionApp {
 		this.showStatus("Loading lyrics", track.title);
 		const waveformProfilePromise = this.waveformService.loadProfile(track);
 		if (refresh) {
+			this.lyricsService.refreshCooldowns();
 			this.pseudoKaraokeByUri.delete(track.uri);
 		}
 		const loadState = await this.lyricsService.load(track, this.settings.get(), refresh);

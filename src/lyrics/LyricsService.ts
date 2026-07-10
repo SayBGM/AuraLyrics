@@ -62,15 +62,20 @@ export class LyricsService {
 			attempts: [],
 		};
 		if (cached && cached.provider === primaryProvider?.id) {
-			const lyrics = withHangulSplit(rebuildInterludes(cached.lyrics));
-			return {
-				status: "ready",
-				track,
-				lyrics,
-				provider: cached.provider,
-				source: "cache",
-				diagnostics,
-			};
+			try {
+				const lyrics = withHangulSplit(validateLyrics(rebuildInterludes(cached.lyrics)));
+				return {
+					status: "ready",
+					track,
+					lyrics,
+					provider: cached.provider,
+					source: "cache",
+					diagnostics,
+				};
+			} catch {
+				this.cache.delete(track.uri);
+				diagnostics.cache = { status: "miss", primaryProvider: primaryProvider?.id };
+			}
 		}
 
 		const options = { ...DEFAULT_OPTIONS, ...this.options };
@@ -102,6 +107,8 @@ export class LyricsService {
 		diagnostics: LyricsLoadDiagnostics
 	): Promise<LyricsLoadState> {
 		const errors: string[] = [];
+		const unavailable: string[] = [];
+		let sawInstrumental = false;
 		const options = { ...DEFAULT_OPTIONS, ...this.options };
 		for (const provider of providers) {
 			if (!provider.supports(track)) {
@@ -112,6 +119,7 @@ export class LyricsService {
 					provider: provider.id,
 					status: "cooldown",
 				});
+				unavailable.push(`${provider.id}: Lyrics provider is temporarily unavailable.`);
 				continue;
 			}
 			try {
@@ -144,9 +152,11 @@ export class LyricsService {
 						status: "temporarily-unavailable",
 						message: result.message,
 					});
+					unavailable.push(`${provider.id}: ${result.message ?? "Lyrics provider is temporarily unavailable."}`);
 					continue;
 				}
 				if (result.reason === "instrumental") {
+					sawInstrumental = true;
 					diagnostics.attempts.push({
 						provider: provider.id,
 						status: "instrumental",
@@ -173,13 +183,17 @@ export class LyricsService {
 			}
 		}
 
-		if (errors.length > 0) {
+		const failureMessages = [...errors, ...unavailable];
+		if (failureMessages.length > 0) {
 			return {
 				status: "error",
 				track,
-				message: errors.join("\n"),
+				message: failureMessages.join("\n"),
 				diagnostics,
 			};
+		}
+		if (sawInstrumental) {
+			return { status: "empty", track, reason: "instrumental", diagnostics };
 		}
 		return { status: "empty", track, reason: "no-lyrics", diagnostics };
 	}

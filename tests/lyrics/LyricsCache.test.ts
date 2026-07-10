@@ -49,6 +49,34 @@ describe("LyricsCache", () => {
 		expect(cache.get("spotify:track:1")?.provider).toBe("spotify");
 	});
 
+	test("retries a false storage write after removing the oldest entry", () => {
+		let now = 1000;
+		let failNextWrite = false;
+		const writes: string[] = [];
+		const storage = {
+			get: () => null,
+			set: (_key: string, value: string) => {
+				writes.push(value);
+				if (!failNextWrite) return true;
+				failNextWrite = false;
+				return false;
+			},
+		};
+		const cache = new LyricsCache(storage, { now: () => now });
+		cache.set("spotify:track:oldest", lyrics, "spotify");
+		now += 1;
+		failNextWrite = true;
+		const writesBeforeFailure = writes.length;
+
+		cache.set("spotify:track:newest", lyrics, "lrclib");
+
+		const recoveryWrites = writes.slice(writesBeforeFailure);
+		expect(recoveryWrites).toHaveLength(2);
+		expect(recoveryWrites[0]).toContain("spotify:track:oldest");
+		expect(recoveryWrites[1]).not.toContain("spotify:track:oldest");
+		expect(recoveryWrites[1]).toContain("spotify:track:newest");
+	});
+
 	test("persists lyrics across cache instances", () => {
 		const storage = new MemoryStorage();
 		new LyricsCache(storage).set("spotify:track:1", lyrics, "lrclib");

@@ -338,6 +338,59 @@ describe("LyricsService", () => {
 		expect(state.status).toBe("ready");
 	});
 
+	test("preserves instrumental when no fallback provider has lyrics", async () => {
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: false, reason: "instrumental" }),
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), new LyricsCache(), () => context, {
+			maxAttempts: 1,
+			retryDelayMs: 0,
+		});
+
+		const state = await service.load(track, DEFAULT_SETTINGS, true);
+
+		expect(state).toMatchObject({ status: "empty", reason: "instrumental" });
+	});
+
+	test("does not report temporary provider unavailability as no lyrics", async () => {
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: false, reason: "temporarily-unavailable", message: "rate limited", cooldownMs: 60000 }),
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), new LyricsCache(), () => context, {
+			maxAttempts: 1,
+			retryDelayMs: 0,
+		});
+
+		const state = await service.load(track, DEFAULT_SETTINGS, true);
+
+		expect(state).toMatchObject({ status: "error" });
+		if (state.status !== "error") throw new Error("expected error");
+		expect(state.message).toContain("rate limited");
+	});
+
+	test("removes invalid cached lyrics and falls back to the provider", async () => {
+		const cache = new LyricsCache();
+		cache.set(track.uri, { ...lineLyrics("Invalid"), endTime: 0 }, "spotify");
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => ({ ok: false, reason: "no-lyrics" }),
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, {
+			maxAttempts: 1,
+			retryDelayMs: 0,
+		});
+
+		const state = await service.load(track, DEFAULT_SETTINGS, false);
+
+		expect(state).toMatchObject({ status: "empty", reason: "no-lyrics" });
+		expect(cache.get(track.uri)).toBeUndefined();
+	});
+
 	test("manual refresh bypasses a provider cooldown", async () => {
 		let calls = 0;
 		const provider: LyricsProvider = {
