@@ -1,4 +1,4 @@
-import type { ProviderId } from "../lyrics/types";
+import type { ProviderId } from "../domain/types";
 import { EventEmitter } from "../shared/EventEmitter";
 import {
 	DEFAULT_SETTINGS,

@@ -1,4 +1,4 @@
-import type { TrackIdentity } from "../lyrics/types";
+import type { TrackIdentity } from "../domain/types";
 import type { SpicetifyGlobal } from "../runtime/spicetify";
 import { EventEmitter } from "../shared/EventEmitter";
 
