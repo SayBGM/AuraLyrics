@@ -37,20 +37,21 @@ type ProviderSourceOptions = {
 };
 
 export const appendProviderSource = (
+	ownerDocument: Document,
 	lyricsTrack: HTMLElement,
 	{ provider, source: loadSource, diagnostics, showDiagnostics = false }: ProviderSourceOptions
 ): void => {
 	if (!provider) {
 		return;
 	}
-	const sourceElement = document.createElement("div");
+	const sourceElement = ownerDocument.createElement("div");
 	sourceElement.className = "provider-source";
 	sourceElement.textContent = `Source: ${provider}${showDiagnostics && loadSource ? ` · ${loadSource}` : ""}`;
 	lyricsTrack.append(sourceElement);
 	if (!showDiagnostics || !diagnostics) {
 		return;
 	}
-	const detail = document.createElement("div");
+	const detail = ownerDocument.createElement("div");
 	detail.className = "provider-diagnostics";
 	detail.textContent = providerDiagnosticsText(diagnostics);
 	lyricsTrack.append(detail);

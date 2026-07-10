@@ -60,13 +60,7 @@ export class InterludeFrameController {
 	public destroy(): void {
 		this.container.classList.remove("interlude-active");
 		for (const element of this.frameHosts()) {
-			for (const className of [
-				"interlude-active",
-				"interlude-style-frame",
-				"interlude-style-dots",
-				"interlude-style-wave",
-				"interlude-frame-active",
-			]) {
+			for (const className of ["interlude-active", "interlude-frame-active"]) {
 				element.classList.remove(className);
 			}
 			for (const property of PROGRESS_PROPERTIES) {

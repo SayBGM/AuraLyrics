@@ -3,6 +3,7 @@ import type { ExtensionSettings } from "../settings/SettingsStore";
 import type { AnimatedGroup } from "./AnimatedGroup";
 import type { RhythmProfile } from "./AudioAnalysisWaveformService";
 import { clamp } from "./animation/Spline";
+import { createStatusScene, type StatusViewModel } from "./components/StatusScene";
 import { createTrackMetadataScene, type TrackMetadataViewModel } from "./components/TrackMetadata";
 import { InterludeFrameController } from "./InterludeFrameController";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
@@ -10,16 +11,9 @@ import { buildLyricsScene } from "./LyricsSceneBuilder";
 import { LyricsViewportController } from "./LyricsViewportController";
 import { appendProviderSource } from "./lyricsTrackHelpers";
 
+export type { StatusViewModel } from "./components/StatusScene";
 export { interludeKey } from "./interludeProgress";
 export type { InterludeWaveformMap } from "./interludeWaveforms";
-
-export type StatusViewModel = {
-	title: string;
-	detail?: string;
-	tone?: "neutral" | "danger";
-	actionLabel?: string;
-	onAction?: () => void;
-};
 
 export type LyricsRendererMountOptions = {
 	lyrics: LyricsDocument;
@@ -71,7 +65,7 @@ export class LyricsRenderer {
 		this.groups = buildLyricsScene(this.lyricsTrack, { lyrics, settings, waveforms, rhythm }).groups;
 		this.viewportController = new LyricsViewportController(this.lyricsTrack, this.lyricsViewport, this.container, settings, this.groups);
 		this.interludeFrameController = new InterludeFrameController(root, this.container, settings.interludeStyle, this.groups);
-		appendProviderSource(this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
+		appendProviderSource(ownerDocument, this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
 	}
 
 	public showStatus(root: HTMLElement, status: StatusViewModel, settings: ExtensionSettings): void {
@@ -79,27 +73,8 @@ export class LyricsRenderer {
 		this.hostRoot = root;
 		this.setAlbumArtMode(root, false);
 		const ownerDocument = root.ownerDocument;
-		this.container = ownerDocument.createElement("div");
-		this.container.className = `aura-lyrics status ${status.tone ?? "neutral"}`;
+		this.container = createStatusScene(ownerDocument, status);
 		this.applyRootSettings(this.container, settings);
-		const card = ownerDocument.createElement("div");
-		card.className = "status-card";
-		const title = ownerDocument.createElement("strong");
-		title.textContent = status.title;
-		card.append(title);
-		if (status.detail) {
-			const detail = ownerDocument.createElement("span");
-			detail.textContent = status.detail;
-			card.append(detail);
-		}
-		if (status.actionLabel && status.onAction) {
-			const button = ownerDocument.createElement("button");
-			button.type = "button";
-			button.textContent = status.actionLabel;
-			button.addEventListener("click", status.onAction);
-			card.append(button);
-		}
-		this.container.append(card);
 		root.replaceChildren(this.container);
 	}
 

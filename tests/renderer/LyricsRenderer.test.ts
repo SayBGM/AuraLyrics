@@ -894,6 +894,55 @@ describe("LyricsRenderer", () => {
 		expect(pipRoot.style.getPropertyValue("--pip-frame-progress-left")).toBe("");
 	});
 
+	test("preserves persistent interlude style classes while clearing transient frame state across scenes", () => {
+		const pipRoot = document.createElement("div");
+		const root = document.createElement("main");
+		pipRoot.append(root);
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 10,
+			content: [{ type: "interlude", startTime: 0, endTime: 10 }],
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, {
+			lyrics,
+			settings: { ...DEFAULT_SETTINGS, interludeStyle: "frame" },
+		});
+		renderer.update(5, 1 / 60);
+
+		renderer.showStatus(root, { title: "Waiting" }, DEFAULT_SETTINGS);
+
+		expect(root.classList.contains("interlude-style-frame")).toBe(true);
+		expect(pipRoot.classList.contains("interlude-style-frame")).toBe(true);
+		expect(root.classList.contains("interlude-active")).toBe(false);
+		expect(pipRoot.classList.contains("interlude-frame-active")).toBe(false);
+		expect(pipRoot.style.getPropertyValue("--pip-interlude-progress")).toBe("");
+
+		renderer.mount(root, {
+			lyrics,
+			settings: { ...DEFAULT_SETTINGS, interludeStyle: "frame" },
+		});
+		renderer.showTrackMetadata(
+			root,
+			{
+				mode: "persistent",
+				track: {
+					uri: "spotify:track:style",
+					title: "Persistent style",
+					artist: "Aura",
+					album: "Frames",
+					durationMs: 10_000,
+					isLocal: false,
+				},
+			},
+			DEFAULT_SETTINGS
+		);
+
+		expect(root.classList.contains("interlude-style-frame")).toBe(true);
+		expect(pipRoot.classList.contains("interlude-style-frame")).toBe(true);
+	});
+
 	test("renders the legacy dots interlude style when selected", () => {
 		const pipRoot = document.createElement("div");
 		const root = document.createElement("main");
