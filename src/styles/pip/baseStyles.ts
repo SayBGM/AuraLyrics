@@ -48,6 +48,10 @@ body {
 	transition: transform 560ms cubic-bezier(.16, 1, .3, 1), filter 420ms ease, opacity 420ms ease;
 }
 
+#aura-lyrics-root.cover-missing .pip-cover {
+	display: none;
+}
+
 #aura-lyrics-root.interlude-frame-active .pip-cover {
 	transform: scale(0.94);
 }

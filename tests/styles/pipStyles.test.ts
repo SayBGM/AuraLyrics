@@ -85,6 +85,12 @@ describe("pipStyles", () => {
 		expect(pipStyles).not.toContain("transform: scale(1.1)");
 	});
 
+	test("hides the background cover when the current track has no cover", () => {
+		const missingCoverRule = baseStyles.match(/#aura-lyrics-root\.cover-missing \.pip-cover \{[^}]+\}/)?.[0] ?? "";
+
+		expect(missingCoverRule).toContain("display: none");
+	});
+
 	test("allows long lyric lines to wrap inside the PiP viewport", () => {
 		expect(pipStyles).toContain("max-width: 80vw");
 		expect(pipStyles).toContain("white-space: normal");

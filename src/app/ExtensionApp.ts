@@ -22,7 +22,12 @@ import { pipStyles } from "../styles/pipStyles";
 import { MusicStateMachine } from "./MusicStateMachine";
 import { TopbarController } from "./TopbarController";
 import { presentationStateForSnapshot, type TrackPresentationState } from "./TrackPresentationState";
-import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "./TrackSessionController";
+import {
+	type ReadyTrackSessionSnapshot,
+	TrackSessionController,
+	type TrackSessionEnrichment,
+	type TrackSessionSnapshot,
+} from "./TrackSessionController";
 import { TrackThemeService } from "./TrackThemeService";
 
 const SETTINGS_PERSISTENCE_ERROR = "AuraLyrics settings could not be saved.";
@@ -232,6 +237,10 @@ export class ExtensionApp {
 		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.session || this.currentTrack?.uri !== track.uri) return;
 		this.playbackSynchronizer.resync();
 		this.renderLoadState(snapshot);
+		const enrichment = this.trackSession.enrichmentFor(snapshot);
+		if (enrichment) {
+			void this.renderEnrichment(enrichment, track, this.session);
+		}
 	}
 
 	private onPlaybackChanged(isPlaying: boolean): void {
@@ -287,6 +296,14 @@ export class ExtensionApp {
 				}
 				this.renderer.showTrackMetadata(this.session.root, { mode: "persistent", track: state.track }, this.settings.get());
 		}
+	}
+
+	private async renderEnrichment(enrichment: TrackSessionEnrichment, track: TrackIdentity, session: PipSession): Promise<void> {
+		const snapshot = await enrichment;
+		if (!snapshot || !this.trackSession.isCurrent(snapshot) || this.session !== session || this.currentTrack?.uri !== track.uri) {
+			return;
+		}
+		this.mountReadySnapshot(snapshot);
 	}
 
 	private showStatus(title: string, detail?: string, actionLabel?: string, tone: "neutral" | "danger" = "neutral"): void {

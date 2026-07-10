@@ -204,6 +204,28 @@ describe("DocumentPipController", () => {
 		expect(cover?.getAttribute("src")).toBe("https://i.scdn.co/image/ab67616d0000b273cover");
 	});
 
+	test("clears a previous cover when the next track has none and shows a later cover", async () => {
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+
+		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "");
+		const root = pipWindow.document.querySelector<HTMLElement>("#aura-lyrics-root");
+		const cover = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover");
+		session.setCover("https://example.com/first.jpg");
+
+		session.setCover(undefined);
+
+		expect(cover?.hasAttribute("src")).toBe(false);
+		expect(root?.classList.contains("cover-missing")).toBe(true);
+
+		session.setCover("https://example.com/second.jpg");
+
+		expect(cover?.getAttribute("src")).toBe("https://example.com/second.jpg");
+		expect(root?.classList.contains("cover-missing")).toBe(false);
+	});
+
 	test("sets a base URL so Spotify image paths resolve inside the PiP document", async () => {
 		const pipWindow = createPipWindow();
 		window.documentPictureInPicture = {

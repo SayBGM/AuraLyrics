@@ -40,6 +40,13 @@ type PseudoKaraokeEntry = {
 	lyrics: SyllableLyrics | null;
 };
 
+export type TrackSessionEnrichment = Promise<ReadyTrackSessionSnapshot | undefined>;
+
+type EnrichmentEntry = {
+	start: () => TrackSessionEnrichment;
+	promise?: TrackSessionEnrichment;
+};
+
 const idleSnapshot = (): TrackSessionSnapshot => ({
 	loadState: { status: "idle" },
 	timingSource: "native",
@@ -49,6 +56,7 @@ export class TrackSessionController {
 	private generation = 0;
 	private settings?: ExtensionSettings;
 	private snapshot: TrackSessionSnapshot = idleSnapshot();
+	private readonly enrichmentBySnapshot = new WeakMap<ReadyTrackSessionSnapshot, EnrichmentEntry>();
 	private readonly pseudoKaraokeByUri = new Map<string, PseudoKaraokeEntry>();
 
 	public constructor(
@@ -63,6 +71,18 @@ export class TrackSessionController {
 
 	public isCurrent(snapshot: TrackSessionSnapshot): boolean {
 		return snapshot === this.snapshot;
+	}
+
+	public enrichmentFor(snapshot: TrackSessionSnapshot): TrackSessionEnrichment | undefined {
+		if (snapshot.loadState.status !== "ready") {
+			return undefined;
+		}
+		const entry = this.enrichmentBySnapshot.get(snapshot as ReadyTrackSessionSnapshot);
+		if (!entry) {
+			return undefined;
+		}
+		entry.promise ??= entry.start();
+		return entry.promise;
 	}
 
 	public invalidate(): void {
@@ -92,11 +112,16 @@ export class TrackSessionController {
 			return this.snapshot;
 		}
 
-		const waveformProfile = await waveformProfilePromise;
-		if (!this.isGenerationCurrent(generation)) {
-			return undefined;
-		}
-		return this.present(loadState, waveformProfile, generation);
+		const initialSnapshot: ReadyTrackSessionSnapshot = {
+			loadState,
+			lyrics: loadState.lyrics,
+			timingSource: "native",
+		};
+		this.snapshot = initialSnapshot;
+		this.enrichmentBySnapshot.set(initialSnapshot, {
+			start: () => this.enrich(loadState, waveformProfilePromise, generation).catch(() => undefined),
+		});
+		return initialSnapshot;
 	}
 
 	public async updateSettings(settings: ExtensionSettings): Promise<TrackSessionSnapshot | undefined> {
@@ -109,11 +134,23 @@ export class TrackSessionController {
 		return this.present(loadState, waveformProfile, generation);
 	}
 
+	private async enrich(
+		loadState: ReadyLoadState,
+		waveformProfilePromise: Promise<TrackWaveformProfile | undefined>,
+		generation: number
+	): TrackSessionEnrichment {
+		const waveformProfile = await waveformProfilePromise;
+		if (!this.isGenerationCurrent(generation)) {
+			return undefined;
+		}
+		return this.present(loadState, waveformProfile, generation);
+	}
+
 	private async present(
 		loadState: ReadyLoadState,
 		waveformProfile: TrackWaveformProfile | undefined,
 		generation: number
-	): Promise<TrackSessionSnapshot | undefined> {
+	): Promise<ReadyTrackSessionSnapshot | undefined> {
 		if (this.shouldSynthesize(loadState)) {
 			await this.ensurePseudoKaraoke(loadState.track, loadState.lyrics as LineLyrics, generation);
 		}

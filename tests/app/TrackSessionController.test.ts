@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { TrackSessionController } from "../../src/app/TrackSessionController";
 import type { AudioAnalysisData } from "../../src/audio/types";
-import type { LineLyrics, LyricsLoadState, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
+import type { LineLyrics, LyricsDocument, LyricsLoadState, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
 import type { TrackWaveformProfile } from "../../src/renderer/AudioAnalysisWaveformService";
 import { DEFAULT_SETTINGS, type ExtensionSettings } from "../../src/settings/settingsSchema";
 
@@ -36,7 +36,12 @@ const syllableLyrics = (startTime = 0): SyllableLyrics => ({
 	content: [],
 });
 
-const ready = (currentTrack: TrackIdentity, lyrics: LineLyrics | SyllableLyrics): Extract<LyricsLoadState, { status: "ready" }> => ({
+const staticLyrics = (): LyricsDocument => ({
+	type: "static",
+	lines: [{ text: "Static lyrics" }],
+});
+
+const ready = (currentTrack: TrackIdentity, lyrics: LyricsDocument): Extract<LyricsLoadState, { status: "ready" }> => ({
 	status: "ready",
 	track: currentTrack,
 	lyrics,
@@ -84,6 +89,34 @@ const createController = (
 };
 
 describe("TrackSessionController", () => {
+	test.each([
+		{ name: "static", lyrics: staticLyrics() },
+		{ name: "line", lyrics: lineLyrics() },
+		{ name: "syllable", lyrics: syllableLyrics() },
+	])("returns native $name lyrics before a pending waveform profile", async ({ lyrics }) => {
+		const currentTrack = track(`spotify:track:initial-${lyrics.type}`);
+		const waveformResult = deferred<TrackWaveformProfile>();
+		const { controller } = createController({
+			load: async () => ready(currentTrack, lyrics),
+			loadProfile: async () => waveformResult.promise,
+		});
+
+		const loading = controller.load(currentTrack, settings(), false);
+		const outcome = await Promise.race([
+			loading.then((snapshot) => ({ kind: "resolved" as const, snapshot })),
+			new Promise<{ kind: "blocked" }>((resolve) => setTimeout(() => resolve({ kind: "blocked" }), 0)),
+		]);
+		const snapshotBeforeWaveform = controller.getSnapshot();
+		waveformResult.resolve(profile(currentTrack));
+		await loading;
+
+		expect(outcome.kind).toBe("resolved");
+		expect(snapshotBeforeWaveform.loadState).toMatchObject({ status: "ready", track: currentTrack });
+		expect(snapshotBeforeWaveform.lyrics).toBe(lyrics);
+		expect(snapshotBeforeWaveform.timingSource).toBe("native");
+		expect(snapshotBeforeWaveform.waveformProfile).toBeUndefined();
+	});
+
 	test("starts waveform profile loading before lyrics finish", async () => {
 		const lyricsResult = deferred<LyricsLoadState>();
 		const currentTrack = track("spotify:track:parallel");
@@ -110,7 +143,9 @@ describe("TrackSessionController", () => {
 
 		const staleLoad = controller.load(oldTrack, settings({ pseudoKaraoke: false }), false);
 		const currentLoad = controller.load(newTrack, settings({ pseudoKaraoke: false }), false);
-		await currentLoad;
+		const currentSnapshot = await currentLoad;
+		if (!currentSnapshot) throw new Error("Expected the current track snapshot.");
+		await controller.enrichmentFor(currentSnapshot);
 		oldLyrics.resolve(ready(oldTrack, lineLyrics()));
 		oldProfile.resolve(profile(oldTrack));
 
@@ -119,7 +154,7 @@ describe("TrackSessionController", () => {
 		expect(controller.getSnapshot().waveformProfile?.trackUri).toBe(newTrack.uri);
 	});
 
-	test("discards a waveform profile that finishes after a newer load", async () => {
+	test("discards late enrichment that finishes after a newer load", async () => {
 		const oldProfile = deferred<TrackWaveformProfile>();
 		const oldTrack = track("spotify:track:old-profile");
 		const newTrack = track("spotify:track:new-profile");
@@ -128,13 +163,14 @@ describe("TrackSessionController", () => {
 			loadProfile: async (currentTrack) => (currentTrack === oldTrack ? oldProfile.promise : profile(newTrack)),
 		});
 
-		const staleLoad = controller.load(oldTrack, settings({ pseudoKaraoke: false }), false);
-		await Promise.resolve();
+		const oldSnapshot = await controller.load(oldTrack, settings({ pseudoKaraoke: false }), false);
+		if (!oldSnapshot) throw new Error("Expected an initial track snapshot.");
+		const staleEnrichment = controller.enrichmentFor(oldSnapshot);
 		await controller.load(newTrack, settings({ pseudoKaraoke: false }), false);
 		oldProfile.resolve(profile(oldTrack));
 
-		expect(await staleLoad).toBeUndefined();
-		expect(controller.getSnapshot().waveformProfile?.trackUri).toBe(newTrack.uri);
+		expect(await staleEnrichment).toBeUndefined();
+		expect(controller.getSnapshot().loadState).toMatchObject({ status: "ready", track: newTrack });
 	});
 
 	test("does not build or cache synthesis when analysis finishes after invalidation", async () => {
@@ -142,13 +178,14 @@ describe("TrackSessionController", () => {
 		const currentTrack = track("spotify:track:stale-analysis");
 		const { buildPseudoKaraoke, controller } = createController({ getAnalysis: async () => analysis.promise });
 
-		const loading = controller.load(currentTrack, settings(), false);
-		await Promise.resolve();
+		const initialSnapshot = await controller.load(currentTrack, settings(), false);
+		if (!initialSnapshot) throw new Error("Expected an initial track snapshot.");
+		const enrichment = controller.enrichmentFor(initialSnapshot);
 		await Promise.resolve();
 		controller.invalidate();
 		analysis.resolve(undefined);
 
-		expect(await loading).toBeUndefined();
+		expect(await enrichment).toBeUndefined();
 		expect(buildPseudoKaraoke).not.toHaveBeenCalled();
 		expect(controller.getSnapshot()).toEqual({ loadState: { status: "idle" }, timingSource: "native" });
 	});
@@ -159,10 +196,14 @@ describe("TrackSessionController", () => {
 		const { buildPseudoKaraoke, controller, load, refreshCooldowns } = createController({
 			load: async () => ready(currentTrack, source),
 		});
-		await controller.load(currentTrack, settings(), false);
+		const initialSnapshot = await controller.load(currentTrack, settings(), false);
+		if (!initialSnapshot) throw new Error("Expected an initial track snapshot.");
+		await controller.enrichmentFor(initialSnapshot);
 		expect(buildPseudoKaraoke).toHaveBeenCalledTimes(1);
 
-		await controller.load(currentTrack, settings(), true);
+		const refreshedSnapshot = await controller.load(currentTrack, settings(), true);
+		if (!refreshedSnapshot) throw new Error("Expected a refreshed track snapshot.");
+		await controller.enrichmentFor(refreshedSnapshot);
 
 		expect(refreshCooldowns).toHaveBeenCalledOnce();
 		expect(refreshCooldowns.mock.invocationCallOrder[0]).toBeLessThan(load.mock.invocationCallOrder.at(-1) ?? 0);
@@ -177,9 +218,14 @@ describe("TrackSessionController", () => {
 		load.mockResolvedValueOnce(ready(currentTrack, native)).mockResolvedValueOnce(ready(currentTrack, lineLyrics()));
 
 		const nativeSnapshot = await controller.load(currentTrack, settings(), false);
-		const syntheticSnapshot = await controller.load(currentTrack, settings(), false);
+		if (!nativeSnapshot) throw new Error("Expected a native track snapshot.");
+		const enrichedNativeSnapshot = await controller.enrichmentFor(nativeSnapshot);
+		const initialLineSnapshot = await controller.load(currentTrack, settings(), false);
+		if (!initialLineSnapshot) throw new Error("Expected an initial line track snapshot.");
+		const syntheticSnapshot = await controller.enrichmentFor(initialLineSnapshot);
 
-		expect(nativeSnapshot).toMatchObject({ lyrics: native, timingSource: "native" });
+		expect(enrichedNativeSnapshot).toMatchObject({ lyrics: native, timingSource: "native" });
+		expect(initialLineSnapshot).toMatchObject({ lyrics: expect.objectContaining({ type: "line" }), timingSource: "native" });
 		expect(syntheticSnapshot).toMatchObject({ lyrics: synthetic, timingSource: "synthetic" });
 	});
 
@@ -193,9 +239,11 @@ describe("TrackSessionController", () => {
 			.mockResolvedValueOnce(ready(currentTrack, sourceA))
 			.mockResolvedValueOnce(ready(currentTrack, sourceB));
 
-		await controller.load(currentTrack, settings(), false);
-		await controller.load(currentTrack, settings(), false);
-		await controller.load(currentTrack, settings(), false);
+		for (let index = 0; index < 3; index += 1) {
+			const initialSnapshot = await controller.load(currentTrack, settings(), false);
+			if (!initialSnapshot) throw new Error("Expected an initial track snapshot.");
+			await controller.enrichmentFor(initialSnapshot);
+		}
 
 		expect(buildPseudoKaraoke).toHaveBeenCalledTimes(2);
 		expect(buildPseudoKaraoke.mock.calls[0]?.[0]).toBe(sourceA);

@@ -122,6 +122,8 @@ describe("ExtensionApp", () => {
 
 	test("does not leave a metadata overlay after a same-turn cache hit", async () => {
 		const { spicetify } = createSpicetify();
+		const audioAnalysis = deferred<ReturnType<typeof buildVocalAnalysis>>();
+		spicetify.getAudioData = vi.fn(() => audioAnalysis.promise);
 		const app = new ExtensionApp(spicetify);
 		const track = metadataTrack("spotify:track:cached");
 		const root = document.createElement("main");
@@ -135,10 +137,20 @@ describe("ExtensionApp", () => {
 		internals.currentTrack = track;
 		internals.lyricsService = { load: vi.fn(async () => readyLoadState(track, "cache")) };
 
-		await internals.loadCurrentTrack(false);
+		const loading = internals.loadCurrentTrack(false);
+		const outcome = await Promise.race([
+			loading.then(() => "resolved" as const),
+			new Promise<"blocked">((resolve) => setTimeout(() => resolve("blocked"), 0)),
+		]);
+		const lyricsWereVisibleBeforeAnalysis = root.querySelector(".lyrics-track")?.textContent?.includes("Ready") ?? false;
+		audioAnalysis.resolve(buildVocalAnalysis(0, 4));
+		await loading;
 
+		expect(outcome).toBe("resolved");
+		expect(lyricsWereVisibleBeforeAnalysis).toBe(true);
 		expect(root.querySelector(".lyrics-track")?.textContent).toContain("Ready");
 		expect(root.querySelector(".track-metadata-scene")).toBeNull();
+		await vi.waitFor(() => expect(root.querySelector("[data-aura-timing-marker]")).not.toBeNull());
 	});
 
 	test.each([
@@ -898,6 +910,7 @@ describe("ExtensionApp", () => {
 		};
 
 		await internals.loadCurrentTrack(false);
+		await vi.waitFor(() => expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s"));
 
 		expect(spicetify.getAudioData).toHaveBeenCalledWith("spotify:track:wave");
 		expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s");
@@ -960,12 +973,14 @@ describe("ExtensionApp", () => {
 		};
 
 		await internals.loadCurrentTrack(false);
+		await vi.waitFor(() => expect(internals.trackSession.getSnapshot().timingSource).toBe("synthetic"));
 		const snapshotA = internals.trackSession.getSnapshot();
 		expect(snapshotA.loadState).toMatchObject({ status: "ready", lyrics: lyricsA });
 		expect(snapshotA.lyrics?.type).toBe("syllable");
 		expect(snapshotA.timingSource).toBe("synthetic");
 
 		await internals.loadCurrentTrack(false);
+		await vi.waitFor(() => expect(internals.trackSession.getSnapshot().timingSource).toBe("synthetic"));
 		const snapshotB = internals.trackSession.getSnapshot();
 		expect(snapshotB.loadState).toMatchObject({ status: "ready", lyrics: lyricsB });
 		expect(snapshotB.lyrics).not.toBe(snapshotA.lyrics);

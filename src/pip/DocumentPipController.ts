@@ -108,6 +108,8 @@ export class DocumentPipController {
 				this.applyCoverState(root, coverUrl, currentSettings);
 				if (url) {
 					cover.src = new URL(url, window.location.href).href;
+				} else {
+					cover.removeAttribute("src");
 				}
 			},
 			setPlaying: (isPlaying) => {
