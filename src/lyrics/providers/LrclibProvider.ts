@@ -7,24 +7,18 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => {
 	return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 };
 
-const cosmosErrorStatus = (error: unknown): number | undefined => {
-	const record = asRecord(error);
-	if (!record) {
-		return undefined;
-	}
-	const directStatus = record.status ?? record.statusCode;
-	if (typeof directStatus === "number") {
-		return directStatus;
-	}
-	const response = asRecord(record.response);
-	return typeof response?.status === "number" ? response.status : undefined;
-};
-
-const errorMessage = (error: unknown, status: number | undefined): string => {
+const errorMessage = (error: unknown): string => {
 	if (error instanceof Error) {
 		return error.message;
 	}
-	return status === undefined ? "LRCLIB request failed." : `LRCLIB request failed with status ${status}.`;
+	return "LRCLIB request failed.";
+};
+
+const hasRenderableVocals = (lyrics: ReturnType<typeof parseLrc>): boolean => {
+	if (lyrics.type === "line") {
+		return lyrics.content.some((item) => item.type === "vocal" && item.text.trim().length > 0);
+	}
+	return lyrics.content.some((item) => item.type === "vocal" && item.lead.syllables.some((syllable) => syllable.text.trim().length > 0));
 };
 
 export class LrclibProvider implements LyricsProvider {
@@ -41,28 +35,40 @@ export class LrclibProvider implements LyricsProvider {
 			album_name: track.album,
 			duration: String(track.durationMs / 1000),
 		});
-		let decoded: unknown;
+		let response: Response;
 		try {
-			decoded = await context.cosmosGet(`https://lrclib.net/api/get?${params.toString()}`, null, {
-				"User-Agent": context.userAgent,
+			response = await context.fetch(`https://lrclib.net/api/get?${params.toString()}`, {
+				headers: { "x-user-agent": context.userAgent },
 			});
 		} catch (error) {
-			const status = cosmosErrorStatus(error);
-			if (status === 404) {
+			return { ok: false, reason: "error", message: errorMessage(error) };
+		}
+		if (!response.ok) {
+			if (response.status === 404) {
 				return { ok: false, reason: "no-lyrics", message: "Track was not found on LRCLIB." };
 			}
-			if (status === 429) {
+			if (response.status === 429) {
 				return {
 					ok: false,
 					reason: "temporarily-unavailable",
-					message: errorMessage(error, status),
+					message: "LRCLIB request failed with status 429.",
 					cooldownMs: RATE_LIMIT_COOLDOWN_MS,
 				};
 			}
-			if (status !== undefined && status >= 500 && status < 600) {
-				return { ok: false, reason: "temporarily-unavailable", message: errorMessage(error, status) };
+			if (response.status >= 500 && response.status < 600) {
+				return {
+					ok: false,
+					reason: "temporarily-unavailable",
+					message: `LRCLIB request failed with status ${response.status}.`,
+				};
 			}
-			return { ok: false, reason: "error", message: errorMessage(error, status) };
+			return { ok: false, reason: "error", message: `LRCLIB request failed with status ${response.status}.` };
+		}
+		let decoded: unknown;
+		try {
+			decoded = await response.json();
+		} catch (error) {
+			return { ok: false, reason: "error", message: errorMessage(error) };
 		}
 		const payload = asRecord(decoded);
 		if (!payload) {
@@ -84,6 +90,10 @@ export class LrclibProvider implements LyricsProvider {
 		if (syncedLyrics.trim().length === 0) {
 			return { ok: false, reason: "no-lyrics" };
 		}
-		return { ok: true, lyrics: parseLrc(syncedLyrics) };
+		const lyrics = parseLrc(syncedLyrics);
+		if (!hasRenderableVocals(lyrics)) {
+			return { ok: false, reason: "error", message: "LRCLIB returned lyrics without renderable vocals." };
+		}
+		return { ok: true, lyrics };
 	}
 }
