@@ -89,22 +89,7 @@ export class SettingsView {
 			if (!wasConnected) {
 				return;
 			}
-			const shouldRestoreFocus = this.shouldRestorePreviousFocus(container);
-			observer.disconnect();
-			this.observer = undefined;
-			this.clearAttachGuardTimer();
-			this.clearRefreshTimer();
-			this.detachResponsiveNavigation();
-			document.body.classList.remove("aura-lyrics-settings-open");
-			if (this.container === container) {
-				this.container = undefined;
-				this.navigation = undefined;
-				this.panelScroller = undefined;
-				this.providerStatus = undefined;
-				this.musixmatchTokenInput = undefined;
-				this.modalFocusScope = undefined;
-			}
-			this.restorePreviousFocus(shouldRestoreFocus);
+			this.cleanupDetachedContainer(container, observer);
 		});
 		this.observer = observer;
 		observer.observe(document.body, { childList: true, subtree: true });
@@ -119,21 +104,7 @@ export class SettingsView {
 					this.onContainerAttached(container);
 					return;
 				}
-				const shouldRestoreFocus = this.shouldRestorePreviousFocus(container);
-				observer.disconnect();
-				this.observer = undefined;
-				this.clearRefreshTimer();
-				this.detachResponsiveNavigation();
-				document.body.classList.remove("aura-lyrics-settings-open");
-				if (this.container === container) {
-					this.container = undefined;
-					this.navigation = undefined;
-					this.panelScroller = undefined;
-					this.providerStatus = undefined;
-					this.musixmatchTokenInput = undefined;
-					this.modalFocusScope = undefined;
-				}
-				this.restorePreviousFocus(shouldRestoreFocus);
+				this.cleanupDetachedContainer(container, observer);
 			}, 0);
 		}
 	}
@@ -763,6 +734,9 @@ export class SettingsView {
 	}
 
 	private shouldRestorePreviousFocus(container: HTMLElement | undefined): boolean {
+		if (this.hasConnectedReplacementModal()) {
+			return false;
+		}
 		const active = this.focusedElement();
 		const focusIsInsideOwnedModal =
 			active !== undefined &&
@@ -775,6 +749,34 @@ export class SettingsView {
 			(active !== undefined && container?.contains(active) === true) ||
 			focusIsInsideOwnedModal
 		);
+	}
+
+	private hasConnectedReplacementModal(): boolean {
+		return Array.from(document.querySelectorAll<HTMLElement>(".main-trackCreditsModal-container")).some(
+			(modal) => modal.isConnected && modal !== this.modalFocusScope
+		);
+	}
+
+	private cleanupDetachedContainer(container: HTMLElement, observer: MutationObserver): void {
+		if (this.observer !== observer) {
+			return;
+		}
+		const shouldRestoreFocus = this.shouldRestorePreviousFocus(container);
+		observer.disconnect();
+		this.observer = undefined;
+		this.clearAttachGuardTimer();
+		this.clearRefreshTimer();
+		this.detachResponsiveNavigation();
+		document.body.classList.remove("aura-lyrics-settings-open");
+		if (this.container === container) {
+			this.container = undefined;
+			this.navigation = undefined;
+			this.panelScroller = undefined;
+			this.providerStatus = undefined;
+			this.musixmatchTokenInput = undefined;
+			this.modalFocusScope = undefined;
+		}
+		this.restorePreviousFocus(shouldRestoreFocus);
 	}
 
 	private restorePreviousFocus(shouldRestore: boolean): void {

@@ -109,11 +109,17 @@ const openView = (
 			display: (modalOptions: { content: HTMLElement; title: string }) => {
 				content = modalOptions.content;
 				modal = document.createElement("div");
-				modal.className = "test-popup-modal";
+				modal.className = "test-popup-modal main-trackCreditsModal-container";
 				const title = document.createElement("h1");
 				title.dataset.modalTitle = "true";
 				title.textContent = modalOptions.title;
-				modal.append(title, modalOptions.content);
+				const mainSection = document.createElement("div");
+				mainSection.className = "main-trackCreditsModal-mainSection";
+				const originalCredits = document.createElement("div");
+				originalCredits.className = "main-trackCreditsModal-originalCredits";
+				originalCredits.append(modalOptions.content);
+				mainSection.append(originalCredits);
+				modal.append(title, mainSection);
 				document.querySelector(".test-popup-modal")?.remove();
 				document.body.append(modal);
 			},
@@ -149,6 +155,15 @@ const control = <T extends HTMLElement>(content: HTMLElement, id: string): T => 
 
 const flushTimers = async (): Promise<void> => {
 	await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+const cssRule = (css: string, selector: string): string => {
+	const start = css.indexOf(`${selector} {`);
+	if (start < 0) {
+		return "";
+	}
+	const end = css.indexOf("}", start);
+	return end < 0 ? "" : css.slice(start, end + 1);
 };
 
 beforeEach(() => {
@@ -399,10 +414,29 @@ describe("SettingsView", () => {
 	test("uses a bounded dark modal with only the panel body scrolling", () => {
 		const { content } = openView();
 		const css = content.querySelector("style")?.textContent ?? "";
+		const containerRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-container");
+		const mainSectionRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection");
+		const originalCreditsRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits");
+		const settingsRule = cssRule(css, ".aura-lyrics-settings");
 
 		expect(css).toContain("max-height: min(760px, calc(100vh - 32px))");
-		expect(css).toContain("body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection");
-		expect(css).toContain("body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits");
+		expect(containerRule).toContain("display: flex");
+		expect(containerRule).toContain("flex-direction: column");
+		expect(containerRule).toContain("overflow: hidden");
+		expect(mainSectionRule).toContain("display: flex");
+		expect(mainSectionRule).toContain("flex: 1 1 auto");
+		expect(mainSectionRule).toContain("min-height: 0");
+		expect(mainSectionRule).toContain("overflow: hidden");
+		expect(originalCreditsRule).toContain("display: flex");
+		expect(originalCreditsRule).toContain("flex: 1 1 auto");
+		expect(originalCreditsRule).toContain("min-height: 0");
+		expect(originalCreditsRule).toContain("overflow: hidden");
+		expect(settingsRule).toContain("flex: 1 1 auto");
+		expect(settingsRule).toContain("height: 100%");
+		expect(settingsRule).toContain("max-height: 100%");
+		expect(settingsRule).toContain("min-height: 0");
+		expect(settingsRule).toContain("overflow: hidden");
+		expect(css).not.toContain("calc(100vh - 92px)");
 		expect(css).not.toContain(".main-trackCreditsModal-content");
 		expect(css).toContain("grid-template-columns: 200px minmax(0, 1fr)");
 		expect(css).toContain(".settings-panel-scroll");
@@ -415,6 +449,9 @@ describe("SettingsView", () => {
 		expect(css).toContain("#ff7457");
 		expect(css).toContain(":focus-visible");
 		expect(css).not.toContain("settings-hero");
+		expect(content.parentElement?.classList.contains("main-trackCreditsModal-originalCredits")).toBe(true);
+		expect(content.parentElement?.parentElement?.classList.contains("main-trackCreditsModal-mainSection")).toBe(true);
+		expect(content.closest(".main-trackCreditsModal-container")).not.toBeNull();
 	});
 
 	test("focuses the active tab and restores the connected trigger on close", () => {
@@ -459,6 +496,22 @@ describe("SettingsView", () => {
 		FakeMutationObserver.instances[0].trigger();
 
 		expect(document.activeElement).toBe(replacement);
+	});
+
+	test("does not restore the trigger while a new host modal is connected", () => {
+		const { modal, trigger } = openView({ withTrigger: true });
+		if (!trigger) {
+			throw new Error("Settings trigger was not created.");
+		}
+		const replacementModal = document.createElement("div");
+		replacementModal.className = "main-trackCreditsModal-container";
+
+		modal.remove();
+		document.body.append(replacementModal);
+		FakeMutationObserver.instances[0].trigger();
+
+		expect(document.activeElement).not.toBe(trigger);
+		expect(replacementModal.isConnected).toBe(true);
 	});
 
 	test("restores the connected trigger after a natural detach", () => {

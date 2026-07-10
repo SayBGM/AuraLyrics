@@ -1,21 +1,36 @@
 export const settingsStyles = `
 body.aura-lyrics-settings-open .main-trackCreditsModal-container {
+	display: flex;
+	flex-direction: column;
 	width: min(920px, calc(100vw - 32px));
 	max-width: min(920px, calc(100vw - 32px));
 	height: min(760px, calc(100vh - 32px));
 	max-height: min(760px, calc(100vh - 32px));
 	box-sizing: border-box;
+	overflow: hidden;
 	background: #0d0d0f;
 	color: #f5f5f7;
 }
 
 body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	width: 100%;
+	min-height: 0;
 	max-height: 100%;
 	overflow: hidden;
 	padding: 0;
 }
 
 body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits {
+	display: flex;
+	flex: 1 1 auto;
+	width: 100%;
+	height: 100%;
+	max-height: 100%;
+	min-height: 0;
+	overflow: hidden;
 	padding-bottom: 0;
 }
 
@@ -29,10 +44,12 @@ body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits {
 	--settings-border: #2a2a31;
 	--settings-accent: #ff7457;
 	display: block;
+	flex: 1 1 auto;
 	width: min(888px, calc(100vw - 32px));
 	max-width: 100%;
-	height: min(700px, calc(100vh - 92px));
+	height: 100%;
 	max-height: 100%;
+	min-height: 0;
 	box-sizing: border-box;
 	overflow: hidden;
 	background: var(--settings-bg);
@@ -285,7 +302,6 @@ body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits {
 
 	.aura-lyrics-settings {
 		width: 100%;
-		height: min(720px, calc(100vh - 76px));
 	}
 
 	.aura-lyrics-settings .settings-layout {
