@@ -32,7 +32,8 @@ describe("LyricsRenderer", () => {
 		expect(marker).not.toBeNull();
 		expect(marker?.getAttribute("aria-label")).toBe("가상 노래방 싱크");
 		expect(marker?.classList.contains("aura-timing-marker")).toBe(true);
-		expect(marker?.parentElement?.classList.contains("lyrics-viewport")).toBe(true);
+		expect(marker?.parentElement?.classList.contains("aura-lyrics")).toBe(true);
+		expect(marker?.parentElement?.querySelector(":scope > .lyrics-viewport")).not.toBeNull();
 	});
 
 	test("does not show a folded-corner marker for native or missing timing", () => {

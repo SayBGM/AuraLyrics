@@ -1,4 +1,8 @@
 export const lyricsStyles = `
+.aura-lyrics {
+	position: relative;
+}
+
 .lyrics-viewport {
 	width: 100%;
 	height: 100%;

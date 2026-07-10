@@ -73,7 +73,7 @@ export class LyricsRenderer {
 			marker.setAttribute("role", "img");
 			marker.setAttribute("aria-label", timingMarkerLabel(settings.language));
 			marker.title = timingMarkerLabel(settings.language);
-			this.lyricsViewport.append(marker);
+			this.container.append(marker);
 		}
 		this.buildLyrics(lyrics, settings, waveforms, rhythm);
 		appendProviderSource(this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
