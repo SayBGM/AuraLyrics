@@ -1,5 +1,5 @@
-import type { TrackIdentity } from "../lyrics/types";
-import type { AudioAnalysisData } from "../renderer/AudioAnalysisWaveformService";
+import type { AudioAnalysisData } from "../audio/types";
+import type { TrackIdentity } from "../domain/types";
 
 declare global {
 	interface Window {

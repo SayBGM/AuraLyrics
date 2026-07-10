@@ -1,4 +1,4 @@
-import type { ProviderId } from "../lyrics/types";
+import type { ProviderId } from "../domain/types";
 
 export type LyricsVisualPreset = "immersive" | "clean" | "karaoke" | "custom";
 export type SyncPreference = "prefer-syllable" | "line-only";

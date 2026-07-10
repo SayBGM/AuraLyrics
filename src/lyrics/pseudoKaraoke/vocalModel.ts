@@ -1,5 +1,5 @@
 // §5 — Audio vocal model: turn audio analysis into a vocal energy curve.
-import type { AudioAnalysisData, AudioAnalysisSection, AudioAnalysisSegment } from "../../renderer/AudioAnalysisWaveformService";
+import type { AudioAnalysisData, AudioAnalysisSection, AudioAnalysisSegment } from "../../audio/types";
 import { MAX_SEGMENT_MS, MIN_SEGMENT_MS } from "./constants";
 import { clamp, clamp01 } from "./utils";
 

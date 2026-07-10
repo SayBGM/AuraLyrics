@@ -1,3 +1,5 @@
+export { clamp } from "../../shared/math";
+
 export type SplinePoint = {
 	time: number;
 	value: number;
@@ -32,5 +34,3 @@ export class LinearSpline {
 		return last.value;
 	}
 }
-
-export const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));

@@ -1,4 +1,4 @@
-import { clamp } from "../../renderer/animation/Spline";
+import { clamp } from "../../shared/math";
 
 export { clamp };
 

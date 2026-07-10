@@ -1,4 +1,6 @@
-export type ProviderId = "spotify" | "musixmatch" | "lrclib";
+import type { ProviderId, TrackIdentity } from "../domain/types";
+
+export type { ProviderId, TrackIdentity };
 
 export type TimeRange = {
 	startTime: number;
@@ -56,17 +58,6 @@ export type SyllableLyrics = TimeRange & {
 };
 
 export type LyricsDocument = StaticLyrics | LineLyrics | SyllableLyrics;
-
-export type TrackIdentity = {
-	uri: string;
-	id?: string;
-	title: string;
-	artist: string;
-	album: string;
-	durationMs: number;
-	coverUrl?: string;
-	isLocal: boolean;
-};
 
 export type LyricsCacheStatus =
 	| { status: "bypassed"; primaryProvider?: ProviderId }

@@ -1,5 +1,5 @@
 // §9 — assemble synthesized syllable timing from line lyrics + audio analysis.
-import type { AudioAnalysisData } from "../../renderer/AudioAnalysisWaveformService";
+import type { AudioAnalysisData } from "../../audio/types";
 import type { Interlude, LineLyrics, LineVocal, Syllable, SyllableLyrics, SyllableVocal, SyllableVocalSet } from "../types";
 import { alignPhraseUnitsWithDP } from "./dpAlign";
 import { buildUnitPhrases, pickPhraseBoundaryTime } from "./phrases";
