@@ -2,6 +2,8 @@ import { expect, type Page, test } from "@playwright/test";
 
 type ScenarioName =
 	| "album-art-instrumental"
+	| "aurora-loading-dark"
+	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
 	| "line-sync"
@@ -33,6 +35,47 @@ test.use({
 test.beforeEach(async ({ page }) => {
 	await page.goto(baseUrl);
 	await expect(page.locator("#aura-lyrics-root")).toBeVisible();
+});
+
+test("Aurora loading metadata stays editorial and readable on a dark album", async ({ page }) => {
+	await renderScenario(page, "aurora-loading-dark");
+
+	const metrics = await metadataMetrics(page);
+
+	expect(metrics).toMatchObject({
+		eyebrow: "LOADING",
+		title: "Midnight Bloom",
+		byline: "Haneul Park · Afterglow",
+		hasProgress: true,
+		surfaceTone: "dark",
+		foregroundVariable: "#ffffff",
+		titleColor: "rgb(255, 255, 255)",
+		controlsOpacity: "1",
+		playColor: "rgb(17, 20, 24)",
+	});
+	expect(metrics.progressWidth).toBeGreaterThan(120);
+	expect(metrics.controlsBackground).toContain("rgba(255, 255, 255");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("aurora-loading-dark.png", screenshotTolerance);
+});
+
+test("Aurora persistent metadata uses near-black text without a loading label on a light album", async ({ page }) => {
+	await renderScenario(page, "aurora-metadata-light");
+
+	const metrics = await metadataMetrics(page);
+
+	expect(metrics).toMatchObject({
+		eyebrow: null,
+		title: "Sunlit Letters",
+		byline: "Mira Lee · Paper Skies",
+		hasProgress: false,
+		surfaceTone: "light",
+		foregroundVariable: "#090b0f",
+		titleColor: "rgb(9, 11, 15)",
+		controlsOpacity: "1",
+		playColor: "rgb(17, 20, 24)",
+	});
+	expect(metrics.controlsBackground).toContain("rgba(255, 255, 255");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("aurora-metadata-light.png", screenshotTolerance);
 });
 
 test("settings modal keeps its dark desktop sidebar layout within the viewport", async ({ page }) => {
@@ -333,6 +376,31 @@ const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => 
 	}
 	await expect(page.locator(".aura-lyrics")).toBeVisible();
 };
+
+const metadataMetrics = async (page: Page) =>
+	page.evaluate(() => {
+		const pipRoot = document.querySelector<HTMLElement>("#aura-lyrics-root");
+		const title = document.querySelector<HTMLElement>(".track-metadata-title");
+		const controls = document.querySelector<HTMLElement>(".pip-controls");
+		const play = document.querySelector<HTMLElement>('[data-control="toggle-play"]');
+		if (!pipRoot || !title || !controls || !play) {
+			throw new Error("Missing Aurora metadata or playback controls.");
+		}
+		const progress = document.querySelector<HTMLElement>(".track-metadata-progress");
+		return {
+			eyebrow: document.querySelector(".track-metadata-eyebrow")?.textContent ?? null,
+			title: title.textContent,
+			byline: document.querySelector(".track-metadata-byline")?.textContent ?? null,
+			hasProgress: progress !== null,
+			progressWidth: progress?.getBoundingClientRect().width ?? 0,
+			surfaceTone: pipRoot.dataset.surfaceTone,
+			foregroundVariable: pipRoot.style.getPropertyValue("--pip-foreground-color"),
+			titleColor: getComputedStyle(title).color,
+			controlsOpacity: getComputedStyle(controls).opacity,
+			controlsBackground: getComputedStyle(controls).backgroundImage,
+			playColor: getComputedStyle(play).color,
+		};
+	});
 
 const wordRowMetrics = async (page: Page, wordSelector: string) =>
 	page.evaluate((selector) => {

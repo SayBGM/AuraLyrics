@@ -1,3 +1,5 @@
+import { buildTrackTheme, type TrackTheme } from "../../../src/app/TrackThemeService";
+import type { TrackIdentity } from "../../../src/domain/types";
 import type { LineLyrics, LyricsDocument, SyllableLyrics } from "../../../src/lyrics/types";
 import { LyricsRenderer } from "../../../src/renderer/LyricsRenderer";
 import { DEFAULT_SETTINGS, type ExtensionSettings, SettingsStore } from "../../../src/settings/SettingsStore";
@@ -6,6 +8,8 @@ import { pipStyles } from "../../../src/styles/pipStyles";
 
 type ScenarioName =
 	| "album-art-instrumental"
+	| "aurora-loading-dark"
+	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
 	| "line-sync"
@@ -20,7 +24,12 @@ type Scenario = {
 	settings?: Partial<ExtensionSettings>;
 	timestamp: number;
 	timingSource?: "native" | "synthetic";
-	mode?: "album-art" | "lyrics" | "settings";
+	mode?: "album-art" | "lyrics" | "metadata" | "settings";
+	metadata?: {
+		mode: "loading" | "persistent";
+		track: TrackIdentity;
+	};
+	theme?: TrackTheme;
 };
 
 declare global {
@@ -86,10 +95,71 @@ const settingsForVisuals: Partial<ExtensionSettings> = {
 	visibleContextLines: 2,
 };
 
+const darkAuroraCover = svgCover({
+	background: "#102d3a",
+	accent: "#63d2d5",
+	secondary: "#183f52",
+	flare: "#b86f85",
+});
+const lightAuroraCover = svgCover({
+	background: "#f5d8b4",
+	accent: "#d1696f",
+	secondary: "#f8ecd8",
+	flare: "#e7a86f",
+});
+
 const scenarios: Record<ScenarioName, Scenario> = {
 	"album-art-instrumental": {
 		timestamp: 0,
 		mode: "album-art",
+	},
+	"aurora-loading-dark": {
+		timestamp: 0,
+		mode: "metadata",
+		metadata: {
+			mode: "loading",
+			track: {
+				uri: "spotify:track:visual-dark",
+				title: "Midnight Bloom",
+				artist: "Haneul Park",
+				album: "Afterglow",
+				durationMs: 213_000,
+				coverUrl: darkAuroraCover,
+				isLocal: false,
+			},
+		},
+		theme: buildTrackTheme({
+			DARK_VIBRANT: "#102d3a",
+			DESATURATED: "#3c6870",
+			LIGHT_VIBRANT: "#8ce6e3",
+			PROMINENT: "#102d3a",
+			VIBRANT: "#63d2d5",
+			VIBRANT_NON_ALARMING: "#63d2d5",
+		}),
+	},
+	"aurora-metadata-light": {
+		timestamp: 0,
+		mode: "metadata",
+		metadata: {
+			mode: "persistent",
+			track: {
+				uri: "spotify:track:visual-light",
+				title: "Sunlit Letters",
+				artist: "Mira Lee",
+				album: "Paper Skies",
+				durationMs: 188_000,
+				coverUrl: lightAuroraCover,
+				isLocal: false,
+			},
+		},
+		theme: buildTrackTheme({
+			DARK_VIBRANT: "#9d5b54",
+			DESATURATED: "#caa98e",
+			LIGHT_VIBRANT: "#f8ecd8",
+			PROMINENT: "#f5d8b4",
+			VIBRANT: "#d1696f",
+			VIBRANT_NON_ALARMING: "#d1696f",
+		}),
 	},
 	"background-opposite": {
 		timestamp: 2.4,
@@ -242,7 +312,23 @@ window.auraVisualHarness = {
 			renderSettingsScenario();
 			return;
 		}
-		pipRoot.className = "is-playing";
+		pipRoot.className = scenario.mode === "metadata" ? "is-playing controls-visible" : "is-playing";
+		if (scenario.mode === "metadata") {
+			if (!scenario.metadata || !scenario.theme) {
+				throw new Error(`Metadata scenario is incomplete: ${name}`);
+			}
+			const cover = pipRoot.querySelector<HTMLImageElement>(":scope > .pip-cover");
+			if (!cover) {
+				throw new Error("Visual harness background cover was not found.");
+			}
+			cover.src = scenario.metadata.track.coverUrl ?? "";
+			applyTheme(pipRoot, scenario.theme);
+			renderer.showTrackMetadata(mountRoot, scenario.metadata, {
+				...structuredClone(DEFAULT_SETTINGS),
+				...scenario.settings,
+			});
+			return;
+		}
 		if (scenario.mode === "album-art") {
 			renderer.showAlbumArt(mountRoot);
 			return;
@@ -337,4 +423,35 @@ function syllableLyrics(groups: Array<Array<[text: string, startTime: number, en
 			},
 		})),
 	};
+}
+
+function applyTheme(root: HTMLElement, theme: TrackTheme): void {
+	const properties = {
+		"--pip-accent-color": theme.accent,
+		"--pip-accent-rgb": theme.accentRgb,
+		"--pip-background-color": theme.background,
+		"--pip-surface-tone": theme.surfaceTone,
+		"--pip-foreground-color": theme.foreground,
+		"--pip-foreground-rgb": theme.foregroundRgb,
+		"--pip-muted-foreground-color": theme.mutedForeground,
+		"--pip-muted-rgb": theme.mutedRgb,
+		"--pip-glow-rgb": theme.glowRgb,
+		"--pip-scrim-rgb": theme.scrimRgb,
+		"--pip-scrim-opacity": String(theme.scrimOpacity),
+	};
+	for (const [property, value] of Object.entries(properties)) {
+		root.style.setProperty(property, value);
+	}
+	root.dataset.surfaceTone = theme.surfaceTone;
+}
+
+function svgCover(colors: { background: string; accent: string; secondary: string; flare: string }): string {
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900">
+		<rect width="900" height="900" fill="${colors.background}"/>
+		<circle cx="210" cy="160" r="360" fill="${colors.secondary}" opacity="0.95"/>
+		<circle cx="720" cy="690" r="380" fill="${colors.accent}" opacity="0.78"/>
+		<circle cx="610" cy="220" r="170" fill="${colors.flare}" opacity="0.72"/>
+		<path d="M100 690 C280 520 540 790 820 520" stroke="${colors.secondary}" stroke-width="74" fill="none" stroke-linecap="round" opacity="0.8"/>
+	</svg>`;
+	return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
