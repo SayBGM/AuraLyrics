@@ -34,11 +34,12 @@ export class SettingsView {
 	private container?: HTMLDivElement;
 	private mediaListener?: (event: MediaQueryListEvent) => void;
 	private mediaQuery?: MediaQueryList;
+	private musixmatchTokenInput?: HTMLInputElement;
 	private navigation?: HTMLElement;
 	private observer?: MutationObserver;
 	private panelScroller?: HTMLDivElement;
+	private providerStatus?: HTMLElement;
 	private refreshTimer?: number;
-	private settingsTitle?: HTMLHeadingElement;
 	private tokenStatus?: { key: TranslationKey } | { text: string };
 
 	public constructor(
@@ -59,7 +60,7 @@ export class SettingsView {
 		this.mountShell();
 		document.body.classList.add("aura-lyrics-settings-open");
 		spicetify.PopupModal.display({
-			title: this.t("settingsTitle"),
+			title: "AuraLyrics",
 			content: container,
 		});
 		this.attachResponsiveNavigation();
@@ -85,7 +86,8 @@ export class SettingsView {
 				this.container = undefined;
 				this.navigation = undefined;
 				this.panelScroller = undefined;
-				this.settingsTitle = undefined;
+				this.providerStatus = undefined;
+				this.musixmatchTokenInput = undefined;
 			}
 		});
 		this.observer = observer;
@@ -93,21 +95,17 @@ export class SettingsView {
 	}
 
 	public destroy(): void {
+		const shouldHideModal = this.container?.isConnected === true;
 		this.cleanupLifecycle(true);
+		if (shouldHideModal) {
+			window.Spicetify?.PopupModal?.hide?.();
+		}
 	}
 
 	private mountShell(): void {
 		if (!this.container) {
 			return;
 		}
-		const header = document.createElement("header");
-		header.className = "settings-header";
-		const title = document.createElement("h2");
-		title.className = "settings-title";
-		title.textContent = this.t("settingsTitle");
-		header.append(title);
-		this.settingsTitle = title;
-
 		const layout = document.createElement("div");
 		layout.className = "settings-layout";
 		const navigation = document.createElement("nav");
@@ -123,7 +121,7 @@ export class SettingsView {
 		panelScroller.className = "settings-panel-scroll";
 		this.panelScroller = panelScroller;
 		layout.append(navigation, panelScroller);
-		this.container.replaceChildren(this.styles(), header, layout);
+		this.container.replaceChildren(this.styles(), layout);
 		this.syncNavigation();
 		this.renderActivePanel();
 	}
@@ -200,9 +198,6 @@ export class SettingsView {
 			return;
 		}
 		this.navigation.setAttribute("aria-label", this.t("settingsNavigation"));
-		if (this.settingsTitle) {
-			this.settingsTitle.textContent = this.t("settingsTitle");
-		}
 		for (const section of SETTINGS_SECTIONS) {
 			const label = this.navigation.querySelector<HTMLElement>(`[data-section="${section.id}"] .settings-tab-label`);
 			if (label) {
@@ -215,6 +210,8 @@ export class SettingsView {
 		if (!this.panelScroller) {
 			return;
 		}
+		this.providerStatus = undefined;
+		this.musixmatchTokenInput = undefined;
 		const settings = this.store.get();
 		const panel = document.createElement("section");
 		panel.className = "settings-panel";
@@ -343,11 +340,11 @@ export class SettingsView {
 		for (const [index, provider] of settings.providers.order.entries()) {
 			rows.push(this.providerRow(settings, provider, index));
 		}
-		rows.push(
-			this.input("musixmatch-token", this.t("musixmatchToken", language), settings.providers.musixmatchToken ?? "", (value) => {
-				this.update({ providers: { ...this.store.get().providers, musixmatchToken: value || undefined } });
-			})
-		);
+		const tokenRow = this.input("musixmatch-token", this.t("musixmatchToken", language), settings.providers.musixmatchToken ?? "", (value) => {
+			this.update({ providers: { ...this.store.get().providers, musixmatchToken: value || undefined } });
+		});
+		this.musixmatchTokenInput = tokenRow.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]') ?? undefined;
+		rows.push(tokenRow);
 		rows.push(this.button("generate-musixmatch-token", this.t("generateMusixmatchToken", language), () => void this.refreshMusixmatchToken()));
 		rows.push(
 			this.select(
@@ -382,9 +379,9 @@ export class SettingsView {
 				})
 			);
 		}
-		if (this.tokenStatus) {
-			rows.push(this.status("key" in this.tokenStatus ? this.t(this.tokenStatus.key, language) : this.tokenStatus.text));
-		}
+		const status = this.status(this.tokenStatusText(language));
+		this.providerStatus = status;
+		rows.push(status);
 		rows.push(this.text(this.format("providerOrder", { order: settings.providers.order.join(" → ") }, language)));
 		return rows;
 	}
@@ -568,20 +565,47 @@ export class SettingsView {
 
 	private async refreshMusixmatchToken(): Promise<void> {
 		this.tokenStatus = { key: "requestingToken" };
-		this.schedulePanelRefresh();
+		this.updateTokenStatus();
 		try {
 			const token = await this.callbacks.onRefreshMusixmatchToken();
 			if (!token) {
 				this.tokenStatus = { key: "tokenMissing" };
-				this.schedulePanelRefresh();
+				this.updateTokenStatus();
 				return;
 			}
 			this.store.update({ providers: { ...this.store.get().providers, musixmatchToken: token } });
+			this.patchMusixmatchTokenInput(token);
 			this.tokenStatus = { key: "tokenUpdated" };
 		} catch (error) {
 			this.tokenStatus = { text: error instanceof Error ? error.message : String(error) };
 		}
-		this.schedulePanelRefresh();
+		this.updateTokenStatus();
+	}
+
+	private updateTokenStatus(): void {
+		if (this.providerStatus) {
+			this.providerStatus.textContent = this.tokenStatusText(this.store.get().language);
+		}
+	}
+
+	private tokenStatusText(language: UiLanguage): string {
+		if (!this.tokenStatus) {
+			return "";
+		}
+		return "key" in this.tokenStatus ? this.t(this.tokenStatus.key, language) : this.tokenStatus.text;
+	}
+
+	private patchMusixmatchTokenInput(token: string): void {
+		const input = this.musixmatchTokenInput;
+		if (!input) {
+			return;
+		}
+		const selectionStart = input.selectionStart;
+		const selectionEnd = input.selectionEnd;
+		input.value = token;
+		if (document.activeElement === input && selectionStart != null && selectionEnd != null) {
+			input.setSelectionRange(Math.min(selectionStart, token.length), Math.min(selectionEnd, token.length));
+		}
 	}
 
 	private schedulePanelRefresh(refreshNavigation = false): void {
@@ -670,7 +694,8 @@ export class SettingsView {
 		this.container = undefined;
 		this.navigation = undefined;
 		this.panelScroller = undefined;
-		this.settingsTitle = undefined;
+		this.providerStatus = undefined;
+		this.musixmatchTokenInput = undefined;
 		document.body.classList.remove("aura-lyrics-settings-open");
 	}
 

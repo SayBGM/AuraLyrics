@@ -87,25 +87,39 @@ const callbacks = (onRefreshMusixmatchToken: () => Promise<string | undefined> =
 const openView = (options: { media?: FakeMediaQueryList; onRefreshMusixmatchToken?: () => Promise<string | undefined> } = {}) => {
 	const store = new SettingsStore(new MemoryStorage());
 	let content: HTMLElement | undefined;
+	let modal: HTMLElement | undefined;
 	const media = options.media ?? createMediaQueryList();
+	const hide = vi.fn(() => {
+		modal?.remove();
+	});
 	vi.stubGlobal(
 		"matchMedia",
 		vi.fn(() => media)
 	);
 	window.Spicetify = {
 		PopupModal: {
-			display: (modalOptions) => {
+			display: (modalOptions: { content: HTMLElement; title: string }) => {
 				content = modalOptions.content;
-				document.body.replaceChildren(content);
+				modal = document.createElement("div");
+				modal.className = "test-popup-modal";
+				const title = document.createElement("h1");
+				title.dataset.modalTitle = "true";
+				title.textContent = modalOptions.title;
+				modal.append(title, modalOptions.content);
+				document.body.replaceChildren(modal);
 			},
+			hide,
 		},
-	} as typeof window.Spicetify;
+	} as unknown as typeof window.Spicetify;
 	const view = new SettingsView(store, providers, callbacks(options.onRefreshMusixmatchToken));
 	view.open();
 	if (!content) {
 		throw new Error("Settings content was not displayed.");
 	}
-	return { content, media, store, view };
+	if (!modal) {
+		throw new Error("Settings modal was not displayed.");
+	}
+	return { content, hide, media, modal, store, view };
 };
 
 const tab = (content: HTMLElement, section: string): HTMLButtonElement => {
@@ -142,6 +156,23 @@ afterEach(() => {
 });
 
 describe("SettingsView", () => {
+	test("uses one stable popup title without a duplicate internal title", async () => {
+		const { content, modal } = openView();
+		const modalTitle = modal.querySelector<HTMLElement>("[data-modal-title]");
+
+		expect(modalTitle?.textContent).toBe("AuraLyrics");
+		expect(content.querySelector(".settings-title")).toBeNull();
+		expect(content.textContent).not.toContain("AuraLyrics");
+
+		const language = control<HTMLSelectElement>(content, "language");
+		language.value = "ko";
+		language.dispatchEvent(new Event("change", { bubbles: true }));
+		await flushTimers();
+
+		expect(modalTitle?.textContent).toBe("AuraLyrics");
+		expect(content.textContent).not.toContain("AuraLyrics");
+	});
+
 	test("renders six accessible tabs and only the active panel", () => {
 		const { content } = openView();
 		const tabs = Array.from(content.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
@@ -222,7 +253,6 @@ describe("SettingsView", () => {
 
 		expect(store.get().language).toBe("ko");
 		expect(tab(content, "general").getAttribute("aria-selected")).toBe("true");
-		expect(content.querySelector(".settings-title")?.textContent).toBe("AuraLyrics 설정");
 		expect(tab(content, "appearance").textContent).toContain("화면");
 		expect(scroller.scrollTop).toBe(48);
 		expect(document.activeElement).toBe(control(content, "language"));
@@ -263,21 +293,25 @@ describe("SettingsView", () => {
 		expect(tab(content, "providers").getAttribute("aria-selected")).toBe("true");
 
 		const tokenInput = control<HTMLInputElement>(content, "musixmatch-token");
+		const liveRegion = content.querySelector<HTMLElement>('[role="status"]');
+		expect(liveRegion?.getAttribute("aria-live")).toBe("polite");
+		expect(liveRegion?.textContent).toBe("");
 		tokenInput.value = "abcdef";
 		tokenInput.dispatchEvent(new Event("change", { bubbles: true }));
 		tokenInput.focus();
 		tokenInput.setSelectionRange(2, 5);
 		control<HTMLButtonElement>(content, "generate-musixmatch-token").click();
-		await flushTimers();
-		expect(content.querySelector('[role="status"]')?.textContent).toContain("Requesting");
+		expect(content.querySelector('[role="status"]')).toBe(liveRegion);
+		expect(liveRegion?.textContent).toContain("Requesting");
 		resolveToken("generated-token");
 		await tokenPromise;
 		await flushTimers();
 
 		const refreshedTokenInput = control<HTMLInputElement>(content, "musixmatch-token");
 		expect(store.get().providers.musixmatchToken).toBe("generated-token");
-		expect(content.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
-		expect(content.querySelector('[role="status"]')?.textContent).toContain("updated");
+		expect(content.querySelector('[role="status"]')).toBe(liveRegion);
+		expect(liveRegion?.textContent).toContain("updated");
+		expect(refreshedTokenInput).toBe(tokenInput);
 		expect(tab(content, "providers").getAttribute("aria-selected")).toBe("true");
 		expect(document.activeElement).toBe(refreshedTokenInput);
 		expect(refreshedTokenInput.selectionStart).toBe(2);
@@ -336,7 +370,7 @@ describe("SettingsView", () => {
 
 	test("cleans up observers and media listeners across detach, reopen, and destroy", () => {
 		const firstMedia = createMediaQueryList();
-		const { content, view } = openView({ media: firstMedia });
+		const { content, hide, view } = openView({ media: firstMedia });
 		const firstObserver = FakeMutationObserver.instances[0];
 		expect(firstObserver.observe).toHaveBeenCalledOnce();
 
@@ -344,6 +378,7 @@ describe("SettingsView", () => {
 		firstObserver.trigger();
 		expect(firstObserver.disconnect).toHaveBeenCalledOnce();
 		expect(firstMedia.removeListenerSpy).toHaveBeenCalledOnce();
+		expect(hide).not.toHaveBeenCalled();
 		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
 
 		view.open();
@@ -354,7 +389,21 @@ describe("SettingsView", () => {
 
 		view.destroy();
 		expect(secondObserver.disconnect).toHaveBeenCalledOnce();
+		expect(hide).toHaveBeenCalledOnce();
 		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
+	});
+
+	test("only hides a connected modal on explicit destroy", () => {
+		const { hide, view } = openView();
+
+		view.open();
+		expect(hide).not.toHaveBeenCalled();
+
+		view.destroy();
+		expect(hide).toHaveBeenCalledOnce();
+
+		view.destroy();
+		expect(hide).toHaveBeenCalledOnce();
 	});
 
 	test("does not clean up before a locally captured container has connected", () => {

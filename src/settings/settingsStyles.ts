@@ -24,8 +24,7 @@ body.aura-lyrics-settings-open .main-trackCreditsModal-content {
 	--settings-muted: #a7a7b0;
 	--settings-border: #2a2a31;
 	--settings-accent: #ff7457;
-	display: grid;
-	grid-template-rows: auto minmax(0, 1fr);
+	display: block;
 	width: min(888px, calc(100vw - 32px));
 	max-width: 100%;
 	height: min(700px, calc(100vh - 92px));
@@ -37,28 +36,10 @@ body.aura-lyrics-settings-open .main-trackCreditsModal-content {
 	font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-.aura-lyrics-settings .settings-header {
-	display: flex;
-	align-items: center;
-	min-height: 66px;
-	box-sizing: border-box;
-	padding: 0 24px;
-	border-bottom: 1px solid var(--settings-border);
-	background: var(--settings-bg);
-}
-
-.aura-lyrics-settings .settings-title {
-	margin: 0;
-	color: var(--settings-text);
-	font-size: 20px;
-	font-weight: 700;
-	line-height: 1.25;
-	letter-spacing: -0.02em;
-}
-
 .aura-lyrics-settings .settings-layout {
 	display: grid;
 	grid-template-columns: 200px minmax(0, 1fr);
+	height: 100%;
 	min-width: 0;
 	min-height: 0;
 }
@@ -301,11 +282,6 @@ body.aura-lyrics-settings-open .main-trackCreditsModal-content {
 	.aura-lyrics-settings {
 		width: 100%;
 		height: min(720px, calc(100vh - 76px));
-	}
-
-	.aura-lyrics-settings .settings-header {
-		min-height: 58px;
-		padding: 0 18px;
 	}
 
 	.aura-lyrics-settings .settings-layout {
