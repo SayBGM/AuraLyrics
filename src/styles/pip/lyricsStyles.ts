@@ -22,6 +22,20 @@ export const lyricsStyles = `
 	will-change: transform;
 }
 
+.aura-timing-marker {
+	position: absolute;
+	top: 8px;
+	left: 8px;
+	width: 13px;
+	height: 13px;
+	border-radius: 2px 0 2px 0;
+	background: var(--accent-color, #ff7457);
+	box-shadow: 0 0 10px color-mix(in srgb, var(--accent-color, #ff7457) 45%, transparent);
+	clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 70%, 70% 100%, 0 100%);
+	pointer-events: none;
+	z-index: 2;
+}
+
 .lyrics-track.align-center {
 	text-align: center;
 	align-items: center;

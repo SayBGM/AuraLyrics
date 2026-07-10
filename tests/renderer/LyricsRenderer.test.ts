@@ -18,6 +18,36 @@ const mountRenderer = (
 };
 
 describe("LyricsRenderer", () => {
+	test("shows a folded-corner marker only for synthesized karaoke", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 4,
+			content: [{ type: "vocal", text: "Synthesized", startTime: 0, endTime: 4, oppositeAligned: false }],
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: { ...DEFAULT_SETTINGS, language: "ko" }, timingSource: "synthetic" });
+		const marker = root.querySelector<HTMLElement>("[data-aura-timing-marker]");
+		expect(marker).not.toBeNull();
+		expect(marker?.getAttribute("aria-label")).toBe("가상 노래방 싱크");
+		expect(marker?.classList.contains("aura-timing-marker")).toBe(true);
+	});
+
+	test("does not show a folded-corner marker for native or missing timing", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 4,
+			content: [{ type: "vocal", text: "Native", startTime: 0, endTime: 4, oppositeAligned: false }],
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS, timingSource: "native" });
+		expect(root.querySelector("[data-aura-timing-marker]")).toBeNull();
+		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS });
+		expect(root.querySelector("[data-aura-timing-marker]")).toBeNull();
+	});
 	test("shows album art mode without lyric or status content", () => {
 		const pipRoot = document.createElement("div");
 		const root = document.createElement("main");

@@ -255,6 +255,7 @@ export class ExtensionApp {
 			this.renderer.mount(this.session.root, {
 				lyrics,
 				settings: this.settings.get(),
+				timingSource: this.timingSourceFor(state, lyrics),
 				provider: state.provider,
 				source: state.source,
 				diagnostics: state.diagnostics,
@@ -354,6 +355,7 @@ export class ExtensionApp {
 			this.renderer.mount(session?.root ?? this.session.root, {
 				lyrics,
 				settings: this.settings.get(),
+				timingSource: this.timingSourceFor(state, lyrics),
 				provider: state.provider,
 				source: state.source,
 				diagnostics: state.diagnostics,
@@ -386,6 +388,10 @@ export class ExtensionApp {
 			return state.lyrics;
 		}
 		return entry.lyrics ?? state.lyrics;
+	}
+
+	private timingSourceFor(state: Extract<LyricsLoadState, { status: "ready" }>, lyrics: LyricsDocument): "native" | "synthetic" {
+		return state.lyrics.type === "line" && lyrics.type === "syllable" ? "synthetic" : "native";
 	}
 
 	private waveformsForLyrics(lyrics: LyricsDocument): InterludeWaveformMap {

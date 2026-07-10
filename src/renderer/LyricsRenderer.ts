@@ -32,6 +32,7 @@ export type StatusViewModel = {
 export type LyricsRendererMountOptions = {
 	lyrics: LyricsDocument;
 	settings: ExtensionSettings;
+	timingSource?: "native" | "synthetic";
 	provider?: string;
 	source?: "cache" | "network";
 	diagnostics?: LyricsLoadDiagnostics;
@@ -47,7 +48,10 @@ export class LyricsRenderer {
 	private groups: AnimatedGroup[] = [];
 	private settings?: ExtensionSettings;
 
-	public mount(root: HTMLElement, { lyrics, settings, provider, source, diagnostics, waveforms = {}, rhythm }: LyricsRendererMountOptions): void {
+	public mount(
+		root: HTMLElement,
+		{ lyrics, settings, timingSource = "native", provider, source, diagnostics, waveforms = {}, rhythm }: LyricsRendererMountOptions
+	): void {
 		this.destroy();
 		this.hostRoot = root;
 		this.container = document.createElement("div");
@@ -61,6 +65,15 @@ export class LyricsRenderer {
 		this.lyricsTrack.className = `lyrics-track align-${settings.alignmentMode}`;
 		this.lyricsViewport.append(this.lyricsTrack);
 		this.container.append(this.lyricsViewport);
+		if (timingSource === "synthetic") {
+			const marker = document.createElement("span");
+			marker.className = "aura-timing-marker";
+			marker.dataset.auraTimingMarker = "true";
+			marker.setAttribute("role", "img");
+			marker.setAttribute("aria-label", timingMarkerLabel(settings.language));
+			marker.title = timingMarkerLabel(settings.language);
+			this.container.append(marker);
+		}
 		root.replaceChildren(this.container);
 		this.buildLyrics(lyrics, settings, waveforms, rhythm);
 		appendProviderSource(this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
@@ -289,6 +302,12 @@ export class LyricsRenderer {
 const isActiveInterlude = (group: AnimatedGroup): group is InterludeView => group instanceof InterludeView && group.isActive;
 
 const roundSeconds = (value: number): number => Number(value.toFixed(3));
+
+const timingMarkerLabel = (language: ExtensionSettings["language"]): string => {
+	if (language === "ko") return "가상 노래방 싱크";
+	if (language === "ja") return "仮想カラオケ同期";
+	return "Synthesized karaoke sync";
+};
 
 const measureFrameProgressDimensions = (element: HTMLElement): FrameProgressDimensions | undefined => {
 	const rect = element.getBoundingClientRect();
