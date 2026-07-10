@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
-import type { LineLyrics, SyllableLyrics } from "../../src/lyrics/types";
+import type { TrackSessionSnapshot } from "../../src/app/TrackSessionController";
+import type { LineLyrics } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
@@ -36,6 +37,24 @@ const createSpicetify = () => {
 };
 
 describe("ExtensionApp", () => {
+	test("invalidates track sessions on track change, PiP close, and destroy", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const invalidate = vi.fn();
+		const internals = app as unknown as {
+			trackSession: { invalidate: () => void };
+			onTrackChanged: (track: undefined) => Promise<void>;
+			closePip: (closeWindow: boolean) => void;
+		};
+		internals.trackSession = { invalidate };
+
+		await internals.onTrackChanged(undefined);
+		internals.closePip(false);
+		app.destroy();
+
+		expect(invalidate).toHaveBeenCalledTimes(3);
+	});
+
 	test("does not register duplicate listeners when started repeatedly", () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
@@ -165,7 +184,6 @@ describe("ExtensionApp", () => {
 		const setPlaying = vi.fn();
 		const internals = app as unknown as {
 			session: { setPlaying: (playing: boolean) => void };
-			lastLoadState: { status: string };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
 			playbackSynchronizer: PlaybackSynchronizer;
@@ -173,7 +191,6 @@ describe("ExtensionApp", () => {
 		};
 		app.start();
 		internals.session = { setPlaying };
-		internals.lastLoadState = { status: "ready" };
 		internals.renderer = { destroy: vi.fn(), update: vi.fn() };
 		internals.isPlaybackActive = true;
 		internals.playbackSynchronizer.resync();
@@ -197,7 +214,7 @@ describe("ExtensionApp", () => {
 		const update = vi.fn();
 		const internals = app as unknown as {
 			session: { setPlaying: (playing: boolean) => void };
-			lastLoadState: { status: string };
+			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
 			playbackSynchronizer: PlaybackSynchronizer;
@@ -205,7 +222,10 @@ describe("ExtensionApp", () => {
 		};
 		app.start();
 		internals.session = { setPlaying: vi.fn() };
-		internals.lastLoadState = { status: "ready" };
+		internals.trackSession = {
+			getSnapshot: () => ({ loadState: { status: "ready" } }) as unknown as TrackSessionSnapshot,
+			invalidate: vi.fn(),
+		};
 		internals.renderer = { destroy: vi.fn(), update };
 		internals.isPlaybackActive = true;
 		internals.playbackSynchronizer.resync();
@@ -229,7 +249,7 @@ describe("ExtensionApp", () => {
 		const update = vi.fn();
 		const internals = app as unknown as {
 			session: { setPlaying: (playing: boolean) => void };
-			lastLoadState: { status: string };
+			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
 			playbackSynchronizer: PlaybackSynchronizer;
@@ -237,7 +257,10 @@ describe("ExtensionApp", () => {
 		};
 		app.start();
 		internals.session = { setPlaying: vi.fn() };
-		internals.lastLoadState = { status: "ready" };
+		internals.trackSession = {
+			getSnapshot: () => ({ loadState: { status: "ready" } }) as unknown as TrackSessionSnapshot,
+			invalidate: vi.fn(),
+		};
 		internals.renderer = { destroy: vi.fn(), update };
 		internals.isPlaybackActive = true;
 		internals.playbackSynchronizer.resync();
@@ -589,7 +612,7 @@ describe("ExtensionApp", () => {
 				setAccentColor: (color?: string) => void;
 			};
 			lyricsService: { load: () => Promise<ReturnType<typeof readyState>> };
-			pseudoKaraokeByUri: Map<string, { source: LineLyrics; lyrics: SyllableLyrics | null }>;
+			trackSession: { getSnapshot: () => TrackSessionSnapshot };
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
 		internals.session = {
@@ -602,51 +625,16 @@ describe("ExtensionApp", () => {
 		};
 
 		await internals.loadCurrentTrack(false);
-		const entryA = internals.pseudoKaraokeByUri.get("spotify:track:pseudo");
-		expect(entryA?.source).toBe(lyricsA);
-		expect(entryA?.lyrics?.type).toBe("syllable");
+		const snapshotA = internals.trackSession.getSnapshot();
+		expect(snapshotA.loadState).toMatchObject({ status: "ready", lyrics: lyricsA });
+		expect(snapshotA.lyrics?.type).toBe("syllable");
+		expect(snapshotA.timingSource).toBe("synthetic");
 
 		await internals.loadCurrentTrack(false);
-		const entryB = internals.pseudoKaraokeByUri.get("spotify:track:pseudo");
-		expect(entryB?.source).toBe(lyricsB);
-		expect(entryB?.lyrics).not.toBe(entryA?.lyrics);
-	});
-
-	test("falls back to line lyrics instead of showing a synthesis built from other line data", () => {
-		const { spicetify } = createSpicetify();
-		const app = new ExtensionApp(spicetify);
-		const staleLine: LineLyrics = { type: "line", startTime: 0, endTime: 4, content: [] };
-		const currentLine: LineLyrics = { type: "line", startTime: 1, endTime: 5, content: [] };
-		const staleSynthesis: SyllableLyrics = { type: "syllable", startTime: 0, endTime: 4, content: [] };
-		const internals = app as unknown as {
-			pseudoKaraokeByUri: Map<string, { source: LineLyrics; lyrics: SyllableLyrics | null }>;
-			displayLyricsFor: (state: unknown) => unknown;
-		};
-		internals.pseudoKaraokeByUri.set("spotify:track:stale", { source: staleLine, lyrics: staleSynthesis });
-
-		const state = {
-			status: "ready",
-			lyrics: currentLine,
-			provider: "lrclib",
-			source: "network",
-			track: { uri: "spotify:track:stale", title: "Stale Track" },
-		};
-		expect(internals.displayLyricsFor(state)).toBe(currentLine);
-
-		internals.pseudoKaraokeByUri.set("spotify:track:stale", { source: currentLine, lyrics: staleSynthesis });
-		expect(internals.displayLyricsFor(state)).toBe(staleSynthesis);
-	});
-
-	test("marks only synthesized line-to-syllable lyrics as synthetic", () => {
-		const { spicetify } = createSpicetify();
-		const app = new ExtensionApp(spicetify);
-		const line: LineLyrics = { type: "line", startTime: 0, endTime: 4, content: [] };
-		const syllable: SyllableLyrics = { type: "syllable", startTime: 0, endTime: 4, content: [] };
-		const timingSourceFor = (app as unknown as { timingSourceFor: (state: unknown, lyrics: unknown) => string }).timingSourceFor;
-		const state = { status: "ready", lyrics: line, track: { uri: "x" } };
-		expect(timingSourceFor.call(app, state, syllable)).toBe("synthetic");
-		expect(timingSourceFor.call(app, state, line)).toBe("native");
-		expect(timingSourceFor.call(app, { ...state, lyrics: syllable }, syllable)).toBe("native");
+		const snapshotB = internals.trackSession.getSnapshot();
+		expect(snapshotB.loadState).toMatchObject({ status: "ready", lyrics: lyricsB });
+		expect(snapshotB.lyrics).not.toBe(snapshotA.lyrics);
+		expect(snapshotB.timingSource).toBe("synthetic");
 	});
 
 	test("starts audio analysis while lyrics are still loading", async () => {
