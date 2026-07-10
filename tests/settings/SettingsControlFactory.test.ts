@@ -45,4 +45,23 @@ describe("SettingsControlFactory", () => {
 
 		expect(commit).toHaveBeenCalledTimes(2);
 	});
+
+	test("treats one successful range commit as committing every previewed range", () => {
+		const commit = vi.fn(() => true);
+		const controls = new SettingsControlFactory(document, commit);
+		const first = controls.range("dim", "Dim", 0.4, 0, 1, 0.05, vi.fn()).querySelector<HTMLInputElement>("input");
+		const second = controls.range("saturation", "Saturation", 1, 0, 2, 0.05, vi.fn()).querySelector<HTMLInputElement>("input");
+		if (!first || !second) {
+			throw new Error("Range inputs were not rendered.");
+		}
+
+		first.value = "0.5";
+		first.dispatchEvent(new Event("input", { bubbles: true }));
+		second.value = "1.5";
+		second.dispatchEvent(new Event("input", { bubbles: true }));
+		second.dispatchEvent(new Event("change", { bubbles: true }));
+		first.dispatchEvent(new Event("pointerup", { bubbles: true }));
+
+		expect(commit).toHaveBeenCalledOnce();
+	});
 });

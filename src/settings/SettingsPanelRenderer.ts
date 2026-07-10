@@ -27,6 +27,9 @@ export class SettingsPanelRenderer {
 	}
 
 	public render(section: SettingsSection): HTMLElement {
+		if (section !== "providers") {
+			this.providerPanel.cleanup();
+		}
 		const settings = this.store.get();
 		const panel = this.ownerDocument.createElement("section");
 		panel.className = "settings-panel";
@@ -37,6 +40,10 @@ export class SettingsPanelRenderer {
 		heading.textContent = translate(SETTINGS_SECTIONS.find((item) => item.id === section)?.label ?? "general", settings.language);
 		panel.append(heading, ...this.sectionControls(section, settings));
 		return panel;
+	}
+
+	public cleanup(): void {
+		this.providerPanel.cleanup();
 	}
 
 	private sectionControls(section: SettingsSection, settings: ExtensionSettings): HTMLElement[] {

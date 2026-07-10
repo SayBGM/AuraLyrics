@@ -9,8 +9,10 @@ type SettingsProviderPanelCallbacks = {
 };
 
 export class SettingsProviderPanel {
+	private activeTokenRequest?: number;
 	private musixmatchTokenInput?: HTMLInputElement;
 	private providerStatus?: HTMLElement;
+	private tokenRequestGeneration = 0;
 	private tokenStatus?: { key: TranslationKey } | { text: string };
 
 	public constructor(
@@ -83,8 +85,19 @@ export class SettingsProviderPanel {
 	}
 
 	public clearTokenStatus(): void {
+		this.invalidateTokenRequests();
 		this.tokenStatus = undefined;
 		this.updateTokenStatus();
+	}
+
+	public cleanup(): void {
+		const wasRequesting = this.activeTokenRequest !== undefined;
+		this.invalidateTokenRequests();
+		this.providerStatus = undefined;
+		this.musixmatchTokenInput = undefined;
+		if (wasRequesting) {
+			this.tokenStatus = undefined;
+		}
 	}
 
 	private providerRow(settings: ExtensionSettings, provider: ExtensionSettings["providers"]["order"][number], index: number): HTMLElement {
@@ -133,22 +146,39 @@ export class SettingsProviderPanel {
 	}
 
 	private async refreshMusixmatchToken(): Promise<void> {
+		const request = ++this.tokenRequestGeneration;
+		this.activeTokenRequest = request;
 		this.tokenStatus = { key: "requestingToken" };
 		this.updateTokenStatus();
 		try {
 			const token = await this.callbacks.onRefreshMusixmatchToken();
-			if (!token) {
-				this.tokenStatus = { key: "tokenMissing" };
-				this.updateTokenStatus();
+			if (!this.isCurrentTokenRequest(request)) {
 				return;
 			}
-			this.store.update({ providers: { ...this.store.get().providers, musixmatchToken: token } });
-			this.patchMusixmatchTokenInput(token);
-			this.tokenStatus = { key: "tokenUpdated" };
+			if (!token) {
+				this.tokenStatus = { key: "tokenMissing" };
+			} else {
+				this.store.update({ providers: { ...this.store.get().providers, musixmatchToken: token } });
+				this.patchMusixmatchTokenInput(token);
+				this.tokenStatus = { key: "tokenUpdated" };
+			}
 		} catch (error) {
+			if (!this.isCurrentTokenRequest(request)) {
+				return;
+			}
 			this.tokenStatus = { text: error instanceof Error ? error.message : String(error) };
 		}
+		this.activeTokenRequest = undefined;
 		this.updateTokenStatus();
+	}
+
+	private isCurrentTokenRequest(request: number): boolean {
+		return request === this.tokenRequestGeneration && request === this.activeTokenRequest;
+	}
+
+	private invalidateTokenRequests(): void {
+		this.tokenRequestGeneration += 1;
+		this.activeTokenRequest = undefined;
 	}
 
 	private updateTokenStatus(): void {

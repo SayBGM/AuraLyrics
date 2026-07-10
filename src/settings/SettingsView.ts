@@ -93,6 +93,7 @@ export class SettingsView {
 
 	private onDetached(container: HTMLElement, shell: SettingsModalShell): void {
 		shell.detachResponsive();
+		this.panelRenderer.cleanup();
 		this.clearRefreshTimer();
 		if (this.container === container) {
 			this.container = undefined;

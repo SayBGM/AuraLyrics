@@ -1,6 +1,9 @@
 import { createSettingsIcon } from "./settingsIcons";
 
 export class SettingsControlFactory {
+	private committedPreviewRevision = 0;
+	private previewRevision = 0;
+
 	public constructor(
 		private readonly ownerDocument: Document,
 		private readonly commitPreview: () => boolean
@@ -54,7 +57,7 @@ export class SettingsControlFactory {
 		input.step = String(step);
 		input.value = String(value);
 		input.dataset.controlId = controlId;
-		let dirty = false;
+		let controlPreviewRevision = 0;
 		let previewedValue = value;
 		const preview = (): void => {
 			const nextValue = Number(input.value);
@@ -62,15 +65,18 @@ export class SettingsControlFactory {
 				return;
 			}
 			previewedValue = nextValue;
-			dirty = true;
+			this.previewRevision += 1;
+			controlPreviewRevision = this.previewRevision;
 			onChange(nextValue);
 		};
 		const commit = (): void => {
 			preview();
-			if (!dirty) {
+			if (controlPreviewRevision <= this.committedPreviewRevision) {
 				return;
 			}
-			dirty = !this.commitPreview();
+			if (this.commitPreview()) {
+				this.committedPreviewRevision = this.previewRevision;
+			}
 		};
 		input.addEventListener("input", preview);
 		input.addEventListener("change", commit);

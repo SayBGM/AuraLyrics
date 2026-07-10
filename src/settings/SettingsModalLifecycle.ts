@@ -99,12 +99,14 @@ export class SettingsModalLifecycle {
 
 	public capturePanelState(scroller: HTMLElement | undefined): SettingsPanelState {
 		const state: SettingsPanelState = { scrollTop: scroller?.scrollTop ?? 0 };
-		const active = this.ownerDocument.activeElement;
-		if (!(active instanceof this.hostWindow.HTMLElement) || !scroller?.contains(active)) {
+		const controlDocument = scroller?.ownerDocument ?? this.ownerDocument;
+		const realm = this.realmFor(controlDocument);
+		const active = controlDocument.activeElement;
+		if (!(active instanceof realm.HTMLElement) || !scroller?.contains(active)) {
 			return state;
 		}
 		state.controlId = active.dataset.controlId;
-		if (active instanceof this.hostWindow.HTMLInputElement) {
+		if (active instanceof realm.HTMLInputElement) {
 			state.selectionStart = active.selectionStart;
 			state.selectionEnd = active.selectionEnd;
 		}
@@ -120,14 +122,15 @@ export class SettingsModalLifecycle {
 			return;
 		}
 		const control = scroller.querySelector<HTMLElement>(`[data-control-id="${state.controlId}"]`);
-		if (control instanceof this.hostWindow.HTMLButtonElement && control.disabled) {
+		const realm = this.realmFor(scroller.ownerDocument);
+		if (control instanceof realm.HTMLButtonElement && control.disabled) {
 			this.focusNearestReorderControl(scroller, control, onFallbackFocus);
 		} else if (control) {
 			control.focus();
 		} else if (state.controlId.startsWith("provider-") && (state.controlId.endsWith("-up") || state.controlId.endsWith("-down"))) {
 			onFallbackFocus();
 		}
-		if (control instanceof this.hostWindow.HTMLInputElement && state.selectionStart != null && state.selectionEnd != null) {
+		if (control instanceof realm.HTMLInputElement && state.selectionStart != null && state.selectionEnd != null) {
 			try {
 				control.setSelectionRange(state.selectionStart, state.selectionEnd);
 			} catch {
@@ -155,8 +158,8 @@ export class SettingsModalLifecycle {
 		if (event.key !== "Tab" || !this.modalFocusScope) {
 			return;
 		}
-		const focusable = Array.from(this.modalFocusScope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-			(element) => element.tabIndex >= 0 && element.isConnected
+		const focusable = Array.from(this.modalFocusScope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) =>
+			this.isFocusable(element)
 		);
 		if (focusable.length === 0) {
 			event.preventDefault();
@@ -164,17 +167,39 @@ export class SettingsModalLifecycle {
 		}
 		const first = focusable[0];
 		const last = focusable[focusable.length - 1];
-		const active = this.ownerDocument.activeElement;
-		if (event.shiftKey && active === first) {
+		const active = this.modalFocusScope.ownerDocument.activeElement;
+		const activeIndex = focusable.indexOf(active as HTMLElement);
+		if (activeIndex < 0) {
+			event.preventDefault();
+			if (event.shiftKey) {
+				last.focus();
+			} else {
+				first.focus();
+			}
+		} else if (event.shiftKey && active === first) {
 			event.preventDefault();
 			last.focus();
 		} else if (!event.shiftKey && active === last) {
 			event.preventDefault();
 			first.focus();
-		} else if (!(active instanceof this.hostWindow.HTMLElement) || !this.modalFocusScope.contains(active)) {
-			event.preventDefault();
-			first.focus();
 		}
+	}
+
+	private isFocusable(element: HTMLElement): boolean {
+		if (element.tabIndex < 0 || !element.isConnected || element.closest('[hidden], [inert], [aria-hidden="true"]')) {
+			return false;
+		}
+		if ("disabled" in element && element.disabled === true) {
+			return false;
+		}
+		const realm = this.realmFor(element.ownerDocument);
+		for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+			const style = realm.getComputedStyle(current);
+			if (style.display === "none" || style.visibility === "hidden") {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private cleanupDetachedContainer(container: HTMLElement, observer: MutationObserver): void {
@@ -254,7 +279,12 @@ export class SettingsModalLifecycle {
 	}
 
 	private focusedElement(): HTMLElement | undefined {
-		return this.ownerDocument.activeElement instanceof this.hostWindow.HTMLElement ? this.ownerDocument.activeElement : undefined;
+		const active = this.ownerDocument.activeElement;
+		return active instanceof this.realmFor(this.ownerDocument).HTMLElement ? active : undefined;
+	}
+
+	private realmFor(ownerDocument: Document): Window & typeof globalThis {
+		return (ownerDocument.defaultView ?? this.hostWindow) as Window & typeof globalThis;
 	}
 
 	private restorePreviousFocus(shouldRestore: boolean): void {

@@ -300,6 +300,8 @@ describe("SettingsView", () => {
 
 		expect(storage.setCalls).toBe(1);
 		expect(document.activeElement).toBe(saturation);
+		dim.dispatchEvent(new Event("pointerup", { bubbles: true }));
+		expect(storage.setCalls).toBe(1);
 
 		vignette.value = "0.65";
 		vignette.dispatchEvent(new Event("change", { bubbles: true }));
@@ -419,6 +421,45 @@ describe("SettingsView", () => {
 		expect(document.activeElement).toBe(refreshedTokenInput);
 		expect(refreshedTokenInput.selectionStart).toBe(2);
 		expect(refreshedTokenInput.selectionEnd).toBe(5);
+	});
+
+	test("invalidates pending token requests on panel detach and modal close, then reopens cleanly", async () => {
+		let resolvePanelRequest: (value: string | undefined) => void = () => undefined;
+		let resolveModalRequest: (value: string | undefined) => void = () => undefined;
+		const panelRequest = new Promise<string | undefined>((resolve) => {
+			resolvePanelRequest = resolve;
+		});
+		const modalRequest = new Promise<string | undefined>((resolve) => {
+			resolveModalRequest = resolve;
+		});
+		const requests = [panelRequest, modalRequest, Promise.resolve("fresh-token")];
+		const { content, store, view } = openView({ onRefreshMusixmatchToken: () => requests.shift() ?? Promise.resolve(undefined) });
+		tab(content, "providers").click();
+		control<HTMLButtonElement>(content, "generate-musixmatch-token").click();
+		tab(content, "general").click();
+		resolvePanelRequest("panel-stale-token");
+		await panelRequest;
+		await flushTimers();
+		expect(store.get().providers.musixmatchToken).toBeUndefined();
+
+		tab(content, "providers").click();
+		control<HTMLButtonElement>(content, "generate-musixmatch-token").click();
+		view.destroy();
+		resolveModalRequest("modal-stale-token");
+		await modalRequest;
+		await flushTimers();
+		expect(store.get().providers.musixmatchToken).toBeUndefined();
+
+		view.open();
+		const reopened = document.querySelector<HTMLElement>(".aura-lyrics-settings");
+		if (!reopened) {
+			throw new Error("Settings view did not reopen.");
+		}
+		tab(reopened, "providers").click();
+		control<HTMLButtonElement>(reopened, "generate-musixmatch-token").click();
+		await flushTimers();
+		expect(store.get().providers.musixmatchToken).toBe("fresh-token");
+		expect(reopened.querySelector('[role="status"]')?.textContent).toContain("updated");
 	});
 
 	test("translates provider enabled labels and appearance navigation", async () => {
