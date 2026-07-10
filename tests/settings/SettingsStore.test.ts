@@ -185,6 +185,72 @@ describe("SettingsStore", () => {
 		expect(listener).toHaveBeenCalledWith(settings);
 	});
 
+	test("persists before notifying listeners in subscription order", () => {
+		const events: string[] = [];
+		const storage = new MemoryStorage();
+		const store = new SettingsStore(storage);
+		vi.spyOn(storage, "set").mockImplementation((key, value) => {
+			events.push("persist");
+			return MemoryStorage.prototype.set.call(storage, key, value);
+		});
+		store.subscribe(() => events.push("first"));
+		store.subscribe(() => events.push("second"));
+
+		store.update({ glowStrength: 0.4 });
+
+		expect(events).toEqual(["persist", "first", "second"]);
+	});
+
+	test("keeps no-op updates observable and isolates listener snapshots", () => {
+		const storage = new MemoryStorage();
+		const set = vi.spyOn(storage, "set");
+		const store = new SettingsStore(storage);
+		set.mockClear();
+		const observedFontScales: number[] = [];
+		store.subscribe((settings) => {
+			settings.fontScale = 2.4;
+		});
+		store.subscribe((settings) => observedFontScales.push(settings.fontScale));
+
+		store.update({ preset: "immersive" }, false);
+
+		expect(set).toHaveBeenCalledOnce();
+		expect(observedFontScales).toEqual([DEFAULT_SETTINGS.fontScale]);
+		expect(store.get().fontScale).toBe(DEFAULT_SETTINGS.fontScale);
+	});
+
+	test("reset and preset changes persist before emitting their normalized state", () => {
+		const storage = new MemoryStorage();
+		const store = new SettingsStore(storage);
+		store.update({ fontScale: 1.8 });
+		const states: Array<{ preset: string; fontScale: number }> = [];
+		store.subscribe((settings) => states.push({ preset: settings.preset, fontScale: settings.fontScale }));
+
+		const preset = store.applyPreset("clean");
+		const reset = store.reset();
+
+		expect(preset.preset).toBe("clean");
+		expect(states[0]).toEqual({ preset: "clean", fontScale: 1.8 });
+		expect(reset).toEqual(DEFAULT_SETTINGS);
+		expect(states[1]).toEqual({ preset: "immersive", fontScale: 1 });
+		expect(JSON.parse(storage.get("aura-lyrics:settings") ?? "null")).toEqual(DEFAULT_SETTINGS);
+	});
+
+	test("keeps runtime state and notifications when immediate persistence fails", () => {
+		const storage = new MemoryStorage();
+		const store = new SettingsStore(storage);
+		vi.spyOn(storage, "set").mockReturnValue(false);
+		const listener = vi.fn();
+		store.subscribe(listener);
+
+		const settings = store.update({ lyricsDelayMs: 250 });
+
+		expect(settings.lyricsDelayMs).toBe(250);
+		expect(store.get().lyricsDelayMs).toBe(250);
+		expect(listener).toHaveBeenCalledWith(settings);
+		expect(store.consumePersistenceFailure()).toBe(true);
+	});
+
 	test("reports persistence failures without exposing stored values", () => {
 		const storage = new MemoryStorage();
 		const store = new SettingsStore(storage);
