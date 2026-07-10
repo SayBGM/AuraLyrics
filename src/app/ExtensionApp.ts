@@ -225,6 +225,8 @@ export class ExtensionApp {
 		this.currentTrack = track;
 		if (!track) {
 			this.trackSession.invalidate();
+			this.session.setCover(undefined);
+			this.session.applyTheme(undefined);
 			this.showStatus("Waiting for music", "Start playing a Spotify track.");
 			this.stateMachine.dispatch({ type: "invalidTrack" });
 			return;
@@ -238,8 +240,8 @@ export class ExtensionApp {
 		this.playbackSynchronizer.resync();
 		this.renderLoadState(snapshot);
 		const enrichment = this.trackSession.enrichmentFor(snapshot);
-		if (enrichment) {
-			void this.renderEnrichment(enrichment, track, this.session);
+		if (enrichment && isReadyTrackSessionSnapshot(snapshot)) {
+			void this.renderEnrichment(enrichment, snapshot, track, this.session);
 		}
 	}
 
@@ -298,9 +300,17 @@ export class ExtensionApp {
 		}
 	}
 
-	private async renderEnrichment(enrichment: TrackSessionEnrichment, track: TrackIdentity, session: PipSession): Promise<void> {
+	private async renderEnrichment(
+		enrichment: TrackSessionEnrichment,
+		initialSnapshot: ReadyTrackSessionSnapshot,
+		track: TrackIdentity,
+		session: PipSession
+	): Promise<void> {
 		const snapshot = await enrichment;
 		if (!snapshot || !this.trackSession.isCurrent(snapshot) || this.session !== session || this.currentTrack?.uri !== track.uri) {
+			return;
+		}
+		if (!hasRenderableEnrichmentChanges(initialSnapshot, snapshot, this.settings.get())) {
 			return;
 		}
 		this.mountReadySnapshot(snapshot);
@@ -389,3 +399,18 @@ export class ExtensionApp {
 }
 
 const isReadyTrackSessionSnapshot = (snapshot: TrackSessionSnapshot): snapshot is ReadyTrackSessionSnapshot => snapshot.loadState.status === "ready";
+
+const hasRenderableEnrichmentChanges = (
+	initialSnapshot: ReadyTrackSessionSnapshot,
+	enrichedSnapshot: ReadyTrackSessionSnapshot,
+	settings: ExtensionSettings
+): boolean => {
+	if (initialSnapshot.lyrics !== enrichedSnapshot.lyrics || initialSnapshot.timingSource !== enrichedSnapshot.timingSource) {
+		return true;
+	}
+	const beatDuration = enrichedSnapshot.waveformProfile?.beatDurationSec;
+	if (beatDuration !== undefined && Number.isFinite(beatDuration)) {
+		return true;
+	}
+	return settings.interludeStyle === "wave" && enrichedSnapshot.lyrics.type !== "static";
+};

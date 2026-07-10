@@ -153,6 +153,41 @@ describe("ExtensionApp", () => {
 		await vi.waitFor(() => expect(root.querySelector("[data-aura-timing-marker]")).not.toBeNull());
 	});
 
+	test("keeps the initial lyrics DOM when late enrichment has no renderable changes", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:unchanged-enrichment");
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState> };
+			trackSession: { getSnapshot: () => TrackSessionSnapshot };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = {
+			load: vi.fn(
+				async (): Promise<LyricsLoadState> => ({
+					status: "ready",
+					track,
+					lyrics: { type: "static", lines: [{ text: "Unchanged" }] },
+					provider: "lrclib",
+					source: "network",
+					diagnostics: { cache: { status: "miss" }, attempts: [] },
+				})
+			),
+		};
+
+		await internals.loadCurrentTrack(false);
+		const initialLyricsScene = root.firstElementChild;
+		await vi.waitFor(() => expect(internals.trackSession.getSnapshot().waveformProfile).toBeDefined());
+
+		expect(root.textContent).toContain("Unchanged");
+		expect(root.firstElementChild).toBe(initialLyricsScene);
+	});
+
 	test.each([
 		{
 			name: "provider error",
@@ -670,6 +705,59 @@ describe("ExtensionApp", () => {
 		await Promise.resolve();
 
 		expect(applyTheme).toHaveBeenCalledTimes(1);
+	});
+
+	test("clears the previous cover and theme when the player loses its current track", async () => {
+		const { spicetify } = createSpicetify();
+		const track = metadataTrack("spotify:track:disappearing");
+		const firstColors = {
+			DARK_VIBRANT: "#101010",
+			DESATURATED: "#777777",
+			LIGHT_VIBRANT: "#eeeeee",
+			PROMINENT: "#18324a",
+			VIBRANT: "#ff00aa",
+			VIBRANT_NON_ALARMING: "#2d9cdb",
+		};
+		const delayedColors = { ...firstColors, PROMINENT: "#f0e2c4", VIBRANT_NON_ALARMING: "#8a4fff" };
+		const delayedTheme = deferred<typeof delayedColors>();
+		spicetify.colorExtractor = vi.fn().mockResolvedValueOnce(firstColors).mockReturnValueOnce(delayedTheme.promise);
+		const app = new ExtensionApp(spicetify);
+		const setCover = vi.fn();
+		const applyTheme = vi.fn();
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				applyTheme: (theme?: TrackTheme) => void;
+			};
+			currentTrack?: TrackIdentity;
+			lyricsService: { load: (track: TrackIdentity) => Promise<LyricsLoadState> };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+		};
+		internals.session = { root, setCover, applyTheme };
+		internals.currentTrack = track;
+		internals.lyricsService = {
+			load: vi.fn(async (currentTrack): Promise<LyricsLoadState> => ({ status: "empty", track: currentTrack, reason: "no-lyrics" })),
+		};
+
+		await internals.loadCurrentTrack(false);
+		await vi.waitFor(() => expect(applyTheme).toHaveBeenCalledWith(buildTrackTheme(firstColors)));
+		await internals.loadCurrentTrack(false);
+		expect(spicetify.colorExtractor).toHaveBeenCalledTimes(2);
+
+		await internals.onTrackChanged(undefined);
+
+		expect(setCover).toHaveBeenLastCalledWith(undefined);
+		expect(applyTheme).toHaveBeenLastCalledWith(undefined);
+		expect(root.textContent).toContain("Waiting for music");
+
+		delayedTheme.resolve(delayedColors);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(applyTheme).toHaveBeenCalledTimes(2);
 	});
 
 	test("ignores invalid extracted colors and falls back to the next valid palette color", async () => {
