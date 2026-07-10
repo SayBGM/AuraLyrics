@@ -33,14 +33,15 @@ No setting, persistence key, cache format, provider behavior, or lyric document 
 
 ### First vocal time
 
-A pure helper derives the first renderable vocal start time from a ready lyric document.
+A pure helper derives the first vocal that the current renderer settings will actually present.
 
 - `StaticLyrics`: no timed first vocal; reveal immediately.
 - `LineLyrics`: minimum `startTime` among `type: "vocal"` entries.
-- `SyllableLyrics`: minimum vocal start among lead and background vocals in all vocal sets.
+- `SyllableLyrics` with `syncPreference: "prefer-syllable"`: minimum vocal start among lead and background vocals in all vocal sets, matching the syllable group range.
+- `SyllableLyrics` with `syncPreference: "line-only"`: minimum lead vocal start, matching `syllableToLine()` and excluding background vocals that are not rendered in this mode.
 - A document containing only interludes has no first vocal and reveals through the existing non-vocal behavior rather than holding forever.
 
-The decision is based on the first vocal, not on whether the provider supplied an explicit leading interlude. Generated gaps and provider interludes therefore behave consistently.
+The decision is based on the first rendered vocal, not on whether the provider supplied an explicit leading interlude. Generated gaps and provider interludes therefore behave consistently. A structural settings change that changes the rendered representation, including `syncPreference`, causes the held gate to derive the first vocal again from the new pending snapshot and current settings.
 
 ### Two-second decision
 
@@ -81,15 +82,25 @@ idle -> loading -> holding-intro -> lyrics-revealed
                    \--------------> lyrics-revealed
 ```
 
-The gate stores only the latest current `ReadyTrackSessionSnapshot` while holding. It does not copy lyric data or own playback time.
+The gate stores only the latest current `ReadyTrackSessionSnapshot`, its derived first-vocal time, and a revealed latch for the current playback track epoch. It does not copy lyric data or own playback time.
 
-The gate resets on:
+The held snapshot resets on:
 
-- track change;
 - no-track transition;
-- PiP close;
 - application destroy;
-- session invalidation or refresh that replaces the ready load state.
+- a real player `trackChanged` event that starts a new playback track epoch, including repeat playback of the same URI when Spotify emits a new track event.
+
+The `lyrics-revealed` latch is stronger than a load or PiP session generation. For the current playback track epoch it survives:
+
+- manual lyrics refresh;
+- replacement of the ready load state;
+- structural settings presentation;
+- PiP close and reopen on the same still-playing track without a new `trackChanged` event;
+- pause, resume, and backward seek.
+
+Therefore none of those operations can re-enter the intro cover after lyrics have appeared. A no-track transition, application destroy, or a new player track epoch creates a fresh gate lifetime.
+
+Closing PiP discards the session-bound pending snapshot and deadline, but not the playback-epoch revealed latch. Reopening PiP reloads the current track into that existing latch: an already revealed track goes directly to lyrics, while a track that had not yet revealed is evaluated again from the newly synchronized current position.
 
 All ready-snapshot paths go through one presentation entry point:
 
@@ -97,7 +108,14 @@ All ready-snapshot paths go through one presentation entry point:
 - waveform or pseudo-karaoke enrichment;
 - structural settings presentation.
 
-If the intro is held, enrichment and settings results replace the pending snapshot after their existing generation, presentation-revision, track, session, and load-state guards pass. They do not mount lyrics early. If lyrics are already revealed, these paths keep their current remount/live-update behavior.
+If the intro is held, enrichment and settings results replace the pending snapshot after their existing generation, presentation-revision, track, session, and load-state guards pass. Every accepted replacement derives a new first-vocal time from the latest snapshot and current renderer settings.
+
+- If the new first vocal is already at or behind the synchronized timestamp, reveal immediately.
+- If it is now two seconds or less away, treat snapshot acceptance like the initial ready decision and reveal immediately.
+- If it moves later and remains more than two seconds away, update the hold deadline and keep the intro presentation.
+- Once the revealed latch is set, a later snapshot can update lyrics but cannot recreate a hold.
+
+The normal tick compares against the first-vocal time derived from the latest accepted pending snapshot. If lyrics are already revealed, enrichment and settings paths keep their current remount/live-update behavior.
 
 ## Playback and synchronization
 
@@ -113,7 +131,9 @@ On each tick:
 - if the synchronized timestamp is before the first vocal, the cover presentation stays visible;
 - if the timestamp reaches or passes the first vocal, the latest pending snapshot is mounted exactly once.
 
-Immediately after mounting, the renderer is synchronized to the same playback timestamp before the next painted frame. This first synchronization updates active/sung/idle classes, syllable gradient progress, interlude state, viewport focus, and scroll position without advancing a separate clock.
+Immediately after mounting, the renderer is synchronized to the same playback timestamp before the next painted frame. The call ordering is `synchronizer update/resync -> mount -> renderer update at the exact same timestamp`. This first renderer update uses a non-advancing delta or an explicit sync API, and updates active/sung/idle classes, syllable gradient progress, interlude state, viewport focus, and scroll position without advancing a separate clock.
+
+The gate always consumes `PlaybackSynchronizer.timestampSec`, which already includes `lyricsDelayMs` through the player timestamp reader. It never reads the raw player progress independently. Initial, resume, seek, and tick decisions therefore use the same delayed timestamp as lyric rendering.
 
 ### Pause and resume
 
@@ -139,23 +159,25 @@ Synthetic timing remains explicit in the DOM and accessibility tree, but not as 
 - The lyrics scene gets a stable synthetic timing class or data attribute when `timingSource === "synthetic"`.
 - Native timing does not get this state.
 - The current visible `.aura-timing-marker` corner shape is removed.
-- A visually hidden description retains the localized accessible label for synthetic timing.
+- A visually hidden description with a stable unique ID retains the localized accessible label for synthetic timing.
+- The `.aura-lyrics` scene references that ID with `aria-describedby`; the hidden node is not an unassociated marker.
+- A structural language change rebuilds or updates both the localized text and the explicit description link.
 
 ### Visual behavior
 
 Syllable Wake reuses existing per-syllable playback progress rather than running a decorative looping sweep.
 
-- The already-sung side of an active synthetic syllable receives a subtle theme-accent tint that blends into the normal foreground.
+- The already-sung side of an active synthetic syllable receives a contrast-safe wake foreground derived from the theme accent and normal foreground.
 - The transition boundary creates a soft wake as lyric progress moves through the syllable.
 - The active synthetic vocal group gets a low-amplitude ambient halo. Its motion may breathe slowly, but it must remain subordinate to lyric progress and must not add layout space or pointer interaction.
 - Native syllable lyrics retain their current gradient, glow, and spring presentation.
 - Line and static lyrics do not receive Syllable Wake.
 
-The effect uses the adaptive theme accent, foreground, glow, and existing motion CSS variables. It must remain readable on both light and dark album themes.
+The theme layer derives a `syntheticWakeForeground` with the same pure color/contrast utilities used by `TrackTheme`. Accent blending is reduced as necessary until the resulting wake foreground keeps at least `4.5:1` contrast against the effective scrimmed background used for active lyric text. Both the normal foreground and wake foreground must pass; the accent is never used alone as active glyph color. Unit tests cover dark, light, middle-luminance, and deliberately low-contrast accent fixtures. The halo is additive and cannot lower glyph opacity or replace the compliant foreground.
 
 ### Motion settings
 
-- `motionIntensity` scales the ambient part of the wake.
+- `motionIntensity` linearly scales only the independent ambient halo. At `0`, halo opacity and breathing amplitude are exactly zero while the playback-progress wake remains visible as the source indicator.
 - `motionEnabled: false` disables independent breathing while retaining the playback-position tint.
 - `reduceMotion: true` disables independent breathing and transitions immediately to the progress-derived visual state.
 - The effect must not create a second animation clock for syllable progress.
@@ -193,16 +215,26 @@ The effect uses the adaptive theme accent, foreground, glow, and existing motion
 - seek past the first vocal reveals on synchronized time;
 - stale track and PiP close discard the pending intro;
 - enrichment and structural settings update the pending snapshot without early mount.
+- a held `line-only` snapshot with an earlier background and later lead follows the rendered lead time, then recomputes if `syncPreference` changes;
+- pending enrichment/settings that move first vocal earlier, later, into the two-second window, or behind the current timestamp update/reveal according to the latest snapshot;
+- reveal followed by backward seek does not return to the cover;
+- reveal followed by backward seek and manual refresh does not return to the cover;
+- PiP close and reopen on the same playback track epoch preserves the revealed latch;
+- a new player track epoch resets the latch, even for repeat playback when a new `trackChanged` event is emitted;
+- positive and negative `lyricsDelayMs` fixtures use the delayed synchronized timestamp for initial, resume, and tick reveal decisions;
+- reveal call ordering is resync/update, mount, then an immediate renderer update at the identical timestamp.
 
 ### Renderer and style tests
 
-- synthetic timing uses a root state and a visually hidden localized description;
+- synthetic timing uses a root state and a visually hidden localized description explicitly connected by `aria-describedby`;
+- the scene's computed accessible description includes the localized synthetic timing text, and a language change updates it;
 - the old visible corner icon is absent;
 - native timing does not receive the synthetic state;
 - Syllable Wake consumes existing syllable progress and adaptive theme variables;
 - native gradients remain unchanged;
 - motion disabled and reduced motion remove independent breathing;
-- dark and light theme contrast remains within existing requirements.
+- derived wake foreground passes `4.5:1` contrast on dark, light, middle-luminance, and low-contrast-accent fixtures;
+- `motionIntensity: 0` produces zero independent halo opacity/amplitude while leaving progress wake state intact.
 
 ### Visual tests
 
