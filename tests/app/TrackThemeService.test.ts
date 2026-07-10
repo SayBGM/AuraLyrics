@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import {
 	buildTrackTheme,
+	compositeThemeSurface,
 	FALLBACK_TRACK_THEME,
 	pickAccentColor,
 	TrackThemeService,
@@ -60,6 +61,24 @@ describe("TrackThemeService", () => {
 		});
 		expect(themeContrastRatios(theme).active).toBeGreaterThanOrEqual(4.5);
 		expect(themeContrastRatios(theme).secondary).toBeGreaterThanOrEqual(3);
+	});
+
+	test("protects dark content against a worst-case black cover pixel on a light theme", () => {
+		const theme = buildTrackTheme(palette({ PROMINENT: "#f3e8cf" }));
+		const ratios = themeContrastRatios(theme, "#000000");
+
+		expect(theme.scrimOpacity).toBeGreaterThan(0);
+		expect(ratios.active).toBeGreaterThanOrEqual(4.5);
+		expect(ratios.secondary).toBeGreaterThanOrEqual(3);
+	});
+
+	test("protects light content against a worst-case white cover pixel on a dark theme", () => {
+		const theme = buildTrackTheme(palette({ PROMINENT: "#101820" }));
+		const ratios = themeContrastRatios(theme, "#ffffff");
+
+		expect(theme.scrimOpacity).toBeGreaterThan(0);
+		expect(ratios.active).toBeGreaterThanOrEqual(4.5);
+		expect(ratios.secondary).toBeGreaterThanOrEqual(3);
 	});
 
 	test("adds enough directional scrim to keep mid-tone active and secondary content readable", () => {
@@ -142,5 +161,13 @@ describe("TrackThemeService", () => {
 				mutedRgb: "52, 58, 67",
 			})
 		).toBe(false);
+	});
+
+	test("rejects RGB channels that are not exact decimal integers", () => {
+		const theme = buildTrackTheme(palette());
+
+		for (const scrimRgb of ["255oops, 0, 0", "12.5, 0, 0", "0x10, 0, 0", "01e2, 0, 0", "256, 0, 0", "-1, 0, 0"]) {
+			expect(() => compositeThemeSurface({ ...theme, scrimRgb })).toThrow(`Invalid RGB value: ${scrimRgb}`);
+		}
 	});
 });

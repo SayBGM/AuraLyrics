@@ -76,11 +76,11 @@ export const buildTrackTheme = (colors: SpicetifyColorPalette): TrackTheme => {
 	return createTheme(background, accent, 0);
 };
 
-export const compositeThemeSurface = (theme: TrackTheme): string =>
-	rgbToHex(blendRgb(requireRgb(theme.background), parseRgbString(theme.scrimRgb), theme.scrimOpacity));
+export const compositeThemeSurface = (theme: TrackTheme, coverPixel = theme.background): string =>
+	rgbToHex(blendRgb(requireRgb(coverPixel), parseRgbString(theme.scrimRgb), theme.scrimOpacity));
 
-export const themeContrastRatios = (theme: TrackTheme): { active: number; secondary: number } => {
-	const surface = compositeThemeSurface(theme);
+export const themeContrastRatios = (theme: TrackTheme, coverPixel = theme.background): { active: number; secondary: number } => {
+	const surface = compositeThemeSurface(theme, coverPixel);
 	return {
 		active: contrastRatio(theme.foreground, surface),
 		secondary: contrastRatio(theme.mutedForeground, surface),
@@ -113,9 +113,10 @@ const createTheme = (background: string, accent: string, minimumScrimOpacity: nu
 	const surfaceTone: SurfaceTone = lightContrast >= darkContrast ? "dark" : "light";
 	const foreground = surfaceTone === "dark" ? LIGHT_FOREGROUND : DARK_FOREGROUND;
 	const scrim = surfaceTone === "dark" ? DARK_SCRIM : LIGHT_SCRIM;
-	const scrimOpacity = findScrimOpacity(background, foreground, scrim, minimumScrimOpacity);
-	const finalSurface = rgbToHex(blendRgb(requireRgb(background), requireRgb(scrim), scrimOpacity));
-	const mutedForeground = mutedColorForSurface(finalSurface, foreground);
+	const worstCaseCoverPixel = surfaceTone === "dark" ? LIGHT_SCRIM : DARK_SCRIM;
+	const scrimOpacity = findScrimOpacity(worstCaseCoverPixel, foreground, scrim, minimumScrimOpacity);
+	const worstCaseSurface = rgbToHex(blendRgb(requireRgb(worstCaseCoverPixel), requireRgb(scrim), scrimOpacity));
+	const mutedForeground = mutedColorForSurface(worstCaseSurface, foreground);
 	return {
 		accent,
 		accentRgb: rgbString(requireRgb(accent)),
@@ -180,8 +181,12 @@ const hexToRgb = (hex: string): Rgb | undefined => {
 };
 
 const parseRgbString = (value: string): Rgb => {
-	const channels = value.split(",").map((channel) => Number.parseInt(channel.trim(), 10));
-	if (channels.length !== 3 || channels.some((channel) => !Number.isFinite(channel) || channel < 0 || channel > 255)) {
+	const rawChannels = value.split(",").map((channel) => channel.trim());
+	if (rawChannels.length !== 3 || rawChannels.some((channel) => !/^(?:0|[1-9]\d{0,2})$/.test(channel))) {
+		throw new Error(`Invalid RGB value: ${value}`);
+	}
+	const channels = rawChannels.map(Number);
+	if (channels.some((channel) => channel > 255)) {
 		throw new Error(`Invalid RGB value: ${value}`);
 	}
 	return { red: channels[0], green: channels[1], blue: channels[2] };

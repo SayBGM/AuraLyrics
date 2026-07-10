@@ -23,6 +23,7 @@ describe("pipStyles", () => {
 	test("themes PiP content while keeping playback and close controls on fixed glass contrast", () => {
 		const rootRule = baseStyles.match(/#aura-lyrics-root \{[^}]+\}/)?.[0] ?? "";
 		const scrimRule = baseStyles.match(/\.pip-scrim \{[^}]+\}/)?.[0] ?? "";
+		const vignetteRule = baseStyles.match(/\.pip-vignette \{[^}]+\}/)?.[0] ?? "";
 		const auraLyricsRule = baseStyles.match(/\.aura-lyrics \{[^}]+\}/)?.[0] ?? "";
 		const activeLineRule = lyricsStyles.match(/\.line-group\.active \.line \{[^}]+\}/)?.[0] ?? "";
 		const syllableRule = lyricsStyles.match(/(?:^|\n)\.syllable \{[^}]+\}/)?.[0] ?? "";
@@ -35,6 +36,10 @@ describe("pipStyles", () => {
 		expect(rootRule).toContain("background: var(--pip-background-color)");
 		expect(scrimRule).toContain("rgba(var(--pip-scrim-rgb)");
 		expect(scrimRule).toContain("var(--pip-scrim-opacity)");
+		expect(scrimRule).toContain("--pip-effective-scrim-opacity: max(var(--pip-scrim-opacity), var(--background-dim, 0.62))");
+		expect(scrimRule).toContain("rgba(var(--pip-scrim-rgb), var(--pip-effective-scrim-opacity))");
+		expect(vignetteRule).toContain("rgba(var(--pip-scrim-rgb)");
+		expect(vignetteRule).not.toMatch(/rgba\(\d/);
 		expect(auraLyricsRule).toContain("color: var(--pip-foreground-color)");
 		expect(activeLineRule).toContain("color: var(--pip-foreground-color)");
 		expect(activeLineRule).toContain("rgba(var(--pip-glow-rgb)");

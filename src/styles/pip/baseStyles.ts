@@ -63,13 +63,14 @@ body {
 .pip-scrim {
 	position: absolute;
 	inset: 0;
+	--pip-effective-scrim-opacity: max(var(--pip-scrim-opacity), var(--background-dim, 0.62));
 	background:
 		radial-gradient(
 			circle at center,
-			rgba(var(--pip-scrim-rgb), calc(max(var(--pip-scrim-opacity), var(--background-dim, 0.62)) * 0.55)) 0%,
-			rgba(var(--pip-scrim-rgb), max(var(--pip-scrim-opacity), var(--background-dim, 0.62))) 72%
+			rgba(var(--pip-scrim-rgb), calc(var(--pip-effective-scrim-opacity) * 0.55)) 0%,
+			rgba(var(--pip-scrim-rgb), var(--pip-effective-scrim-opacity)) 72%
 		),
-		rgba(var(--pip-scrim-rgb), max(var(--pip-scrim-opacity), var(--background-dim, 0.62)));
+		rgba(var(--pip-scrim-rgb), var(--pip-effective-scrim-opacity));
 }
 
 .pip-vignette {
