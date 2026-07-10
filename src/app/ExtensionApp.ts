@@ -54,6 +54,7 @@ export class ExtensionApp {
 	private playbackTimestampSec = 0;
 	private playbackResyncElapsedSec = 0;
 	private playbackSeekProbeElapsedSec = 0;
+	private loadGeneration = 0;
 	private readonly playbackResyncIntervalSec = 20;
 	private readonly playbackSeekProbeIntervalSec = 0.25;
 	private readonly playbackSeekSnapThresholdSec = 1.25;
@@ -116,6 +117,7 @@ export class ExtensionApp {
 	}
 
 	public destroy(): void {
+		this.loadGeneration++;
 		this.started = false;
 		this.clock?.stop();
 		this.clock = undefined;
@@ -163,6 +165,7 @@ export class ExtensionApp {
 	}
 
 	private closePip(closeWindow = true): void {
+		this.loadGeneration++;
 		this.clock?.stop();
 		this.clock = undefined;
 		this.renderer.destroy();
@@ -175,6 +178,7 @@ export class ExtensionApp {
 	}
 
 	private async onTrackChanged(track: TrackIdentity | undefined): Promise<void> {
+		this.loadGeneration++;
 		this.currentTrack = track;
 		this.resyncPlaybackTimestamp();
 		if (!this.session) {
@@ -185,6 +189,8 @@ export class ExtensionApp {
 	}
 
 	private async loadCurrentTrack(refresh: boolean): Promise<void> {
+		const generation = ++this.loadGeneration;
+		const isCurrent = () => generation === this.loadGeneration && this.session !== undefined;
 		if (!this.session) {
 			return;
 		}
@@ -204,10 +210,14 @@ export class ExtensionApp {
 		if (refresh) {
 			this.pseudoKaraokeByUri.delete(track.uri);
 		}
-		this.lastLoadState = await this.lyricsService.load(track, this.settings.get(), refresh);
-		this.waveformProfile = this.lastLoadState.status === "ready" ? await waveformProfilePromise : undefined;
+		const loadState = await this.lyricsService.load(track, this.settings.get(), refresh);
+		if (!isCurrent() || this.currentTrack?.uri !== track.uri) return;
+		this.lastLoadState = loadState;
+		this.waveformProfile = loadState.status === "ready" ? await waveformProfilePromise : undefined;
+		if (!isCurrent() || this.currentTrack?.uri !== track.uri) return;
 		if (this.lastLoadState.status === "ready" && this.shouldSynthesizeKaraoke(this.lastLoadState)) {
 			await this.ensurePseudoKaraoke(track, this.lastLoadState.lyrics as LineLyrics);
+			if (!isCurrent() || this.currentTrack?.uri !== track.uri) return;
 		}
 		this.resyncPlaybackTimestamp();
 		this.renderLoadState(this.lastLoadState);
@@ -360,6 +370,7 @@ export class ExtensionApp {
 			return;
 		}
 		const analysis = await this.waveformService.getAnalysis(track);
+		if (this.currentTrack?.uri !== track.uri || !this.session) return;
 		this.pseudoKaraokeByUri.set(track.uri, { source: lineLyrics, lyrics: buildPseudoKaraokeLyrics(lineLyrics, analysis, track.durationMs) });
 	}
 

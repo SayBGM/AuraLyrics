@@ -15,6 +15,28 @@ const createPipWindow = ({ height = 600, width = 600 } = {}): Window => {
 };
 
 describe("DocumentPipController", () => {
+	test("shares concurrent open requests", async () => {
+		const pipWindow = createPipWindow();
+		let resolve!: (value: Window) => void;
+		window.documentPictureInPicture = { requestWindow: vi.fn(() => new Promise<Window>((r) => (resolve = r))) };
+		const controller = new DocumentPipController();
+		const first = controller.open(DEFAULT_SETTINGS, "");
+		const second = controller.open(DEFAULT_SETTINGS, "");
+		resolve(pipWindow);
+		expect(await first).toBe(await second);
+	});
+
+	test("cancels a pending open when closed", async () => {
+		const pipWindow = createPipWindow();
+		let resolve!: (value: Window) => void;
+		window.documentPictureInPicture = { requestWindow: vi.fn(() => new Promise<Window>((r) => (resolve = r))) };
+		const controller = new DocumentPipController();
+		const pending = controller.open(DEFAULT_SETTINGS, "");
+		controller.close();
+		resolve(pipWindow);
+		await expect(pending).rejects.toThrow("cancelled");
+		expect(pipWindow.close).toHaveBeenCalledOnce();
+	});
 	test("renders hover controls for close and playback actions", async () => {
 		const pipWindow = createPipWindow();
 		const requestWindow = vi.fn(async () => pipWindow);

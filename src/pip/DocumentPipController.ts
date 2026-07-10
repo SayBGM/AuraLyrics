@@ -21,6 +21,8 @@ export type PipControls = {
 export class DocumentPipController {
 	public readonly closed = new EventEmitter<void>();
 	private session?: PipSession;
+	private openPromise?: Promise<PipSession>;
+	private generation = 0;
 
 	public isSupported(): boolean {
 		return "documentPictureInPicture" in window && window.documentPictureInPicture !== undefined;
@@ -31,6 +33,7 @@ export class DocumentPipController {
 	}
 
 	public async open(settings: ExtensionSettings, styles: string, controls?: PipControls): Promise<PipSession> {
+		if (this.openPromise) return this.openPromise;
 		if (!this.isSupported()) {
 			throw new Error("Document Picture-in-Picture is not supported in this Spotify client.");
 		}
@@ -41,7 +44,28 @@ export class DocumentPipController {
 		if (this.session && !this.session.window.closed) {
 			return this.session;
 		}
+		const generation = ++this.generation;
+		const openPromise = this.openInternal(api, generation, settings, styles, controls);
+		this.openPromise = openPromise;
+		try {
+			return await openPromise;
+		} finally {
+			if (this.openPromise === openPromise) this.openPromise = undefined;
+		}
+	}
+
+	private async openInternal(
+		api: NonNullable<Window["documentPictureInPicture"]>,
+		generation: number,
+		settings: ExtensionSettings,
+		styles: string,
+		controls?: PipControls
+	): Promise<PipSession> {
 		const pipWindow = await api.requestWindow({ width: 600, height: 600 });
+		if (generation !== this.generation) {
+			pipWindow.close();
+			throw new Error("Document Picture-in-Picture open was cancelled.");
+		}
 		const doc = pipWindow.document;
 		doc.title = "AuraLyrics";
 		doc.body.replaceChildren();
@@ -100,13 +124,16 @@ export class DocumentPipController {
 		session.setPlaying(controls?.isPlaying ?? false);
 		this.session = session;
 		pipWindow.addEventListener("pagehide", () => {
+			if (this.session !== session) return;
 			this.session = undefined;
+			this.generation++;
 			this.closed.emit();
 		});
 		return session;
 	}
 
 	public close(): void {
+		this.generation++;
 		this.session?.window.close();
 		this.session = undefined;
 	}
