@@ -11,6 +11,21 @@ const lineLyrics = (text: string): LineLyrics => ({
 });
 
 describe("LyricsCacheRepository", () => {
+	test("returns a discriminated hit with restored lyrics", () => {
+		const cache = new LyricsCache();
+		cache.set("spotify:track:1", lineLyrics("Cached"), "spotify");
+		const repository = new LyricsCacheRepository(cache);
+
+		const result = repository.lookup("spotify:track:1", "spotify", false);
+
+		expect(result).toMatchObject({
+			status: "hit",
+			cache: { status: "hit", provider: "spotify", primaryProvider: "spotify" },
+			provider: "spotify",
+			lyrics: { type: "line" },
+		});
+	});
+
 	test("returns provider-mismatch without restoring a fallback cache entry", () => {
 		const cache = new LyricsCache();
 		cache.set("spotify:track:1", lineLyrics("Fallback"), "lrclib");
@@ -19,6 +34,7 @@ describe("LyricsCacheRepository", () => {
 		const result = repository.lookup("spotify:track:1", "spotify", false);
 
 		expect(result).toEqual({
+			status: "non-hit",
 			cache: { status: "provider-mismatch", provider: "lrclib", primaryProvider: "spotify" },
 		});
 	});
@@ -30,7 +46,7 @@ describe("LyricsCacheRepository", () => {
 
 		const result = repository.lookup("spotify:track:1", "spotify", false);
 
-		expect(result).toEqual({ cache: { status: "miss", primaryProvider: "spotify" } });
+		expect(result).toEqual({ status: "non-hit", cache: { status: "miss", primaryProvider: "spotify" } });
 		expect(cache.get("spotify:track:1")).toBeUndefined();
 	});
 

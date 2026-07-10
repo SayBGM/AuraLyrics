@@ -44,11 +44,17 @@ export class ProviderLoadPipeline {
 		const attempts: ProviderAttempt[] = [];
 		const options = this.resolvedOptions();
 		for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
+			if (!isCurrent()) {
+				return { state: { status: "idle" }, attempts };
+			}
 			const state = await this.tryLoadOnce(track, settings, providers, attempts, isCurrent);
 			if (state.status !== "error" || attempt === options.maxAttempts || !isCurrent()) {
 				return { state, attempts };
 			}
 			await this.delay(options.retryDelayMs * attempt);
+			if (!isCurrent()) {
+				return { state: { status: "idle" }, attempts };
+			}
 		}
 		return {
 			state: { status: "error", message: "Lyrics failed after retries." },
@@ -73,6 +79,9 @@ export class ProviderLoadPipeline {
 		const options = this.resolvedOptions();
 
 		for (const provider of providers) {
+			if (!isCurrent()) {
+				return { status: "idle" };
+			}
 			if (!provider.supports(track)) {
 				continue;
 			}
@@ -115,6 +124,9 @@ export class ProviderLoadPipeline {
 					errors.push(`${provider.id}: ${result.message}`);
 				}
 			} catch (error) {
+				if (!isCurrent()) {
+					return { status: "idle" };
+				}
 				const message = error instanceof Error ? error.message : String(error);
 				attempts.push({ provider: provider.id, status: "error", message });
 				errors.push(`${provider.id}: ${message}`);

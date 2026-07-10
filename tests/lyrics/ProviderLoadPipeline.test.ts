@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { ProviderLoadPipeline } from "../../src/lyrics/ProviderLoadPipeline";
 import type { LyricsProvider, ProviderContext, ProviderId, TrackIdentity } from "../../src/lyrics/types";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
@@ -26,6 +26,10 @@ const lineLyrics = (text: string) => ({
 });
 
 describe("ProviderLoadPipeline", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	test("owns fallback diagnostics independently of cache lookup", async () => {
 		const primary: LyricsProvider = {
 			id: "spotify",
@@ -98,5 +102,63 @@ describe("ProviderLoadPipeline", () => {
 		expect(calls).toBe(3);
 		expect(result.state).toMatchObject({ status: "ready", provider: "spotify" });
 		expect(result.attempts.map((attempt) => attempt.status)).toEqual(["error", "error", "success"]);
+	});
+
+	test("does not refetch when the request is superseded during retry delay", async () => {
+		vi.useFakeTimers();
+		let current = true;
+		let calls = 0;
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => {
+				calls += 1;
+				return { ok: false, reason: "error", message: "retry" };
+			},
+		};
+		const pipeline = new ProviderLoadPipeline(() => context, { retryDelayMs: 100 });
+
+		const loading = pipeline.load(track, DEFAULT_SETTINGS, [provider], () => current);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(calls).toBe(1);
+		expect(vi.getTimerCount()).toBe(1);
+
+		current = false;
+		await vi.advanceTimersByTimeAsync(100);
+		const result = await loading;
+
+		expect(result.state).toEqual({ status: "idle" });
+		expect(calls).toBe(1);
+	});
+
+	test("does not call a fallback provider after a rejected attempt is superseded", async () => {
+		let current = true;
+		let rejectPrimary: (reason: Error) => void = () => undefined;
+		let fallbackCalls = 0;
+		const primaryResult = new Promise<never>((_resolve, reject) => {
+			rejectPrimary = reject;
+		});
+		const primary: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: () => primaryResult,
+		};
+		const fallback: LyricsProvider = {
+			id: "lrclib",
+			supports: () => true,
+			fetch: async () => {
+				fallbackCalls += 1;
+				return { ok: true, lyrics: lineLyrics("Stale fallback") };
+			},
+		};
+		const pipeline = new ProviderLoadPipeline(() => context, { retryDelayMs: 0 });
+
+		const loading = pipeline.load(track, DEFAULT_SETTINGS, [primary, fallback], () => current);
+		rejectPrimary(new Error("network failed"));
+		current = false;
+		const result = await loading;
+
+		expect(result.state).toEqual({ status: "idle" });
+		expect(fallbackCalls).toBe(0);
 	});
 });

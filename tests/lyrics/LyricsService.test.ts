@@ -496,4 +496,37 @@ describe("LyricsService", () => {
 		const state = await service.load({ ...track, uri: "spotify:track:refresh" }, DEFAULT_SETTINGS, true);
 		expect(state.status).toBe("ready");
 	});
+
+	test("does not store or return a pipeline success superseded before the facade resumes", async () => {
+		const firstTrack = { ...track, uri: "spotify:track:first" };
+		const nextTrack = { ...track, uri: "spotify:track:next" };
+		const cache = new LyricsCache();
+		let service: LyricsService;
+		let supersedingLoad: ReturnType<LyricsService["load"]> | undefined;
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: (requestedTrack) => {
+				if (requestedTrack.uri !== firstTrack.uri) {
+					return Promise.resolve({ ok: false, reason: "no-lyrics" });
+				}
+				return {
+					// biome-ignore lint/suspicious/noThenProperty: This controlled thenable fixes the microtask order at the facade race boundary.
+					then: (resolve: (value: { ok: true; lyrics: ReturnType<typeof lineLyrics> }) => void) => {
+						resolve({ ok: true, lyrics: lineLyrics("Stale success") });
+						queueMicrotask(() => {
+							supersedingLoad = service.load(nextTrack, DEFAULT_SETTINGS, true);
+						});
+					},
+				} as unknown as ReturnType<LyricsProvider["fetch"]>;
+			},
+		};
+		service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { maxAttempts: 1, retryDelayMs: 0 });
+
+		const state = await service.load(firstTrack, DEFAULT_SETTINGS, true);
+
+		expect(state).toEqual({ status: "idle" });
+		expect(cache.get(firstTrack.uri)).toBeUndefined();
+		await supersedingLoad;
+	});
 });

@@ -37,7 +37,7 @@ export class LyricsService {
 			cache: cached.cache,
 			attempts: [],
 		};
-		if (cached.lyrics && cached.provider) {
+		if (cached.status === "hit") {
 			return {
 				status: "ready",
 				track,
@@ -49,6 +49,9 @@ export class LyricsService {
 		}
 
 		const loaded = await this.providerPipeline.load(track, settings, providers, () => currentRequest === this.requestId);
+		if (currentRequest !== this.requestId) {
+			return { status: "idle" };
+		}
 		diagnostics.attempts = loaded.attempts;
 		if (loaded.state.status === "ready") {
 			this.cacheRepository.storeCanonical(track.uri, loaded.state.lyrics, loaded.state.provider, primaryProvider?.id);

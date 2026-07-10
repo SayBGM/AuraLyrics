@@ -2,26 +2,36 @@ import type { LyricsCache } from "./LyricsCache";
 import { restoreCachedLyrics } from "./LyricsDocumentTransforms";
 import type { LyricsCacheStatus, LyricsDocument, ProviderId } from "./types";
 
-export type LyricsCacheLookup = {
-	cache: LyricsCacheStatus;
-	lyrics?: LyricsDocument;
-	provider?: ProviderId;
-};
+type LyricsCacheHitStatus = Extract<LyricsCacheStatus, { status: "hit" }>;
+type LyricsCacheNonHitStatus = Exclude<LyricsCacheStatus, LyricsCacheHitStatus>;
+
+export type LyricsCacheLookupResult =
+	| {
+			status: "hit";
+			cache: LyricsCacheHitStatus;
+			lyrics: LyricsDocument;
+			provider: ProviderId;
+	  }
+	| {
+			status: "non-hit";
+			cache: LyricsCacheNonHitStatus;
+	  };
 
 export class LyricsCacheRepository {
 	public constructor(private readonly cache: LyricsCache) {}
 
-	public lookup(uri: string, primaryProvider: ProviderId | undefined, refresh: boolean): LyricsCacheLookup {
+	public lookup(uri: string, primaryProvider: ProviderId | undefined, refresh: boolean): LyricsCacheLookupResult {
 		if (refresh) {
-			return { cache: { status: "bypassed", primaryProvider } };
+			return { status: "non-hit", cache: { status: "bypassed", primaryProvider } };
 		}
 
 		const cached = this.cache.get(uri);
 		if (!cached) {
-			return { cache: { status: "miss", primaryProvider } };
+			return { status: "non-hit", cache: { status: "miss", primaryProvider } };
 		}
 		if (cached.provider !== primaryProvider) {
 			return {
+				status: "non-hit",
 				cache: {
 					status: "provider-mismatch",
 					provider: cached.provider,
@@ -32,13 +42,14 @@ export class LyricsCacheRepository {
 
 		try {
 			return {
+				status: "hit",
 				cache: { status: "hit", provider: cached.provider, primaryProvider },
 				lyrics: restoreCachedLyrics(cached.lyrics),
 				provider: cached.provider,
 			};
 		} catch {
 			this.cache.delete(uri);
-			return { cache: { status: "miss", primaryProvider } };
+			return { status: "non-hit", cache: { status: "miss", primaryProvider } };
 		}
 	}
 
