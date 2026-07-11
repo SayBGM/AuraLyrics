@@ -1,61 +1,61 @@
-# Intro Gate and Syllable Wake Implementation Plan
+# Intro Gate 및 Syllable Wake 구현 계획
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **에이전트 작업자 필수 사항:** 이 계획을 작업 단위로 구현할 때 `superpowers:subagent-driven-development`(권장) 또는 `superpowers:executing-plans`를 반드시 사용한다. 진행 상태는 체크박스(`- [ ]`)로 추적한다.
 
-**Goal:** Keep Aurora track metadata visible through long opening instrumentals without losing lyric sync, skip it for vocals within two seconds, and replace the synthetic karaoke corner icon with the playback-driven Syllable Wake treatment.
+**목표:** 긴 시작 간주에서는 가사 싱크를 유지하면서 오로라 곡 정보 화면을 보여주고, 첫 보컬이 2초 이내면 화면을 건너뛰며, 가상 노래방 코너 아이콘을 재생 진행률 기반 Syllable Wake로 대체한다.
 
-**Architecture:** Add a pure first-vocal policy and a stateful per-playback-epoch intro gate, then route every ready snapshot path in `ExtensionApp` through that gate. The gate consumes only `PlaybackSynchronizer.timestampSec`, while `LyricsRenderer` exposes synthetic timing through accessible scene state and existing syllable progress. Extend `TrackTheme` with a contrast-safe wake foreground so Syllable Wake remains readable across album themes.
+**구조:** 첫 보컬 판단을 담당하는 순수 policy와 playback track epoch 단위의 상태형 Intro Gate를 추가하고, `ExtensionApp`의 모든 ready snapshot 경로를 Gate로 통합한다. Gate는 `PlaybackSynchronizer.timestampSec`만 사용한다. `LyricsRenderer`는 synthetic timing을 접근 가능한 scene 상태로 노출하고 기존 음절 진행률로 Syllable Wake를 표현한다. `TrackTheme`에는 앨범 테마에서도 읽기 쉬운 대비 안전 wake foreground를 추가한다.
 
-**Tech Stack:** TypeScript, DOM/CSS, Spicetify APIs, Vitest/jsdom, Playwright/Chromium, Vite.
+**기술 스택:** TypeScript, DOM/CSS, Spicetify API, Vitest/jsdom, Playwright/Chromium, Vite.
 
-**Design reference:** `docs/superpowers/specs/2026-07-11-intro-gate-syllable-wake-design.md`
-
----
-
-## File map
-
-**Create**
-
-- `src/app/IntroPresentationPolicy.ts` — pure first-rendered-vocal extraction and two-second decision.
-- `src/app/IntroPresentationGate.ts` — playback-epoch reveal latch and pending snapshot lifecycle.
-- `tests/app/IntroPresentationPolicy.test.ts` — timing extraction and boundary tests.
-- `tests/app/IntroPresentationGate.test.ts` — hold/reveal/refresh/PiP lifecycle tests.
-
-**Modify**
-
-- `src/app/ExtensionApp.ts` — gate orchestration, resume/tick reveal, synchronized initial render, ready snapshot routing.
-- `src/app/TrackPresentationState.ts` — explicit intro-ready presentation state.
-- `src/app/TrackThemeService.ts` — contrast-safe `syntheticWakeForeground` theme value.
-- `src/renderer/LyricsRenderer.ts` — synthetic scene state, accessible description, immediate timestamp synchronization.
-- `src/renderer/components/TrackMetadata.ts` — explicit `intro` metadata mode without label/progress.
-- `src/renderer/components/SyllableVocals.ts` — expose progress-derived wake variables without a second progress clock.
-- `src/pip/DocumentPipController.ts` — publish wake foreground CSS variables.
-- `src/styles/pip/baseStyles.ts` — fallback wake theme variables and visually hidden utility.
-- `src/styles/pip/lyricsStyles.ts` — remove folded marker styling and add Syllable Wake styles.
-- `tests/app/ExtensionApp.test.ts` — initial/load/resume/seek/delay/enrichment/settings integration.
-- `tests/app/TrackThemeService.test.ts` — wake contrast fixtures.
-- `tests/renderer/LyricsRenderer.test.ts` — synthetic accessibility/native isolation/immediate sync.
-- `tests/renderer/SyllableVocals.test.ts` — wake progress and motion setting behavior.
-- `tests/pip/DocumentPipController.test.ts` — theme CSS variable application/reset.
-- `tests/styles/pipStyles.test.ts` — marker removal, wake selectors, reduced-motion rules.
-- `tests/visual/harness/main.ts` — intro-ready and Syllable Wake scenarios.
-- `tests/visual/lyrics-layout.visual.spec.ts` — Syllable Wake and intro-ready visual assertions.
-- `tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/*.png` — updated baselines.
+**설계 문서:** `docs/superpowers/specs/2026-07-11-intro-gate-syllable-wake-design.md`
 
 ---
 
-### Task 1: Pure intro timing policy
+## 파일 구성
 
-**Files:**
+**새로 생성**
 
-- Create: `src/app/IntroPresentationPolicy.ts`
-- Create: `tests/app/IntroPresentationPolicy.test.ts`
+- `src/app/IntroPresentationPolicy.ts` — 실제 표시되는 첫 보컬 계산과 2초 판단을 담당하는 순수 함수.
+- `src/app/IntroPresentationGate.ts` — playback epoch의 revealed latch와 pending snapshot 수명주기.
+- `tests/app/IntroPresentationPolicy.test.ts` — 첫 보컬 계산과 임계값 테스트.
+- `tests/app/IntroPresentationGate.test.ts` — hold/reveal/refresh/PiP 수명주기 테스트.
 
-Use `@superpowers:test-driven-development`.
+**수정**
 
-- [ ] **Step 1: Write failing first-vocal extraction tests**
+- `src/app/ExtensionApp.ts` — Gate 조율, resume/tick 공개, 최초 timestamp 동기화, ready snapshot 라우팅.
+- `src/app/TrackPresentationState.ts` — 명시적인 intro-ready presentation 상태.
+- `src/app/TrackThemeService.ts` — 대비 안전 `syntheticWakeForeground`.
+- `src/renderer/LyricsRenderer.ts` — synthetic scene 상태, 접근성 설명, 즉시 timestamp 동기화.
+- `src/renderer/components/TrackMetadata.ts` — label/진행선이 없는 `intro` metadata 모드.
+- `src/renderer/components/SyllableVocals.ts` — 두 번째 시계 없이 진행률 기반 wake 변수 노출.
+- `src/pip/DocumentPipController.ts` — wake foreground CSS 변수 적용.
+- `src/styles/pip/baseStyles.ts` — fallback wake 변수와 visually hidden utility.
+- `src/styles/pip/lyricsStyles.ts` — 기존 marker 스타일 제거 및 Syllable Wake 스타일.
+- `tests/app/ExtensionApp.test.ts` — 최초 load, resume, seek, delay, enrichment/settings 경합 통합 테스트.
+- `tests/app/TrackThemeService.test.ts` — wake 대비 fixture.
+- `tests/renderer/LyricsRenderer.test.ts` — synthetic 접근성, native 격리, 즉시 sync.
+- `tests/renderer/SyllableVocals.test.ts` — wake 진행률 및 모션 설정.
+- `tests/pip/DocumentPipController.test.ts` — 테마 CSS 변수 적용/초기화.
+- `tests/styles/pipStyles.test.ts` — marker 제거, wake selector, reduced-motion.
+- `tests/visual/harness/main.ts` — intro-ready 및 Syllable Wake 시나리오.
+- `tests/visual/lyrics-layout.visual.spec.ts` — Syllable Wake 및 intro-ready 시각 assertion.
+- `tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/*.png` — 갱신된 baseline.
 
-Cover static, line vocals with a generated leading interlude, interlude-only documents, syllable lead/background timing, and `line-only` lead-only timing.
+---
+
+### 작업 1: 순수 인트로 표시 정책
+
+**파일**
+
+- 생성: `src/app/IntroPresentationPolicy.ts`
+- 생성: `tests/app/IntroPresentationPolicy.test.ts`
+
+`@superpowers:test-driven-development`를 사용한다.
+
+- [ ] **1단계: 첫 보컬 계산 실패 테스트 작성**
+
+Static, 생성된 시작 interlude가 있는 line, interlude-only, syllable lead/background, `line-only`의 lead-only 시각을 포함한다.
 
 ```ts
 expect(firstRenderedVocalStartSec(staticLyrics, "prefer-syllable")).toBeUndefined();
@@ -64,13 +64,13 @@ expect(firstRenderedVocalStartSec(syllableWithEarlyBackground, "prefer-syllable"
 expect(firstRenderedVocalStartSec(syllableWithEarlyBackground, "line-only")).toBe(7);
 ```
 
-- [ ] **Step 2: Run the policy test to verify RED**
+- [ ] **2단계: RED 확인**
 
-Run: `npx vitest run tests/app/IntroPresentationPolicy.test.ts`
+실행: `npx vitest run tests/app/IntroPresentationPolicy.test.ts`
 
-Expected: FAIL because `IntroPresentationPolicy` does not exist.
+예상: `IntroPresentationPolicy`가 없어서 FAIL.
 
-- [ ] **Step 3: Implement the minimal extraction helper**
+- [ ] **3단계: 최소 계산 helper 구현**
 
 ```ts
 export const INTRO_IMMEDIATE_THRESHOLD_SEC = 2;
@@ -93,9 +93,9 @@ export const firstRenderedVocalStartSec = (
 };
 ```
 
-Keep `minimum()` local and return `undefined` for an empty list.
+`minimum()`은 이 모듈 내부에 두고 빈 배열에서는 `undefined`를 반환한다.
 
-- [ ] **Step 4: Write failing two-second decision tests**
+- [ ] **4단계: 2초 판단 실패 테스트 작성**
 
 ```ts
 expect(introDecision({ firstVocalStartSec: 10, timestampSec: 8.001, applyImmediateThreshold: true })).toBe("reveal");
@@ -105,25 +105,29 @@ expect(introDecision({ firstVocalStartSec: 10, timestampSec: 9, applyImmediateTh
 expect(introDecision({ firstVocalStartSec: 10, timestampSec: 10, applyImmediateThreshold: false })).toBe("reveal");
 ```
 
-- [ ] **Step 5: Verify RED, implement, and rerun GREEN**
+- [ ] **5단계: RED 확인 후 최소 구현 및 GREEN 확인**
 
-Run: `npx vitest run tests/app/IntroPresentationPolicy.test.ts`
-
-Implement:
+실행: `npx vitest run tests/app/IntroPresentationPolicy.test.ts`
 
 ```ts
-export const introDecision = ({ firstVocalStartSec, timestampSec, applyImmediateThreshold }: IntroDecisionInput): "hold" | "reveal" => {
+export const introDecision = ({
+  firstVocalStartSec,
+  timestampSec,
+  applyImmediateThreshold,
+}: IntroDecisionInput): "hold" | "reveal" => {
   if (firstVocalStartSec === undefined) return "reveal";
   const remaining = firstVocalStartSec - timestampSec;
-  return remaining <= (applyImmediateThreshold ? INTRO_IMMEDIATE_THRESHOLD_SEC : 0) ? "reveal" : "hold";
+  return remaining <= (applyImmediateThreshold ? INTRO_IMMEDIATE_THRESHOLD_SEC : 0)
+    ? "reveal"
+    : "hold";
 };
 ```
 
-Expected: PASS.
+예상: PASS.
 
-- [ ] **Step 6: Run typecheck and commit**
+- [ ] **6단계: 타입검사 및 커밋**
 
-Run: `npm run typecheck`
+실행: `npm run typecheck`
 
 ```bash
 git add src/app/IntroPresentationPolicy.ts tests/app/IntroPresentationPolicy.test.ts
@@ -132,26 +136,26 @@ git commit -m "feat: add intro presentation timing policy"
 
 ---
 
-### Task 2: Playback-epoch intro gate
+### 작업 2: 재생 트랙 epoch 단위 Intro Gate
 
-**Files:**
+**파일**
 
-- Create: `src/app/IntroPresentationGate.ts`
-- Create: `tests/app/IntroPresentationGate.test.ts`
-- Use: `src/app/IntroPresentationPolicy.ts`
+- 생성: `src/app/IntroPresentationGate.ts`
+- 생성: `tests/app/IntroPresentationGate.test.ts`
+- 사용: `src/app/IntroPresentationPolicy.ts`
 
-Use `@superpowers:test-driven-development`.
+`@superpowers:test-driven-development`를 사용한다.
 
-- [ ] **Step 1: Write the failing hold/reveal lifecycle tests**
+- [ ] **1단계: hold/reveal 수명주기 실패 테스트 작성**
 
-Test these outcomes with real `ReadyTrackSessionSnapshot` fixtures:
+실제 `ReadyTrackSessionSnapshot` fixture로 다음을 검증한다.
 
-- long intro accepts as `hold`;
-- early vocal accepts as `reveal`;
-- a normal tick does not use the two-second threshold;
-- tick at the first vocal reveals exactly once;
-- resume uses the threshold;
-- once revealed, backward time and refresh never hold again.
+- 긴 인트로는 `hold`.
+- 빠른 보컬은 `reveal`.
+- 일반 tick은 2초 임계값을 사용하지 않음.
+- 첫 보컬 시각의 tick에서 정확히 한 번 공개.
+- resume은 2초 임계값 사용.
+- 한 번 공개된 뒤에는 과거 시각이나 refresh에서도 다시 hold하지 않음.
 
 ```ts
 gate.beginTrackEpoch();
@@ -161,15 +165,13 @@ expect(gate.resume(8.5)).toMatchObject({ kind: "reveal", snapshot: snapshotAt10 
 expect(gate.accept(refreshedSnapshotAt10, settings, 0)).toMatchObject({ kind: "reveal" });
 ```
 
-- [ ] **Step 2: Run the gate test to verify RED**
+- [ ] **2단계: RED 확인**
 
-Run: `npx vitest run tests/app/IntroPresentationGate.test.ts`
+실행: `npx vitest run tests/app/IntroPresentationGate.test.ts`
 
-Expected: FAIL because the gate does not exist.
+예상: Gate가 없어서 FAIL.
 
-- [ ] **Step 3: Implement the smallest explicit state machine**
-
-Use a discriminated result type:
+- [ ] **3단계: 최소 명시적 상태 머신 구현**
 
 ```ts
 export type IntroGateResult =
@@ -178,14 +180,14 @@ export type IntroGateResult =
   | { kind: "reveal"; snapshot: ReadyTrackSessionSnapshot };
 ```
 
-Required public operations:
+필수 public API:
 
 ```ts
 class IntroPresentationGate {
   beginTrackEpoch(): void;
   endTrackEpoch(): void;
   hasActiveEpoch(): boolean;
-  discardPendingSession(): void; // preserve revealed latch
+  discardPendingSession(): void; // revealed latch는 보존
   accept(snapshot: ReadyTrackSessionSnapshot, settings: ExtensionSettings, timestampSec: number): IntroGateResult;
   resume(timestampSec: number): IntroGateResult;
   tick(timestampSec: number): IntroGateResult;
@@ -193,40 +195,38 @@ class IntroPresentationGate {
 }
 ```
 
-`accept()` always recomputes first vocal from the newest snapshot/settings. A result that reveals sets the latch before returning.
+`accept()`는 최신 snapshot/settings로 첫 보컬을 항상 다시 계산한다. `reveal`을 반환할 때는 먼저 latch를 설정한다.
 
-- [ ] **Step 4: Add failing replacement-deadline tests**
+- [ ] **4단계: deadline 교체 실패 테스트 추가**
 
-Test a held snapshot replaced by:
+Held snapshot이 다음 값으로 교체되는 경우를 검증한다.
 
-- an earlier first vocal already behind current time;
-- an earlier first vocal within two seconds;
-- a later first vocal that extends the hold;
-- `line-only` changed to `prefer-syllable` with an earlier background vocal.
+- 현재 시각보다 과거로 앞당겨진 첫 보컬
+- 2초 이내로 앞당겨진 첫 보컬
+- hold를 연장하는 더 늦은 첫 보컬
+- `line-only`에서 `prefer-syllable`로 변경되어 더 이른 background가 표시되는 경우
 
-- [ ] **Step 5: Implement latest-pending replacement behavior and rerun GREEN**
+- [ ] **5단계: 최신 pending 교체 구현 및 GREEN 확인**
 
-Run: `npx vitest run tests/app/IntroPresentationGate.test.ts`
+실행: `npx vitest run tests/app/IntroPresentationGate.test.ts`
 
-Expected: PASS, with the latest snapshot returned on reveal.
+예상: 공개 시 항상 최신 snapshot을 반환하며 PASS.
 
-- [ ] **Step 6: Add failing session/epoch lifetime tests**
+- [ ] **6단계: session/epoch 수명 실패 테스트 추가**
 
-Cover:
+- 공개 전 `discardPendingSession()`은 pending만 제거하고 playback epoch는 보존.
+- 공개 후 `discardPendingSession()`도 latch 보존.
+- `endTrackEpoch()` 뒤 새 `beginTrackEpoch()`는 fresh latch 생성.
+- 공개 후 no-track reset.
+- 같은 URI라도 repeat playback event면 fresh epoch 생성.
 
-- `discardPendingSession()` before reveal clears pending data but preserves the playback epoch;
-- revealed latch survives `discardPendingSession()`;
-- `endTrackEpoch()` and the next `beginTrackEpoch()` create a fresh latch;
-- no-track reset after reveal;
-- repeat playback can start a fresh epoch even with the same URI.
+- [ ] **7단계: 수명주기 규칙 구현 및 재실행**
 
-- [ ] **Step 7: Implement lifecycle reset rules and rerun**
+실행: `npx vitest run tests/app/IntroPresentationGate.test.ts`
 
-Run: `npx vitest run tests/app/IntroPresentationGate.test.ts`
+예상: PASS.
 
-Expected: PASS.
-
-- [ ] **Step 8: Commit**
+- [ ] **8단계: 커밋**
 
 ```bash
 git add src/app/IntroPresentationGate.ts tests/app/IntroPresentationGate.test.ts
@@ -235,19 +235,19 @@ git commit -m "feat: add playback epoch intro gate"
 
 ---
 
-### Task 3: Intro-ready metadata and basic application routing
+### 작업 3: 인트로 준비 완료 곡 정보와 기본 애플리케이션 라우팅
 
-**Files:**
+**파일**
 
-- Modify: `src/renderer/components/TrackMetadata.ts:3-60`
-- Modify: `src/app/TrackPresentationState.ts:4-32`
-- Modify: `src/app/ExtensionApp.ts:40-440`
-- Modify: `tests/renderer/LyricsRenderer.test.ts`
-- Modify: `tests/app/ExtensionApp.test.ts`
+- 수정: `src/renderer/components/TrackMetadata.ts:3-60`
+- 수정: `src/app/TrackPresentationState.ts:4-32`
+- 수정: `src/app/ExtensionApp.ts:40-440`
+- 수정: `tests/renderer/LyricsRenderer.test.ts`
+- 수정: `tests/app/ExtensionApp.test.ts`
 
-Use `@superpowers:test-driven-development`.
+`@superpowers:test-driven-development`를 사용한다.
 
-- [ ] **Step 1: Write a failing intro metadata scene test**
+- [ ] **1단계: intro metadata scene 실패 테스트 작성**
 
 ```ts
 renderer.showTrackMetadata(root, { mode: "intro", track }, DEFAULT_SETTINGS);
@@ -257,53 +257,54 @@ expect(root.querySelector(".track-metadata-progress")).toBeNull();
 expect(root.textContent).toContain(track.title);
 ```
 
-- [ ] **Step 2: Verify RED and add the explicit mode**
+- [ ] **2단계: RED 확인 후 명시적 모드 추가**
 
-Run: `npx vitest run tests/renderer/LyricsRenderer.test.ts -t "intro metadata"`
+실행: `npx vitest run tests/renderer/LyricsRenderer.test.ts -t "intro metadata"`
 
-Change `TrackMetadataViewModel["mode"]` to `"loading" | "persistent" | "intro"`. Only `loading` creates the eyebrow and progress.
+`TrackMetadataViewModel["mode"]`를 `"loading" | "persistent" | "intro"`로 변경한다. Eyebrow와 진행선은 `loading`에서만 만든다.
 
-- [ ] **Step 3: Write failing early-vocal and long-intro application tests**
+- [ ] **3단계: 빠른 보컬과 긴 인트로 애플리케이션 실패 테스트 작성**
 
-Use real `TrackSessionController` behavior where practical and a fake player timestamp.
+가능하면 실제 `TrackSessionController`와 fake player timestamp를 사용한다.
 
 ```ts
-// first vocal 1.5 seconds away
+// 첫 보컬까지 1.5초
 await internals.loadCurrentTrack(false);
 expect(root.querySelector(".lyrics-track")).not.toBeNull();
 expect(root.querySelector(".track-metadata-scene")).toBeNull();
 
-// first vocal 8 seconds away
+// 첫 보컬까지 8초
 await internals.loadCurrentTrack(false);
 expect(root.querySelector(".track-metadata-scene.intro")).not.toBeNull();
 expect(root.querySelector(".track-metadata-eyebrow")).toBeNull();
 expect(root.querySelector(".track-metadata-progress")).toBeNull();
 ```
 
-- [ ] **Step 4: Run tests to verify RED**
+- [ ] **4단계: RED 확인**
 
-Run: `npx vitest run tests/app/ExtensionApp.test.ts -t "intro"`
+실행: `npx vitest run tests/app/ExtensionApp.test.ts -t "intro"`
 
-Expected: current code mounts all ready lyrics immediately.
+예상: 현재 코드는 모든 ready 가사를 즉시 마운트해 FAIL.
 
-- [ ] **Step 5: Route ready snapshots through the gate**
+- [ ] **5단계: Ready snapshot을 Gate로 통합**
 
-Add an `IntroPresentationGate` field and one private entry point, for example:
+`IntroPresentationGate` 필드와 하나의 private 진입점을 추가한다.
 
 ```ts
 private presentReadySnapshot(snapshot: ReadyTrackSessionSnapshot): void {
-  const result = this.introGate.accept(snapshot, this.settings.get(), this.playbackSynchronizer.timestampSec);
+  const timestampSec = this.playbackSynchronizer.timestampSec;
+  const result = this.introGate.accept(snapshot, this.settings.get(), timestampSec);
   if (result.kind === "hold") {
     this.renderPresentationState({ kind: "intro", track: snapshot.loadState.track });
     return;
   }
   if (result.kind === "reveal") {
-    this.revealReadySnapshot(result.snapshot, this.playbackSynchronizer.timestampSec);
+    this.revealReadySnapshot(result.snapshot, timestampSec);
   }
 }
 ```
 
-All reveal causes use one method. It owns both mount and first-frame synchronization:
+모든 공개 원인은 다음 하나의 함수로 통합한다.
 
 ```ts
 private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): void {
@@ -312,34 +313,32 @@ private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: n
 }
 ```
 
-Before the initial ready decision, call `playbackSynchronizer.resync()` exactly as current loading does. The accepted timestamp, mount, and immediate update must therefore be identical.
+최초 ready 판단 전에는 기존처럼 `playbackSynchronizer.resync()`를 호출한다. 판단에 사용한 timestamp, mount, 즉시 update의 timestamp가 동일해야 한다.
 
-Add `{ kind: "intro"; track: TrackIdentity }` to `TrackPresentationState`, rendering metadata mode `intro` without dispatching a no-lyrics state.
+`TrackPresentationState`에 `{ kind: "intro"; track: TrackIdentity }`를 추가하고 no-lyrics 상태를 dispatch하지 않은 채 metadata mode `intro`를 렌더링한다.
 
-- [ ] **Step 6: Preserve existing loading and non-ready states**
+- [ ] **6단계: 기존 loading/non-ready 상태와 epoch wiring 보존**
 
-Keep the initial call to `renderPresentationState({ kind: "loading", track })` before `trackSession.load()`. Do not route error, no-lyrics, local, or instrumental states through the gate.
+다음을 명시적으로 연결한다.
 
-Wire playback-epoch lifecycle explicitly in this task:
+- `trackSession.load()` 전 기존 `loading` presentation 유지.
+- error, no-lyrics, local, instrumental은 Gate를 통과하지 않음.
+- `onTrackChanged(track)`는 `!session` 조기 반환 전에 처리한다. Defined track event는 항상 fresh epoch를 시작하고 `trackChanged(undefined)`는 epoch를 종료한다.
+- `loadCurrentTrack()`의 no-track 분기도 방어적으로 epoch를 종료한다.
+- `destroy()`는 epoch 종료.
+- `closePip()`는 pending session만 버리고 revealed latch 보존.
+- 최초 PiP open에서 현재 곡이 있고 `hasActiveEpoch()`가 false일 때만 epoch를 시작한다.
+- Active epoch 상태의 PiP reopen과 수동 refresh는 새 epoch를 만들지 않는다.
 
-- `onTrackChanged(track)` handles both branches before the `!session` early return: every defined player track event starts a fresh gate epoch, while `trackChanged(undefined)` ends it. PiP-closed changes, no-track events, and same-URI repeat events therefore cannot be missed;
-- the defensive no-track branch in `loadCurrentTrack()` also ends the epoch, but it is not the only no-track reset path;
-- `destroy()` ends the epoch;
-- `closePip()` calls `discardPendingSession()` but preserves the revealed latch;
-- the first PiP open calls `beginTrackEpoch()` only when a current track exists and `hasActiveEpoch()` is false. This covers an app that starts while Spotify is already playing and no player event was observed;
-- PiP reopen with an active epoch and manual refresh never start a new epoch by themselves.
+PiP가 닫힌 상태의 defined/undefined `trackChanged`, 이미 곡이 재생 중인 최초 open, active epoch를 보존하는 reopen, destroy reset을 집중 테스트한다.
 
-Add focused integration tests for defined and undefined `trackChanged` while PiP is closed, initial PiP open with an already-playing track, reopen preserving an active epoch, and `destroy()` reset. Full held/revealed close/reopen and repeat behavior remains in Task 4.
-
-- [ ] **Step 7: Run focused tests GREEN**
-
-Run:
+- [ ] **7단계: 집중 테스트 GREEN 확인**
 
 ```bash
 npx vitest run tests/app/IntroPresentationPolicy.test.ts tests/app/IntroPresentationGate.test.ts tests/app/ExtensionApp.test.ts tests/renderer/LyricsRenderer.test.ts
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **8단계: 커밋**
 
 ```bash
 git add src/app/ExtensionApp.ts src/app/TrackPresentationState.ts src/renderer/components/TrackMetadata.ts tests/app/ExtensionApp.test.ts tests/renderer/LyricsRenderer.test.ts
@@ -348,19 +347,19 @@ git commit -m "feat: hold track presentation through long intros"
 
 ---
 
-### Task 4: Playback synchronization, resume/seek, and pending snapshot races
+### 작업 4: 재생 동기화, 재개·탐색, 대기 snapshot 경합
 
-**Files:**
+**파일**
 
-- Modify: `src/app/ExtensionApp.ts:210-440`
-- Modify: `tests/app/ExtensionApp.test.ts`
-- Test against: `src/player/PlaybackSynchronizer.ts`
+- 수정: `src/app/ExtensionApp.ts:210-440`
+- 수정: `tests/app/ExtensionApp.test.ts`
+- 검증 대상: `src/player/PlaybackSynchronizer.ts`
 
-Use `@superpowers:test-driven-development`.
+`@superpowers:test-driven-development`를 사용한다.
 
-- [ ] **Step 1: Write failing tick/reveal synchronization tests**
+- [ ] **1단계: tick/reveal 동기화 실패 테스트 작성**
 
-Use a renderer spy that records ordering and timestamps:
+Renderer spy로 이벤트 순서와 timestamp를 기록한다.
 
 ```ts
 expect(events).toEqual([
@@ -370,73 +369,69 @@ expect(events).toEqual([
 ]);
 ```
 
-Assert the held intro remains at `7.999`, reveals at `8`, mounts once, and the correct row/syllable progress is active before the next frame.
+Held intro는 `7.999`에서 유지되고 `8`에서 정확히 한 번 공개되며, 다음 frame 전에 올바른 row/음절 진행률이 활성화되는지 검증한다.
 
-- [ ] **Step 2: Verify RED, then implement tick-driven reveal**
+- [ ] **2단계: RED 확인 후 tick 기반 공개 구현**
 
-Run: `npx vitest run tests/app/ExtensionApp.test.ts -t "synchronized intro"`
+실행: `npx vitest run tests/app/ExtensionApp.test.ts -t "synchronized intro"`
 
-In `tick()`:
+`tick()`에서:
 
-1. update `PlaybackSynchronizer` whenever the current snapshot is ready, even when no lyrics DOM is mounted;
-2. ask `introGate.tick(timestampSec)`;
-3. if it reveals, call the shared `revealReadySnapshot(snapshot, timestampSec)`, which mounts and calls `renderer.update(timestampSec, 0)` before returning or continuing;
-4. never schedule a timeout.
+1. 가사 DOM이 없어도 current snapshot이 ready면 `PlaybackSynchronizer`를 업데이트한다.
+2. `introGate.tick(timestampSec)`을 호출한다.
+3. 공개 결과면 공통 `revealReadySnapshot(snapshot, timestampSec)`을 호출한다.
+4. Timeout을 만들지 않는다.
 
-- [ ] **Step 3: Write failing pause/resume tests**
+- [ ] **3단계: pause/resume 실패 테스트 작성**
 
-Cover:
+- Pause 중 held intro 고정.
+- Resume 시 2초보다 많이 남으면 유지.
+- Resume 시 2초 이하면 resync 후 즉시 공개.
+- 공개 후 resume으로 커버 재진입 없음.
 
-- pause freezes a held intro;
-- resume with `> 2` seconds remaining keeps it;
-- resume with `<= 2` seconds remaining reveals immediately after resync;
-- resume after reveal never re-enters cover.
+- [ ] **4단계: resume 재평가 구현 및 재실행**
 
-- [ ] **Step 4: Implement resume reevaluation and rerun**
+`onPlaybackChanged(true)`에서 `resync()`를 먼저 실행하고, `introGate.resume(timestampSec)` 결과를 동일한 `revealReadySnapshot()`으로 공개한다. Pause에서는 임계값을 판단하지 않는다.
 
-In `onPlaybackChanged(true)`, call `resync()` first, then `introGate.resume(timestampSec)`, then call the same `revealReadySnapshot(snapshot, timestampSec)` when returned. Do not evaluate threshold on pause.
+- [ ] **5단계: delay 및 seek 실패 테스트 작성**
 
-- [ ] **Step 5: Write failing delay and seek tests**
+양수·음수 `lyricsDelayMs`의 최초·resume·tick 판단, 재생 중 첫 보컬 이후 seek, pause 중 seek 후 resume, 공개 후 backward seek, backward seek 후 수동 refresh를 검증한다.
 
-Add positive and negative `lyricsDelayMs` fixtures for initial, resume, and tick decisions. Test playing seek past first vocal, paused seek followed by resume, backward seek after reveal, and backward seek plus manual refresh.
+- [ ] **6단계: 동기화된 timestamp만 사용**
 
-- [ ] **Step 6: Implement only through synchronized timestamps**
+Gate 또는 앱에서 raw player progress를 읽지 않는다. 기존 resync/probe 후 `playbackSynchronizer.timestampSec`만 사용한다.
 
-Do not read raw player progress in the gate or app. Reuse `playbackSynchronizer.timestampSec` after existing resync/probe behavior.
+- [ ] **7단계: enrichment/settings 교체 실패 테스트 작성**
 
-- [ ] **Step 7: Write failing enrichment/settings replacement tests**
+Deferred snapshot으로 다음을 증명한다.
 
-Use deferred snapshots to prove:
+- 첫 보컬이 과거/더 이른 시각으로 이동하면 enriched snapshot으로 공개.
+- 더 늦게 이동하면 hold 연장.
+- 구조적 `syncPreference` 변경 시 표시되는 첫 보컬 재계산.
+- 오래된 enrichment/settings 결과는 다른 곡을 교체하지 못함.
+- 기존 presentation revision 규칙으로 waveform profile 보존.
 
-- enrichment that moves first vocal earlier/past current time reveals with the enriched snapshot;
-- enrichment that moves it later extends the hold;
-- structural `syncPreference` change recomputes rendered first vocal;
-- stale enrichment/settings results cannot replace another track;
-- waveform profile remains preserved by existing presentation-revision logic.
+- [ ] **8단계: Enrichment/settings를 공통 진입점으로 라우팅**
 
-- [ ] **Step 8: Route enrichment and settings through `presentReadySnapshot()`**
+Snapshot을 accept하기 전에 기존 generation, session, track URI, load-state identity, `hasRenderableEnrichmentChanges()` 검사를 모두 유지한다.
 
-Keep all existing generation, session, track URI, load-state identity, and `hasRenderableEnrichmentChanges()` checks before accepting a replacement.
+Replacement accept 결과가 reveal이면 `revealReadySnapshot(snapshot, playbackSynchronizer.timestampSec)`을 사용한다. Initial ready, resume, tick, enrichment, settings replacement 각각에서 `mount -> 동일 timestamp update` 순서를 assertion한다. 일반 frame update와 seek snap/resync 테스트를 분리해 20초/1.25초 규칙을 혼동하지 않는다.
 
-If replacement acceptance returns reveal, use `revealReadySnapshot(snapshot, playbackSynchronizer.timestampSec)` so initial ready, resume, tick, enrichment, and settings replacement all share the exact `mount -> update(same timestamp)` contract. Add an event-order assertion for each cause. Keep seek-snap/resync tests separate from the ordinary frame update test so the 20-second and 1.25-second synchronizer rules are not conflated.
+- [ ] **9단계: Gate lifetime 통합 테스트 작성 및 통과**
 
-- [ ] **Step 9: Write and pass gate lifetime integration tests**
+- Reveal → backward seek → manual refresh 후에도 가사 유지.
+- 같은 playback epoch에서 reveal → PiP close/open 후 가사 유지.
+- Hold 중 close는 pending 폐기, reopen 시 첫 보컬 근처/이후면 새 시각에서 공개.
+- No-track은 latch 종료.
+- 같은 URI 반복도 새 `trackChanged` 이벤트면 fresh latch.
+- PiP가 닫힌 상태의 `trackChanged`가 fresh epoch 시작.
+- PiP가 닫힌 상태의 `trackChanged(undefined)`가 epoch 종료.
+- 이미 재생 중인 최초 PiP open은 epoch를 정확히 한 번 시작하고 reopen은 재시작하지 않음.
+- `destroy()`는 현재 epoch 종료.
 
-Cover:
+실행: `npx vitest run tests/app/ExtensionApp.test.ts tests/app/IntroPresentationGate.test.ts`
 
-- reveal -> backward seek -> manual refresh stays lyrics;
-- reveal -> PiP close/open on the same playback epoch stays lyrics;
-- close while held discards pending, then reopen near/past first vocal reveals from the new position;
-- no-track ends the latch;
-- a new `trackChanged` event starts a new latch, including same-URI repeat.
-- `trackChanged` while PiP is closed still starts the next epoch before returning;
-- `trackChanged(undefined)` while PiP is closed still ends the epoch before returning;
-- first PiP open with an already-playing track starts exactly one epoch, while reopen on the same active epoch does not restart it;
-- application `destroy()` ends the current epoch.
-
-Run: `npx vitest run tests/app/ExtensionApp.test.ts tests/app/IntroPresentationGate.test.ts`
-
-- [ ] **Step 10: Commit**
+- [ ] **10단계: 커밋**
 
 ```bash
 git add src/app/ExtensionApp.ts tests/app/ExtensionApp.test.ts tests/app/IntroPresentationGate.test.ts
@@ -445,22 +440,26 @@ git commit -m "fix: synchronize intro reveal with playback clock"
 
 ---
 
-### Task 5: Synthetic timing scene state and accessibility
+### 작업 5: 합성 타이밍 장면 상태와 접근성
 
-**Files:**
+**파일**
 
-- Modify: `src/renderer/LyricsRenderer.ts:38-69,168-172`
-- Modify: `src/styles/pip/baseStyles.ts`
-- Modify: `src/styles/pip/lyricsStyles.ts:29-42`
-- Modify: `tests/renderer/LyricsRenderer.test.ts:209-240`
-- Modify: `tests/styles/pipStyles.test.ts`
+- 수정: `src/renderer/LyricsRenderer.ts:38-69,168-172`
+- 수정: `src/styles/pip/baseStyles.ts`
+- 수정: `src/styles/pip/lyricsStyles.ts:29-42`
+- 수정: `tests/renderer/LyricsRenderer.test.ts:209-240`
+- 수정: `tests/styles/pipStyles.test.ts`
 
-Use `@superpowers:test-driven-development`.
+`@superpowers:test-driven-development`를 사용한다.
 
-- [ ] **Step 1: Replace folded-marker tests with failing scene-state tests**
+- [ ] **1단계: 기존 folded-marker 테스트를 scene-state 실패 테스트로 교체**
 
 ```ts
-renderer.mount(root, { lyrics: syllableLyrics, settings: koreanSettings, timingSource: "synthetic" });
+renderer.mount(root, {
+  lyrics: syllableLyrics,
+  settings: koreanSettings,
+  timingSource: "synthetic",
+});
 const scene = root.querySelector<HTMLElement>(".aura-lyrics");
 const description = root.querySelector<HTMLElement>("[data-aura-synthetic-description]");
 
@@ -471,29 +470,29 @@ expect(scene?.getAttribute("aria-describedby")).toBe(description?.id);
 expect(root.querySelector(".aura-timing-marker")).toBeNull();
 ```
 
-Add native timing, missing timing, English/Japanese, and language-remount cases.
+Native/missing timing, 영문/일문, 언어 remount도 추가한다.
 
-- [ ] **Step 2: Run renderer tests to verify RED**
+- [ ] **2단계: RED 확인**
 
-Run: `npx vitest run tests/renderer/LyricsRenderer.test.ts -t "synthetic timing"`
+실행: `npx vitest run tests/renderer/LyricsRenderer.test.ts -t "synthetic timing"`
 
-- [ ] **Step 3: Implement accessible synthetic state**
+- [ ] **3단계: 접근 가능한 synthetic 상태 구현**
 
-Give each `LyricsRenderer` instance a stable unique suffix from a module counter, for example `aura-synthetic-timing-description-${rendererInstanceId}`. Reuse that renderer-specific ID across remounts, create a hidden span with `data-aura-synthetic-description`, connect it with `aria-describedby`, and add the synthetic class/data attribute. Remove the visible marker/title/`role="img"` implementation.
+각 `LyricsRenderer` instance에 module counter 기반의 안정적이며 고유한 suffix를 부여한다. 예: `aura-synthetic-timing-description-${rendererInstanceId}`. Remount에서도 renderer별 ID를 재사용한다.
 
-Add a same-document test with two renderer instances: both IDs must differ and each scene must reference its own localized description.
+`data-aura-synthetic-description` hidden span을 만들고 `aria-describedby`로 연결하며 synthetic class/data attribute를 추가한다. 기존 보이는 marker/title/`role="img"` 구현은 제거한다.
 
-- [ ] **Step 4: Replace marker CSS with a hidden utility**
+같은 document에서 renderer 2개를 만들고 ID가 서로 다르며 각각 자기 현지화 설명을 참조하는지 테스트한다.
 
-Add an `.aura-visually-hidden` utility in `baseStyles.ts`. Delete the `.aura-timing-marker` shape from `lyricsStyles.ts`.
+- [ ] **4단계: Marker CSS를 hidden utility로 교체**
 
-- [ ] **Step 5: Add an accessibility-focused browser assertion**
+`baseStyles.ts`에 `.aura-visually-hidden` utility를 추가하고 `lyricsStyles.ts`의 `.aura-timing-marker` 모양을 삭제한다.
 
-In Playwright or a focused renderer test, resolve the `aria-describedby` target and assert that the localized text is the scene's accessible description source. Do not only assert that an unrelated hidden node exists.
+- [ ] **5단계: 접근성 중심 browser assertion 추가**
 
-- [ ] **Step 6: Run focused tests and commit**
+Playwright 또는 집중 renderer 테스트에서 `aria-describedby` target을 resolve해 현지화 문구가 scene의 접근성 설명 source인지 검증한다. 연결되지 않은 hidden node의 존재만 검사하면 안 된다.
 
-Run:
+- [ ] **6단계: 집중 테스트 및 커밋**
 
 ```bash
 npx vitest run tests/renderer/LyricsRenderer.test.ts tests/styles/pipStyles.test.ts
@@ -507,97 +506,109 @@ git commit -m "feat: replace synthetic timing marker with scene state"
 
 ---
 
-### Task 6: Contrast-safe Syllable Wake theme and motion
+### 작업 6: 대비 안전 Syllable Wake 테마 및 모션
 
-**Files:**
+**파일**
 
-- Modify: `src/app/TrackThemeService.ts:6-18,70-158`
-- Modify: `src/pip/DocumentPipController.ts:238-263` and `THEME_CSS_PROPERTIES`
-- Modify: `src/styles/pip/baseStyles.ts:15-36`
-- Modify: `src/styles/pip/lyricsStyles.ts:122-137,300-373`
-- Modify: `src/renderer/components/SyllableVocals.ts:53-116`
-- Modify: `tests/app/TrackThemeService.test.ts`
-- Modify: `tests/pip/DocumentPipController.test.ts`
-- Modify: `tests/renderer/SyllableVocals.test.ts`
-- Modify: `tests/styles/pipStyles.test.ts`
+- 수정: `src/app/TrackThemeService.ts:6-18,70-158`
+- 수정: `src/pip/DocumentPipController.ts:238-263` 및 `THEME_CSS_PROPERTIES`
+- 수정: `src/styles/pip/baseStyles.ts:15-36`
+- 수정: `src/styles/pip/lyricsStyles.ts:122-137,300-373`
+- 수정: `src/renderer/components/SyllableVocals.ts:53-116`
+- 수정: `tests/app/TrackThemeService.test.ts`
+- 수정: `tests/pip/DocumentPipController.test.ts`
+- 수정: `tests/renderer/SyllableVocals.test.ts`
+- 수정: `tests/styles/pipStyles.test.ts`
 
-Use `@superpowers:test-driven-development`.
+`@superpowers:test-driven-development`를 사용한다.
 
-- [ ] **Step 1: Write failing contrast-safe wake color tests**
+- [ ] **1단계: 대비 안전 wake 색상 실패 테스트 작성**
 
-Extend `TrackTheme` with:
+`TrackTheme`에 다음 필드를 추가한다.
 
 ```ts
 syntheticWakeForeground: string;
 syntheticWakeRgb: string;
 ```
 
-For dark, light, middle-luminance, and low-contrast accent palettes, assert:
+Dark, light, 중간 휘도, 저대비 accent palette에서 다음을 확인한다.
 
 ```ts
 const surface = compositeThemeSurface(theme, worstCaseCoverPixel);
 expect(contrastRatio(theme.syntheticWakeForeground, surface)).toBeGreaterThanOrEqual(4.5);
 ```
 
-- [ ] **Step 2: Verify RED and implement constrained accent blending**
+- [ ] **2단계: RED 확인 후 제한된 accent 혼합 구현**
 
-Run: `npx vitest run tests/app/TrackThemeService.test.ts`
-
-Implement a pure helper that tries the desired accent blend from strongest to weakest and falls back to foreground:
+실행: `npx vitest run tests/app/TrackThemeService.test.ts`
 
 ```ts
-const wakeColorForSurface = (surface: string, foreground: string, accent: string): string => {
+const wakeColorForSurface = (
+  surface: string,
+  foreground: string,
+  accent: string
+): string => {
   for (let step = 28; step >= 0; step -= 1) {
-    const candidate = rgbToHex(blendRgb(requireRgb(foreground), requireRgb(accent), step / 100));
-    if (contrastRatio(candidate, surface) >= ACTIVE_CONTRAST_TARGET) return candidate;
+    const candidate = rgbToHex(
+      blendRgb(requireRgb(foreground), requireRgb(accent), step / 100)
+    );
+    if (contrastRatio(candidate, surface) >= ACTIVE_CONTRAST_TARGET) {
+      return candidate;
+    }
   }
   return foreground;
 };
 ```
 
-Use the same worst-case scrimmed surface already computed in `createTheme()`.
+`createTheme()`에서 이미 계산하는 동일한 worst-case scrimmed surface를 사용한다.
 
-- [ ] **Step 3: Publish and reset wake theme variables**
+- [ ] **3단계: Wake 테마 변수 적용/초기화 TDD**
 
-First write RED tests in `tests/pip/DocumentPipController.test.ts` and `tests/styles/pipStyles.test.ts` for applying both wake variables, removing both on theme reset, and providing fallback root values. Run:
+`tests/pip/DocumentPipController.test.ts`와 `tests/styles/pipStyles.test.ts`에 먼저 RED 테스트를 작성한다.
+
+- 두 wake 변수 적용.
+- Theme reset 시 두 변수 제거.
+- Root fallback 값 존재.
+
+실행:
 
 ```bash
 npx vitest run tests/pip/DocumentPipController.test.ts tests/styles/pipStyles.test.ts
 ```
 
-Expected: FAIL because the properties do not exist. Then add `--pip-synthetic-wake-color` and `--pip-synthetic-wake-rgb` to the theme property list, fallback root variables, and `DocumentPipController.applyTheme()`. Rerun and expect PASS.
+예상: 속성이 없어 FAIL.
 
-- [ ] **Step 4: Write failing Syllable Wake progress tests**
+이후 `--pip-synthetic-wake-color`, `--pip-synthetic-wake-rgb`를 theme property 목록, fallback root 변수, `DocumentPipController.applyTheme()`에 추가하고 PASS를 확인한다.
 
-Mount synthetic and native syllable scenes, animate to 25/50/75% progress, and assert synthetic elements expose the progress-driven wake variables/class while native elements do not.
+- [ ] **4단계: Syllable Wake 진행률 실패 테스트 작성**
 
-Also mount synthetic `LineLyrics` and `StaticLyrics` fixtures and assert they do not receive wake selectors/variables even though the scene remains accessibly marked as synthetic timing.
+Synthetic/native syllable scene을 25/50/75% 진행률에서 animate하고 synthetic element만 wake 진행 변수/class를 노출하는지 확인한다.
 
-Add settings tests:
+Synthetic `LineLyrics`와 `StaticLyrics`도 마운트해 scene은 접근 가능하게 synthetic으로 표시되지만 wake selector/변수는 적용되지 않는지 확인한다.
 
-- `motionIntensity: 0` -> halo opacity/amplitude exactly `0`, progress wake remains;
-- `motionEnabled: false` -> no independent breathing class/animation;
-- `reduceMotion: true` -> no independent breathing transition, immediate progress state.
+설정 테스트:
 
-- [ ] **Step 5: Implement wake state without a second progress clock**
+- `motionIntensity: 0`: halo opacity/진폭은 정확히 0, 진행 wake는 유지.
+- `motionEnabled: false`: 독립 breathing class/animation 없음.
+- `reduceMotion: true`: 독립 breathing transition 없이 즉시 진행 상태 반영.
 
-Reuse `--gradient-progress` already set in `SyllableVocals.animate()`. If an additional numeric variable is needed, derive it in the same method from the same `progress`; do not add `requestAnimationFrame`, `setInterval`, or CSS animation for the lyric sweep.
+- [ ] **5단계: 두 번째 진행 시계 없이 wake 구현**
 
-Use selectors scoped to `.aura-lyrics.synthetic-timing` so native syllable styles remain byte-for-byte equivalent where possible.
+`SyllableVocals.animate()`이 이미 설정하는 `--gradient-progress`를 재사용한다. 추가 숫자 변수가 필요하면 동일한 `progress`에서 계산한다. `requestAnimationFrame`, `setInterval`, 가사 sweep용 CSS animation을 추가하지 않는다.
 
-- [ ] **Step 6: Add the low-amplitude halo**
+Selector는 `.aura-lyrics.synthetic-timing` 아래로 제한해 native syllable 스타일을 가능한 한 그대로 유지한다.
 
-Use a pseudo-element or additive shadow on active synthetic vocal groups. It must:
+- [ ] **6단계: 낮은 진폭 halo 추가**
 
-- add no layout size;
-- use `pointer-events: none`;
-- scale opacity/amplitude with `--motion-intensity`;
-- resolve to zero independent halo at intensity zero or `.reduce-motion`;
-- never reduce glyph opacity or replace the contrast-safe foreground.
+Active synthetic vocal group에 pseudo-element 또는 additive shadow를 사용한다.
 
-- [ ] **Step 7: Run focused tests GREEN**
+- 레이아웃 공간을 추가하지 않음.
+- `pointer-events: none`.
+- `--motion-intensity`로 opacity/진폭 조절.
+- Intensity 0 또는 `.reduce-motion`에서 독립 halo가 0.
+- Glyph opacity를 낮추거나 대비 안전 foreground를 대체하지 않음.
 
-Run:
+- [ ] **7단계: 집중 테스트 GREEN 확인**
 
 ```bash
 npx vitest run tests/app/TrackThemeService.test.ts tests/pip/DocumentPipController.test.ts tests/renderer/SyllableVocals.test.ts tests/renderer/LyricsRenderer.test.ts tests/styles/pipStyles.test.ts
@@ -605,7 +616,7 @@ npm run typecheck
 npm run lint
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **8단계: 커밋**
 
 ```bash
 git add src/app/TrackThemeService.ts src/pip/DocumentPipController.ts src/renderer/components/SyllableVocals.ts src/styles/pip/baseStyles.ts src/styles/pip/lyricsStyles.ts tests/app/TrackThemeService.test.ts tests/pip/DocumentPipController.test.ts tests/renderer/SyllableVocals.test.ts tests/renderer/LyricsRenderer.test.ts tests/styles/pipStyles.test.ts
@@ -614,38 +625,36 @@ git commit -m "feat: add contrast safe syllable wake"
 
 ---
 
-### Task 7: Visual regression, full verification, and local Spotify install
+### 작업 7: 시각 회귀, 전체 검증, 로컬 Spotify 설치
 
-**Files:**
+**파일**
 
-- Modify: `tests/visual/harness/main.ts`
-- Modify: `tests/visual/lyrics-layout.visual.spec.ts`
-- Rename: `tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/synthetic-timing-marker.png` to `tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/synthetic-syllable-wake.png`
-- Create: `tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/aurora-intro-ready.png`
+- 수정: `tests/visual/harness/main.ts`
+- 수정: `tests/visual/lyrics-layout.visual.spec.ts`
+- 이름 변경: `tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/synthetic-timing-marker.png` → `synthetic-syllable-wake.png`
+- 생성: `tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/aurora-intro-ready.png`
 
-Use `@superpowers:verification-before-completion` before claiming completion.
+완료를 주장하기 전에 `@superpowers:verification-before-completion`을 사용한다.
 
-- [ ] **Step 1: Add the intro-ready visual scenario**
+- [ ] **1단계: Intro-ready 시각 시나리오 추가**
 
-Render track metadata with `mode: "intro"`. Assert title/byline/cover are visible and `.track-metadata-eyebrow` plus `.track-metadata-progress` are absent.
+`mode: "intro"` track metadata를 렌더링한다. 제목, byline, cover는 보이고 `.track-metadata-eyebrow`와 `.track-metadata-progress`는 없는지 확인한다.
 
-Update the harness's manual `applyTheme()` mapping to set `--pip-synthetic-wake-color` and `--pip-synthetic-wake-rgb` from `TrackTheme`. Visual tests must consume the scenario theme, not fallback values. Add a bounded harness assertion for both variables.
+Harness의 수동 `applyTheme()` mapping에 `TrackTheme.syntheticWakeForeground` 및 `syntheticWakeRgb`를 각각 `--pip-synthetic-wake-color`, `--pip-synthetic-wake-rgb`로 추가한다. Visual test가 fallback이 아니라 시나리오 theme 값을 사용하는지 두 변수를 제한된 assertion으로 확인한다.
 
-- [ ] **Step 2: Replace the folded-corner visual test**
+- [ ] **2단계: Folded-corner 시각 테스트 교체**
 
-Render `synthetic-word-sync` and assert:
+`synthetic-word-sync`에서 다음을 확인한다.
 
-- `.synthetic-timing` exists;
-- linked hidden description is correct;
-- no `.aura-timing-marker` exists;
-- active syllables use wake color/progress variables;
-- native `word-sync` has no synthetic state.
+- `.synthetic-timing` 존재.
+- 연결된 hidden 설명이 올바름.
+- `.aura-timing-marker` 없음.
+- Active syllable이 wake 색상/진행 변수 사용.
+- Native `word-sync`에는 synthetic 상태 없음.
 
-Capture `synthetic-syllable-wake.png`.
+`synthetic-syllable-wake.png`를 캡처한다.
 
-- [ ] **Step 3: Move the old baseline and verify no orphan remains**
-
-Run before snapshot generation:
+- [ ] **3단계: 기존 baseline 이동 및 orphan 부재 확인**
 
 ```bash
 git mv tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/synthetic-timing-marker.png \
@@ -653,9 +662,7 @@ git mv tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/synthetic-timin
 test ! -e tests/visual/__screenshots__/lyrics-layout.visual.spec.ts/synthetic-timing-marker.png
 ```
 
-- [ ] **Step 4: Verify visual RED, then generate and verify GREEN**
-
-Run:
+- [ ] **4단계: 시각 RED 확인 후 snapshot 생성 및 GREEN 확인**
 
 ```bash
 npm run test:visual
@@ -663,20 +670,20 @@ npm run test:visual:update
 npm run test:visual
 ```
 
-Expected: the first run fails for the changed/missing Syllable Wake and intro-ready baselines; the update writes the intended snapshots; the final run passes. Inspect both PNGs directly.
+예상: 첫 실행은 변경되거나 없는 Syllable Wake/intro-ready baseline 때문에 FAIL. Update 후 의도한 snapshot을 작성하고 마지막 실행은 PASS. 두 PNG를 직접 확인한다.
 
-- [ ] **Step 5: Commit visual baselines and harness/spec changes**
+- [ ] **5단계: 시각 baseline과 harness/spec 변경 커밋**
 
 ```bash
 git add tests/visual/harness/main.ts tests/visual/lyrics-layout.visual.spec.ts tests/visual/__screenshots__
 git commit -m "test: cover intro gate and syllable wake visuals"
 ```
 
-Confirm `git status --short` is clean. The reviewed final HEAD must include this commit.
+`git status --short`가 깨끗한지 확인한다. 최종 리뷰 대상 HEAD에는 이 커밋이 포함돼야 한다.
 
-- [ ] **Step 6: Run the complete fresh verification suite**
+- [ ] **6단계: Fresh 전체 검증 실행**
 
-Run each command and inspect its exit code/output:
+각 명령의 exit code와 출력을 직접 확인한다.
 
 ```bash
 npm run typecheck
@@ -688,27 +695,27 @@ git diff --check
 git status --short
 ```
 
-Expected:
+예상:
 
-- TypeScript exit `0`;
-- Biome exit `0`;
-- all Vitest files/tests pass;
-- Vite build exit `0`;
-- all Playwright tests pass;
-- no whitespace errors;
-- worktree is clean at the already committed candidate HEAD.
+- TypeScript exit `0`.
+- Biome exit `0`.
+- 모든 Vitest file/test PASS.
+- Vite build exit `0`.
+- 모든 Playwright test PASS.
+- whitespace 오류 없음.
+- 이미 커밋된 candidate HEAD에서 worktree가 깨끗함.
 
-- [ ] **Step 7: Request final code review of the actual HEAD**
+- [ ] **7단계: 실제 최종 HEAD 코드 리뷰 요청**
 
-Use `@superpowers:requesting-code-review` with the implementation base SHA and the current HEAD that already contains product code, unit tests, visual specs, and snapshot baselines. Fix every Critical/Important issue in a new commit.
+`@superpowers:requesting-code-review`에 구현 base SHA와 product code, unit test, visual spec, snapshot baseline을 모두 포함한 현재 HEAD를 전달한다. Critical/Important 문제는 새 커밋에서 모두 수정한다.
 
-- [ ] **Step 8: After every review fix, rerun the complete suite**
+- [ ] **8단계: 리뷰 수정마다 전체 suite 재실행**
 
-Repeat Step 6 in full after each review fix, not only affected tests. Redispatch the reviewer until APPROVED. Confirm the approved HEAD is clean with `git status --short` and `git diff --check`.
+리뷰 수정 후에는 일부 테스트만 실행하지 말고 6단계를 전부 반복한다. Reviewer가 APPROVED할 때까지 재검토한다. 승인된 HEAD에서 `git status --short`와 `git diff --check`가 깨끗해야 한다.
 
-- [ ] **Step 9: Build and install the clean reviewed HEAD locally**
+- [ ] **9단계: Clean reviewed HEAD를 빌드하고 로컬 설치**
 
-After all reviews and fresh verification pass:
+모든 리뷰와 fresh 검증이 끝난 뒤 실행한다.
 
 ```bash
 npm run build
@@ -718,8 +725,8 @@ spicetify apply
 spicetify config extensions
 ```
 
-Stop before `spicetify apply` if the two SHA-256 values do not match. After a match, apply and confirm `aura-lyrics.js` remains enabled. This external local install step requires the existing user authorization/escalation boundary.
+두 SHA-256 값이 다르면 `spicetify apply` 전에 중단한다. 일치하면 적용하고 `aura-lyrics.js`가 활성 상태인지 확인한다. 외부 로컬 설치는 기존 사용자 승인/escalation 경계를 따른다.
 
-- [ ] **Step 10: Hand off branch completion**
+- [ ] **10단계: 브랜치 완료 인계**
 
-Use `@superpowers:finishing-a-development-branch` to offer local merge, PR, keep-as-is, or discard. Do not push or merge without the user's choice.
+`@superpowers:finishing-a-development-branch`로 로컬 병합, PR, 유지, 폐기 옵션을 제시한다. 사용자 선택 없이 push 또는 merge하지 않는다.
