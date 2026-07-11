@@ -62,6 +62,7 @@ export class ExtensionApp {
 	private isPlaybackActive = false;
 	private appliedSettings: ExtensionSettings;
 	private settingsPresentationGeneration = 0;
+	private revealedSnapshot?: ReadyTrackSessionSnapshot;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
@@ -137,6 +138,7 @@ export class ExtensionApp {
 	public destroy(): void {
 		this.trackSession.invalidate();
 		this.introGate.endTrackEpoch();
+		this.revealedSnapshot = undefined;
 		this.themeGeneration += 1;
 		this.session = undefined;
 		this.started = false;
@@ -195,6 +197,10 @@ export class ExtensionApp {
 			if (this.currentTrack && !this.introGate.hasActiveEpoch()) {
 				this.introGate.beginTrackEpoch();
 			}
+			const revealedSnapshot = this.revealedSnapshotFor(this.currentTrack);
+			if (revealedSnapshot) {
+				this.revealReadySnapshot(revealedSnapshot, this.playbackSynchronizer.timestampSec);
+			}
 			await this.loadCurrentTrack(false);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -221,6 +227,7 @@ export class ExtensionApp {
 	private async onTrackChanged(track: TrackIdentity | undefined): Promise<void> {
 		this.trackSession.invalidate();
 		this.currentTrack = track;
+		this.revealedSnapshot = undefined;
 		if (track) {
 			this.introGate.beginTrackEpoch();
 		} else {
@@ -244,6 +251,7 @@ export class ExtensionApp {
 		if (!track) {
 			this.trackSession.invalidate();
 			this.introGate.endTrackEpoch();
+			this.revealedSnapshot = undefined;
 			this.session.setCover(undefined);
 			this.session.applyTheme(undefined);
 			this.showStatus("Waiting for music", "Start playing a Spotify track.");
@@ -253,10 +261,14 @@ export class ExtensionApp {
 		this.session.setCover(track.coverUrl);
 		void this.applyTrackTheme(track, themeGeneration);
 		this.stateMachine.dispatch({ type: "validTrack" });
-		this.renderPresentationState({ kind: "loading", track });
+		const revealedSnapshot = this.revealedSnapshotFor(track);
+		if (!revealedSnapshot) {
+			this.renderPresentationState({ kind: "loading", track });
+		}
 		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh);
 		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.session || this.currentTrack?.uri !== track.uri) return;
 		this.playbackSynchronizer.resync();
+		if (revealedSnapshot && !isReadyTrackSessionSnapshot(snapshot)) return;
 		this.renderLoadState(snapshot);
 		const enrichment = this.trackSession.enrichmentFor(snapshot);
 		if (enrichment && isReadyTrackSessionSnapshot(snapshot)) {
@@ -371,6 +383,12 @@ export class ExtensionApp {
 	private tick(deltaTime: number): void {
 		if (!this.session) return;
 		const settings = this.settings.get();
+		if (!this.isPlaybackActive) {
+			if (this.trackSession.getSnapshot().loadState.status === "ready") {
+				this.renderer.update(this.playbackSynchronizer.timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
+			}
+			return;
+		}
 		this.playbackSynchronizer.update(deltaTime, this.isPlaybackActive);
 		const timestampSec = this.playbackSynchronizer.timestampSec;
 		const result = this.introGate.tick(timestampSec);
@@ -423,6 +441,7 @@ export class ExtensionApp {
 	}
 
 	private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): void {
+		this.revealedSnapshot = snapshot;
 		this.stateMachine.dispatch({ type: "lyricsReady" });
 		this.mountReadySnapshot(snapshot);
 		this.renderer.update(timestampSec, 0);
@@ -450,6 +469,10 @@ export class ExtensionApp {
 			interludeStyle: this.settings.get().interludeStyle,
 			waveformForInterlude: (profile, interlude) => this.waveformService.waveformForInterlude(profile, interlude),
 		});
+	}
+
+	private revealedSnapshotFor(track: TrackIdentity | undefined): ReadyTrackSessionSnapshot | undefined {
+		return track && this.revealedSnapshot?.loadState.track.uri === track.uri ? this.revealedSnapshot : undefined;
 	}
 }
 

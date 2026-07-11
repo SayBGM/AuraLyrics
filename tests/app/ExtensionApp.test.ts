@@ -3,7 +3,7 @@ import { ExtensionApp } from "../../src/app/ExtensionApp";
 import type { IntroPresentationGate } from "../../src/app/IntroPresentationGate";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
-import type { LineLyrics, LyricsLoadState, TrackIdentity } from "../../src/lyrics/types";
+import type { LineLyrics, LyricsLoadState, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { TrackWaveformProfile } from "../../src/renderer/AudioAnalysisWaveformService";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
@@ -120,6 +120,44 @@ const readySnapshotAt = (track: TrackIdentity, firstVocalStartSec: number): Read
 	const loadState = readyLoadStateAt(track, firstVocalStartSec);
 	if (loadState.status !== "ready") throw new Error("Expected ready load state.");
 	return { loadState, lyrics: loadState.lyrics, timingSource: "native" };
+};
+
+const readySyllableSnapshot = (track: TrackIdentity, leadStartSec: number, backgroundStartSec = leadStartSec): ReadyTrackSessionSnapshot => {
+	const lyrics: SyllableLyrics = {
+		type: "syllable",
+		startTime: 0,
+		endTime: leadStartSec + 4,
+		content: [
+			{
+				type: "vocal",
+				oppositeAligned: false,
+				lead: {
+					startTime: leadStartSec,
+					endTime: leadStartSec + 2,
+					syllables: [{ text: "Lead", startTime: leadStartSec, endTime: leadStartSec + 2, isPartOfWord: false }],
+				},
+				background: [
+					{
+						startTime: backgroundStartSec,
+						endTime: backgroundStartSec + 2,
+						syllables: [{ text: "Echo", startTime: backgroundStartSec, endTime: backgroundStartSec + 2, isPartOfWord: false }],
+					},
+				],
+			},
+		],
+	};
+	return {
+		loadState: {
+			status: "ready",
+			track,
+			lyrics,
+			provider: "lrclib",
+			source: "network",
+			diagnostics: { cache: { status: "miss" }, attempts: [] },
+		},
+		lyrics,
+		timingSource: "native",
+	};
 };
 
 const introGateOf = (app: ExtensionApp): IntroPresentationGate => (app as unknown as { introGate: IntroPresentationGate }).introGate;
@@ -309,7 +347,11 @@ describe("ExtensionApp", () => {
 			trackSession: { isCurrent: (snapshot: TrackSessionSnapshot) => boolean; invalidate: () => void };
 			introGate: IntroPresentationGate;
 			playbackSynchronizer: { timestampSec: number };
-			renderer: { destroy: () => void; update: (timestampSec: number, deltaTimeSec: number) => void };
+			renderer: {
+				destroy: () => void;
+				showTrackMetadata: () => void;
+				update: (timestampSec: number, deltaTimeSec: number) => void;
+			};
 			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
@@ -324,6 +366,7 @@ describe("ExtensionApp", () => {
 		internals.playbackSynchronizer = { timestampSec: 5 };
 		internals.renderer = {
 			destroy: vi.fn(),
+			showTrackMetadata: vi.fn(),
 			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
 		};
 		internals.mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
@@ -335,6 +378,129 @@ describe("ExtensionApp", () => {
 		expect(events).toEqual([
 			["mount", enriched],
 			["update", 5, 0],
+		]);
+		app.destroy();
+	});
+
+	test("reveals the latest enriched snapshot when its first vocal moves within two seconds", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:enriched-threshold");
+		const initial = readySnapshotAt(track, 10);
+		const enriched = readySnapshotAt(track, 7);
+		const session = { root: document.createElement("main") };
+		const events: unknown[][] = [];
+		const internals = app as unknown as {
+			session: typeof session;
+			currentTrack: TrackIdentity;
+			trackSession: { isCurrent: (snapshot: TrackSessionSnapshot) => boolean; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			playbackSynchronizer: { timestampSec: number };
+			renderer: {
+				destroy: () => void;
+				showTrackMetadata: () => void;
+				update: (timestampSec: number, deltaTimeSec: number) => void;
+			};
+			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			renderEnrichment: (
+				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
+				initialSnapshot: ReadyTrackSessionSnapshot,
+				track: TrackIdentity,
+				activeSession: typeof session
+			) => Promise<void>;
+		};
+		internals.session = session;
+		internals.currentTrack = track;
+		internals.trackSession = { isCurrent: (snapshot) => snapshot === enriched, invalidate: vi.fn() };
+		internals.playbackSynchronizer = { timestampSec: 5 };
+		internals.renderer = {
+			destroy: vi.fn(),
+			showTrackMetadata: vi.fn(),
+			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
+		};
+		internals.mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
+		internals.introGate.beginTrackEpoch();
+		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
+
+		await internals.renderEnrichment(Promise.resolve(enriched), initial, track, session);
+
+		expect(events).toEqual([
+			["mount", enriched],
+			["update", 5, 0],
+		]);
+		app.destroy();
+	});
+
+	test("extends a held intro to the latest enriched first-vocal deadline", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:enriched-later");
+		const initial = readySnapshotAt(track, 10);
+		const enriched = readySnapshotAt(track, 15);
+		const session = { root: document.createElement("main") };
+		const events: unknown[][] = [];
+		let timestampSec = 5;
+		const synchronizer = {
+			get timestampSec() {
+				return timestampSec;
+			},
+			update: (deltaTimeSec: number) => {
+				timestampSec += deltaTimeSec;
+			},
+		};
+		const internals = app as unknown as {
+			session: typeof session;
+			currentTrack: TrackIdentity;
+			trackSession: {
+				isCurrent: (snapshot: TrackSessionSnapshot) => boolean;
+				getSnapshot: () => TrackSessionSnapshot;
+				invalidate: () => void;
+			};
+			introGate: IntroPresentationGate;
+			isPlaybackActive: boolean;
+			playbackSynchronizer: typeof synchronizer;
+			renderer: {
+				destroy: () => void;
+				showTrackMetadata: () => void;
+				update: (timestampSec: number, deltaTimeSec: number) => void;
+			};
+			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			renderEnrichment: (
+				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
+				initialSnapshot: ReadyTrackSessionSnapshot,
+				track: TrackIdentity,
+				activeSession: typeof session
+			) => Promise<void>;
+			tick: (deltaTimeSec: number) => void;
+		};
+		internals.session = session;
+		internals.currentTrack = track;
+		internals.trackSession = {
+			isCurrent: (snapshot) => snapshot === enriched,
+			getSnapshot: () => enriched,
+			invalidate: vi.fn(),
+		};
+		internals.playbackSynchronizer = synchronizer;
+		internals.renderer = {
+			destroy: vi.fn(),
+			showTrackMetadata: vi.fn(),
+			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
+		};
+		internals.mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
+		internals.isPlaybackActive = true;
+		internals.introGate.beginTrackEpoch();
+		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
+
+		await internals.renderEnrichment(Promise.resolve(enriched), initial, track, session);
+		expect(events).toEqual([]);
+		internals.tick(5);
+		expect(events.some(([event]) => event === "mount")).toBe(false);
+		events.length = 0;
+		internals.tick(5);
+
+		expect(events).toEqual([
+			["mount", enriched],
+			["update", 15, 0],
 		]);
 		app.destroy();
 	});
@@ -595,6 +761,67 @@ describe("ExtensionApp", () => {
 		expect(mount).toHaveBeenCalledOnce();
 	});
 
+	test("recalculates the background first vocal on a structural sync-preference change", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:settings-background");
+		const snapshot = readySyllableSnapshot(track, 10, 4);
+		const events: unknown[][] = [];
+		const synchronizer = { timestampSec: 3, resync: vi.fn() };
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: () => void };
+			currentTrack: TrackIdentity;
+			appliedSettings: ExtensionSettings;
+			settings: { get: () => ExtensionSettings; update: (patch: Partial<ExtensionSettings>) => void };
+			trackSession: {
+				updateSettings: () => Promise<TrackSessionSnapshot | undefined>;
+				isCurrent: (snapshot: TrackSessionSnapshot) => boolean;
+				invalidate: () => void;
+			};
+			introGate: IntroPresentationGate;
+			playbackSynchronizer: typeof synchronizer;
+			renderer: {
+				destroy: () => void;
+				applySettings: () => void;
+				showTrackMetadata: () => void;
+				update: (timestampSec: number, deltaTimeSec: number) => void;
+			};
+			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			applySettings: () => Promise<void>;
+		};
+		internals.settings.update({ syncPreference: "line-only" });
+		internals.appliedSettings = internals.settings.get();
+		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
+		internals.currentTrack = track;
+		internals.trackSession = {
+			updateSettings: vi.fn(async () => snapshot),
+			isCurrent: (candidate) => candidate === snapshot,
+			invalidate: vi.fn(),
+		};
+		internals.playbackSynchronizer = synchronizer;
+		internals.renderer = {
+			destroy: vi.fn(),
+			applySettings: vi.fn(),
+			showTrackMetadata: vi.fn(),
+			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
+		};
+		internals.mountReadySnapshot = (candidate) => events.push(["mount", candidate]);
+		internals.introGate.beginTrackEpoch();
+		internals.presentReadySnapshot(snapshot);
+		expect(internals.introGate.isHolding()).toBe(true);
+		events.length = 0;
+
+		internals.settings.update({ syncPreference: "prefer-syllable" });
+		await internals.applySettings();
+
+		expect(events).toEqual([
+			["mount", snapshot],
+			["update", 3, 0],
+		]);
+		app.destroy();
+	});
+
 	test("mounts only the latest result when structural setting rebuilds overlap", async () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
@@ -802,6 +1029,40 @@ describe("ExtensionApp", () => {
 		expect(internals.introGate.hasActiveEpoch()).toBe(false);
 	});
 
+	test("applies a fresh intro latch to repeated same-URI and post-no-track DOM loads", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = () => 0;
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:repeat-dom");
+		const root = document.createElement("main");
+		const load = vi
+			.fn()
+			.mockResolvedValueOnce(readyLoadStateAt(track, 1))
+			.mockResolvedValueOnce(readyLoadStateAt(track, 10))
+			.mockResolvedValueOnce(readyLoadStateAt(track, 1));
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			lyricsService: { load: typeof load; refreshCooldowns: () => void; invalidate: () => void };
+			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.lyricsService = { load, refreshCooldowns: vi.fn(), invalidate: vi.fn() };
+
+		await internals.onTrackChanged(track);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+
+		await internals.onTrackChanged(track);
+		expect(root.querySelector(".track-metadata-scene.intro")).not.toBeNull();
+		expect(root.querySelector(".lyrics-track")).toBeNull();
+
+		await internals.onTrackChanged(undefined);
+		expect(root.querySelector(".status-card")?.textContent).toContain("Waiting for music");
+		await internals.onTrackChanged(track);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-scene.intro")).toBeNull();
+		app.destroy();
+	});
+
 	test("starts an intro epoch once on first PiP open and preserves it across reopen", async () => {
 		const { spicetify } = createSpicetify();
 		spicetify.Player.data = {
@@ -891,6 +1152,40 @@ describe("ExtensionApp", () => {
 		});
 	});
 
+	test("keeps revealed lyrics visible while a manual refresh is pending", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = () => 8_000;
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:pending-refresh");
+		const refreshResult = deferred<LyricsLoadState>();
+		const load = vi
+			.fn()
+			.mockResolvedValueOnce(readyLoadStateAt(track, 10))
+			.mockImplementationOnce(() => refreshResult.promise);
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: typeof load; refreshCooldowns: () => void; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = { load, refreshCooldowns: vi.fn(), invalidate: vi.fn() };
+		internals.introGate.beginTrackEpoch();
+		await internals.loadCurrentTrack(false);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+
+		const refreshing = internals.loadCurrentTrack(true);
+
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-scene")).toBeNull();
+		refreshResult.resolve(readyLoadStateAt(track, 10));
+		await refreshing;
+		app.destroy();
+	});
+
 	test("reopens directly to lyrics after reveal even after a backward seek and manual refresh", async () => {
 		const { spicetify } = createSpicetify();
 		const track = metadataTrack("spotify:track:revealed-reopen", { title: "Revealed Reopen" });
@@ -931,8 +1226,13 @@ describe("ExtensionApp", () => {
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
 		internals.pip = { open, close: vi.fn() };
+		const reopenResult = deferred<LyricsLoadState>();
 		internals.lyricsService = {
-			load: vi.fn(async () => readyLoadStateAt(track, 10)),
+			load: vi
+				.fn()
+				.mockResolvedValueOnce(readyLoadStateAt(track, 10))
+				.mockImplementationOnce(() => reopenResult.promise)
+				.mockResolvedValue(readyLoadStateAt(track, 10)),
 			refreshCooldowns: vi.fn(),
 			invalidate: vi.fn(),
 		};
@@ -942,9 +1242,12 @@ describe("ExtensionApp", () => {
 		internals.closePip(false);
 		progressMs = 0;
 
-		await internals.openPip();
+		const reopening = internals.openPip();
+		await vi.waitFor(() => expect(roots).toHaveLength(2));
 		expect(roots[1]?.querySelector(".lyrics-track")).not.toBeNull();
 		expect(roots[1]?.querySelector(".track-metadata-scene.intro")).toBeNull();
+		reopenResult.resolve(readyLoadStateAt(track, 10));
+		await reopening;
 		await internals.loadCurrentTrack(true);
 		expect(roots[1]?.querySelector(".lyrics-track")).not.toBeNull();
 		expect(roots[1]?.querySelector(".track-metadata-scene.intro")).toBeNull();
@@ -1410,6 +1713,45 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
+	test("activates the real syllable row and progress on the same frame that reveals it", () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:real-syllable-reveal");
+		const snapshot = readySyllableSnapshot(track, 8, 9);
+		const root = document.createElement("main");
+		let timestampSec = 0;
+		const synchronizer = {
+			get timestampSec() {
+				return timestampSec;
+			},
+			update: () => {
+				timestampSec = 8.5;
+			},
+		};
+		const internals = app as unknown as {
+			session: { root: HTMLElement };
+			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			isPlaybackActive: boolean;
+			playbackSynchronizer: typeof synchronizer;
+			tick: (deltaTimeSec: number) => void;
+		};
+		internals.session = { root };
+		internals.trackSession = { getSnapshot: () => snapshot, invalidate: vi.fn() };
+		internals.playbackSynchronizer = synchronizer;
+		internals.isPlaybackActive = true;
+		internals.introGate.beginTrackEpoch();
+		expect(internals.introGate.accept(snapshot, internalsSettingsOf(app), 0).kind).toBe("hold");
+
+		internals.tick(0.25);
+
+		expect(root.querySelector(".syllable-group.active")).not.toBeNull();
+		expect(root.querySelector(".vocals.lead .syllable-row.active")?.textContent).toContain("Lead");
+		const syllable = root.querySelector<HTMLElement>(".vocals.lead .syllable.active");
+		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("25%");
+		app.destroy();
+	});
+
 	test("keeps sampling playback while a ready intro is held even when lyrics DOM is not mounted", () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
@@ -1495,6 +1837,44 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
+	test("does not sample or evaluate a held intro on animation frames while paused", () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:paused-hold");
+		const snapshot = readySnapshotAt(track, 8);
+		const updatePlayback = vi.fn();
+		const tickGate = vi.spyOn(introGateOf(app), "tick");
+		const mount = vi.fn();
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement };
+			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			isPlaybackActive: boolean;
+			playbackSynchronizer: { timestampSec: number; update: typeof updatePlayback };
+			renderer: { destroy: () => void; update: () => void };
+			mountReadySnapshot: typeof mount;
+			tick: (deltaTimeSec: number) => void;
+		};
+		internals.session = { root };
+		internals.trackSession = { getSnapshot: () => snapshot, invalidate: vi.fn() };
+		internals.playbackSynchronizer = { timestampSec: 8, update: updatePlayback };
+		internals.renderer = { destroy: vi.fn(), update: vi.fn() };
+		internals.mountReadySnapshot = mount;
+		internals.isPlaybackActive = false;
+		internals.introGate.beginTrackEpoch();
+		expect(internals.introGate.accept(snapshot, internalsSettingsOf(app), 0).kind).toBe("hold");
+		tickGate.mockClear();
+
+		internals.tick(0.25);
+
+		expect(updatePlayback).not.toHaveBeenCalled();
+		expect(tickGate).not.toHaveBeenCalled();
+		expect(mount).not.toHaveBeenCalled();
+		expect(internals.introGate.isHolding()).toBe(true);
+		app.destroy();
+	});
+
 	test("reveals a held intro on the synchronized tick after a seek snap", () => {
 		const { spicetify } = createSpicetify();
 		const getProgress = vi.fn().mockReturnValueOnce(0).mockReturnValue(10_000);
@@ -1530,6 +1910,52 @@ describe("ExtensionApp", () => {
 		expect(mount).toHaveBeenCalledWith(snapshot);
 		expect(update).toHaveBeenCalledTimes(1);
 		expect(update).toHaveBeenCalledWith(10, 0);
+		app.destroy();
+	});
+
+	test("keeps real lyrics DOM after a backward seek probe and a later resume", async () => {
+		const { spicetify } = createSpicetify();
+		let progressMs = 8_000;
+		spicetify.Player.getProgress = () => progressMs;
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:revealed-seek-dom");
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: {
+				root: HTMLElement;
+				setCover: (url?: string) => void;
+				setPlaying: (isPlaying: boolean) => void;
+				applyTheme: (theme?: TrackTheme) => void;
+			};
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			isPlaybackActive: boolean;
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+			tick: (deltaTimeSec: number) => void;
+			onPlaybackChanged: (isPlaying: boolean) => void;
+		};
+		internals.session = { root, setCover: vi.fn(), setPlaying: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = {
+			load: vi.fn(async () => readyLoadStateAt(track, 10)),
+			refreshCooldowns: vi.fn(),
+			invalidate: vi.fn(),
+		};
+		internals.introGate.beginTrackEpoch();
+		internals.isPlaybackActive = true;
+		await internals.loadCurrentTrack(false);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+
+		progressMs = 0;
+		internals.tick(0.25);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-scene")).toBeNull();
+
+		internals.onPlaybackChanged(false);
+		internals.onPlaybackChanged(true);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-scene")).toBeNull();
 		app.destroy();
 	});
 
