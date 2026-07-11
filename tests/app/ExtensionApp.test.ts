@@ -1186,6 +1186,72 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
+	test.each([
+		{
+			name: "provider error",
+			track: metadataTrack("spotify:track:refresh-error"),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "error", track, message: "offline" }),
+			expected: "metadata",
+		},
+		{
+			name: "missing lyrics",
+			track: metadataTrack("spotify:track:refresh-empty"),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "no-lyrics" }),
+			expected: "metadata",
+		},
+		{
+			name: "instrumental",
+			track: metadataTrack("spotify:track:refresh-instrumental"),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "instrumental" }),
+			expected: "instrumental",
+		},
+		{
+			name: "unsupported local track",
+			track: metadataTrack("spotify:local:aura:refresh:local:180", { isLocal: true }),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "unsupported-local" }),
+			expected: "metadata",
+		},
+	])("keeps lyrics while a refresh is pending, then renders the final $name presentation", async ({ track, finalState, expected }) => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = () => 8_000;
+		const app = new ExtensionApp(spicetify);
+		const refreshResult = deferred<LyricsLoadState>();
+		const load = vi
+			.fn()
+			.mockResolvedValueOnce(readyLoadStateAt(track, 10))
+			.mockImplementationOnce(() => refreshResult.promise);
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: typeof load; refreshCooldowns: () => void; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = { load, refreshCooldowns: vi.fn(), invalidate: vi.fn() };
+		internals.introGate.beginTrackEpoch();
+		await internals.loadCurrentTrack(false);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+
+		const refreshing = internals.loadCurrentTrack(true);
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-scene")).toBeNull();
+		refreshResult.resolve(finalState(track));
+		await refreshing;
+
+		expect(root.querySelector(".lyrics-track")).toBeNull();
+		if (expected === "instrumental") {
+			expect(root.classList.contains("album-art-mode")).toBe(true);
+			expect(root.children).toHaveLength(0);
+		} else {
+			expect(root.querySelector(".track-metadata-scene.persistent")).not.toBeNull();
+			expect(root.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
+		}
+		app.destroy();
+	});
+
 	test("reopens directly to lyrics after reveal even after a backward seek and manual refresh", async () => {
 		const { spicetify } = createSpicetify();
 		const track = metadataTrack("spotify:track:revealed-reopen", { title: "Revealed Reopen" });
