@@ -63,7 +63,6 @@ export class ExtensionApp {
 	private appliedSettings: ExtensionSettings;
 	private settingsPresentationGeneration = 0;
 	private revealedSnapshot?: ReadyTrackSessionSnapshot;
-	private revealedSnapshotFingerprint?: string;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
@@ -140,7 +139,6 @@ export class ExtensionApp {
 		this.trackSession.invalidate();
 		this.introGate.endTrackEpoch();
 		this.revealedSnapshot = undefined;
-		this.revealedSnapshotFingerprint = undefined;
 		this.themeGeneration += 1;
 		this.session = undefined;
 		this.started = false;
@@ -230,7 +228,6 @@ export class ExtensionApp {
 		this.trackSession.invalidate();
 		this.currentTrack = track;
 		this.revealedSnapshot = undefined;
-		this.revealedSnapshotFingerprint = undefined;
 		if (track) {
 			this.introGate.beginTrackEpoch();
 		} else {
@@ -255,7 +252,6 @@ export class ExtensionApp {
 			this.trackSession.invalidate();
 			this.introGate.endTrackEpoch();
 			this.revealedSnapshot = undefined;
-			this.revealedSnapshotFingerprint = undefined;
 			this.session.setCover(undefined);
 			this.session.applyTheme(undefined);
 			this.showStatus("Waiting for music", "Start playing a Spotify track.");
@@ -274,7 +270,7 @@ export class ExtensionApp {
 		this.playbackSynchronizer.resync();
 		if (!isReadyTrackSessionSnapshot(snapshot)) {
 			this.revealedSnapshot = undefined;
-			this.revealedSnapshotFingerprint = undefined;
+			this.introGate.discardPendingSession();
 		}
 		this.renderLoadState(snapshot);
 		const enrichment = this.trackSession.enrichmentFor(snapshot);
@@ -422,11 +418,20 @@ export class ExtensionApp {
 			return;
 		}
 		const presentationGeneration = ++this.settingsPresentationGeneration;
-		const snapshot = await this.trackSession.updateSettings(settings);
+		const pendingSnapshot = this.trackSession.getSnapshot();
+		let snapshot = await this.trackSession.updateSettings(settings);
+		let usesPreservedSnapshot = false;
+		if ((!snapshot || !isReadyTrackSessionSnapshot(snapshot)) && pendingSnapshot.loadState.status === "loading") {
+			const preservedSnapshot = this.revealedSnapshotFor(this.currentTrack);
+			if (preservedSnapshot) {
+				snapshot = preservedSnapshot;
+				usesPreservedSnapshot = true;
+			}
+		}
 		if (
 			presentationGeneration !== this.settingsPresentationGeneration ||
 			!snapshot ||
-			!this.trackSession.isCurrent(snapshot) ||
+			(usesPreservedSnapshot ? this.trackSession.getSnapshot() !== pendingSnapshot : !this.trackSession.isCurrent(snapshot)) ||
 			this.session !== session ||
 			!isReadyTrackSessionSnapshot(snapshot) ||
 			this.currentTrack?.uri !== snapshot.loadState.track.uri
@@ -449,7 +454,6 @@ export class ExtensionApp {
 
 	private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): void {
 		this.revealedSnapshot = snapshot;
-		this.revealedSnapshotFingerprint = structuralPresentationFingerprint(this.settings.get());
 		this.stateMachine.dispatch({ type: "lyricsReady" });
 		this.mountReadySnapshot(snapshot);
 		this.renderer.update(timestampSec, 0);
@@ -481,7 +485,8 @@ export class ExtensionApp {
 
 	private revealedSnapshotFor(track: TrackIdentity | undefined): ReadyTrackSessionSnapshot | undefined {
 		if (!track || this.revealedSnapshot?.loadState.track.uri !== track.uri) return undefined;
-		if (this.revealedSnapshotFingerprint === structuralPresentationFingerprint(this.settings.get())) {
+		const settings = this.settings.get();
+		if (this.revealedSnapshot.timingSource !== "synthetic" || (settings.pseudoKaraoke && settings.syncPreference === "prefer-syllable")) {
 			return this.revealedSnapshot;
 		}
 		return {
@@ -495,17 +500,6 @@ export class ExtensionApp {
 		return this.session !== undefined && this.revealedSnapshot !== undefined && this.revealedSnapshot.loadState.track.uri === this.currentTrack?.uri;
 	}
 }
-
-const structuralPresentationFingerprint = (settings: ExtensionSettings): string =>
-	JSON.stringify([
-		settings.language,
-		settings.syncPreference,
-		settings.pseudoKaraoke,
-		settings.showTranslation,
-		settings.showInterludes,
-		settings.interludeStyle,
-		settings.debugMode,
-	]);
 
 const isReadyTrackSessionSnapshot = (snapshot: TrackSessionSnapshot): snapshot is ReadyTrackSessionSnapshot => snapshot.loadState.status === "ready";
 
