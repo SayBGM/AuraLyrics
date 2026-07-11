@@ -7,35 +7,41 @@ export type IntroGateResult =
 	| { kind: "hold"; snapshot: ReadyTrackSessionSnapshot; firstVocalStartSec: number }
 	| { kind: "reveal"; snapshot: ReadyTrackSessionSnapshot };
 
+type PendingIntro = {
+	snapshot: ReadyTrackSessionSnapshot;
+	firstVocalStartSec: number;
+};
+
+type IntroGateState = { kind: "inactive" } | { kind: "active-unrevealed"; pending?: PendingIntro } | { kind: "revealed" };
+
 export class IntroPresentationGate {
-	private activeEpoch = false;
-	private revealed = false;
-	private pendingSnapshot?: ReadyTrackSessionSnapshot;
-	private pendingFirstVocalStartSec?: number;
+	private state: IntroGateState = { kind: "inactive" };
 
 	public beginTrackEpoch(): void {
-		this.activeEpoch = true;
-		this.revealed = false;
-		this.clearPending();
+		this.state = { kind: "active-unrevealed" };
 	}
 
 	public endTrackEpoch(): void {
-		this.activeEpoch = false;
-		this.revealed = false;
-		this.clearPending();
+		this.state = { kind: "inactive" };
 	}
 
 	public hasActiveEpoch(): boolean {
-		return this.activeEpoch;
+		return this.state.kind !== "inactive";
 	}
 
 	public discardPendingSession(): void {
-		this.clearPending();
+		if (this.state.kind === "active-unrevealed") {
+			this.state = { kind: "active-unrevealed" };
+		}
 	}
 
 	public accept(snapshot: ReadyTrackSessionSnapshot, settings: ExtensionSettings, timestampSec: number): IntroGateResult {
+		if (this.state.kind === "inactive") {
+			return { kind: "none" };
+		}
+
 		const firstVocalStartSec = firstRenderedVocalStartSec(snapshot.lyrics, settings.syncPreference);
-		if (this.revealed) {
+		if (this.state.kind === "revealed") {
 			return { kind: "reveal", snapshot };
 		}
 
@@ -43,8 +49,7 @@ export class IntroPresentationGate {
 			return this.reveal(snapshot);
 		}
 
-		this.pendingSnapshot = snapshot;
-		this.pendingFirstVocalStartSec = firstVocalStartSec;
+		this.state = { kind: "active-unrevealed", pending: { snapshot, firstVocalStartSec } };
 		return { kind: "hold", snapshot, firstVocalStartSec };
 	}
 
@@ -57,13 +62,16 @@ export class IntroPresentationGate {
 	}
 
 	public isHolding(): boolean {
-		return this.activeEpoch && this.pendingSnapshot !== undefined;
+		return this.state.kind === "active-unrevealed" && this.state.pending !== undefined;
 	}
 
 	private evaluatePending(timestampSec: number, applyImmediateThreshold: boolean): IntroGateResult {
-		const snapshot = this.pendingSnapshot;
-		const firstVocalStartSec = this.pendingFirstVocalStartSec;
-		if (!snapshot || firstVocalStartSec === undefined || introDecision({ firstVocalStartSec, timestampSec, applyImmediateThreshold }) === "hold") {
+		if (this.state.kind !== "active-unrevealed" || !this.state.pending) {
+			return { kind: "none" };
+		}
+
+		const { snapshot, firstVocalStartSec } = this.state.pending;
+		if (introDecision({ firstVocalStartSec, timestampSec, applyImmediateThreshold }) === "hold") {
 			return { kind: "none" };
 		}
 
@@ -71,13 +79,7 @@ export class IntroPresentationGate {
 	}
 
 	private reveal(snapshot: ReadyTrackSessionSnapshot): IntroGateResult {
-		this.revealed = true;
-		this.clearPending();
+		this.state = { kind: "revealed" };
 		return { kind: "reveal", snapshot };
-	}
-
-	private clearPending(): void {
-		this.pendingSnapshot = undefined;
-		this.pendingFirstVocalStartSec = undefined;
 	}
 }

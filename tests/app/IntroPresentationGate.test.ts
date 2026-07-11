@@ -179,6 +179,47 @@ describe("IntroPresentationGate pending replacement", () => {
 });
 
 describe("IntroPresentationGate session and epoch lifecycle", () => {
+	test("ignores snapshots and playback updates before an epoch begins", () => {
+		const gate = new IntroPresentationGate();
+		const snapshotAt10 = readySnapshot(lineLyricsAt(10));
+
+		const acceptResult = gate.accept(snapshotAt10, settings(), 0);
+		const resumeResult = gate.resume(8);
+		const tickResult = gate.tick(10);
+
+		expect(acceptResult).toEqual({ kind: "none" });
+		expect(resumeResult).toEqual({ kind: "none" });
+		expect(tickResult).toEqual({ kind: "none" });
+		expect(gate.hasActiveEpoch()).toBe(false);
+		expect(gate.isHolding()).toBe(false);
+	});
+
+	test("ignores late results after an epoch ends and accepts snapshots again in a fresh epoch", () => {
+		const gate = new IntroPresentationGate();
+		const snapshotAt10 = readySnapshot(lineLyricsAt(10));
+
+		gate.beginTrackEpoch();
+		expect(gate.accept(snapshotAt10, settings(), 0).kind).toBe("hold");
+		gate.endTrackEpoch();
+
+		const lateAcceptResult = gate.accept(snapshotAt10, settings(), 0);
+		const lateResumeResult = gate.resume(8);
+		const lateTickResult = gate.tick(10);
+
+		expect(lateAcceptResult).toEqual({ kind: "none" });
+		expect(lateResumeResult).toEqual({ kind: "none" });
+		expect(lateTickResult).toEqual({ kind: "none" });
+		expect(gate.hasActiveEpoch()).toBe(false);
+		expect(gate.isHolding()).toBe(false);
+
+		gate.beginTrackEpoch();
+		expect(gate.accept(snapshotAt10, settings(), 0)).toEqual({
+			kind: "hold",
+			snapshot: snapshotAt10,
+			firstVocalStartSec: 10,
+		});
+	});
+
 	test("discards only the pending session before reveal and keeps the playback epoch active", () => {
 		const gate = new IntroPresentationGate();
 		const snapshotAt10 = readySnapshot(lineLyricsAt(10));
