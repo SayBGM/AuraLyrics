@@ -267,8 +267,12 @@ export class ExtensionApp {
 	private onPlaybackChanged(isPlaying: boolean): void {
 		this.isPlaybackActive = isPlaying;
 		this.session?.setPlaying(isPlaying);
-		if (this.session) {
-			this.playbackSynchronizer.resync();
+		if (!this.session || !isPlaying) return;
+		this.playbackSynchronizer.resync();
+		const timestampSec = this.playbackSynchronizer.timestampSec;
+		const result = this.introGate.resume(timestampSec);
+		if (result.kind === "reveal") {
+			this.revealReadySnapshot(result.snapshot, timestampSec);
 		}
 	}
 
@@ -365,12 +369,18 @@ export class ExtensionApp {
 	}
 
 	private tick(deltaTime: number): void {
-		if (!this.session || this.trackSession.getSnapshot().loadState.status !== "ready") {
-			return;
-		}
+		if (!this.session) return;
 		const settings = this.settings.get();
 		this.playbackSynchronizer.update(deltaTime, this.isPlaybackActive);
-		this.renderer.update(this.playbackSynchronizer.timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
+		const timestampSec = this.playbackSynchronizer.timestampSec;
+		const result = this.introGate.tick(timestampSec);
+		if (result.kind === "reveal") {
+			this.revealReadySnapshot(result.snapshot, timestampSec);
+			return;
+		}
+		if (this.trackSession.getSnapshot().loadState.status === "ready") {
+			this.renderer.update(timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
+		}
 	}
 
 	private async applySettings(): Promise<void> {
