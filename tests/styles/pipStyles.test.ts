@@ -47,6 +47,7 @@ describe("pipStyles", () => {
 		expect(visuallyHiddenRule).toContain("margin: -1px");
 		expect(visuallyHiddenRule).toContain("overflow: hidden");
 		expect(visuallyHiddenRule).toContain("clip: rect(0, 0, 0, 0)");
+		expect(visuallyHiddenRule).toContain("clip-path: inset(50%)");
 		expect(visuallyHiddenRule).toContain("white-space: nowrap");
 		expect(visuallyHiddenRule).toContain("border: 0");
 		expect(lyricsStyles).not.toContain(".aura-timing-marker");
@@ -65,6 +66,8 @@ describe("pipStyles", () => {
 		const statusRule = statusStyles.match(/\.status-card \{[^}]+\}/)?.[0] ?? "";
 
 		expect(rootRule).toContain("--pip-foreground-color: #ffffff");
+		expect(rootRule).toContain("--pip-synthetic-wake-color: #ffffff");
+		expect(rootRule).toContain("--pip-synthetic-wake-rgb: 255, 255, 255");
 		expect(rootRule).toContain("--pip-muted-foreground-color:");
 		expect(rootRule).toContain("background: var(--pip-background-color)");
 		expect(scrimRule).toContain("rgba(var(--pip-scrim-rgb)");
@@ -295,6 +298,47 @@ describe("pipStyles", () => {
 		expect(activeRule).toContain("text-shadow");
 		expect(melismaActiveRule).toContain("filter: saturate(calc(1.08 + var(--melisma-step, 0) * 0.025))");
 		expect(melismaActiveRule).toContain("text-shadow");
+	});
+
+	test("scopes the contrast-safe progress wake and additive halo to active synthetic syllables", () => {
+		const wakeRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing \.syllable\.active \{[^}]+\}/)?.[0] ?? "";
+		const haloRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing \.vocals-group\.syllable-group\.active::after \{[^}]+\}/)?.[0] ?? "";
+
+		expect(wakeRule).toContain("var(--pip-foreground-color)");
+		expect(wakeRule).toContain("var(--pip-synthetic-wake-color)");
+		expect(wakeRule).toContain("var(--gradient-progress, 0%)");
+		expect(wakeRule).toContain("var(--pip-muted-foreground-color)");
+		expect(wakeRule).not.toContain("opacity:");
+		expect(haloRule).toContain('content: ""');
+		expect(haloRule).toContain("position: absolute");
+		expect(haloRule).toContain("pointer-events: none");
+		expect(haloRule).toContain("--synthetic-halo-opacity: calc(0.16 * var(--motion-intensity, 1))");
+		expect(haloRule).toContain("--synthetic-halo-amplitude: calc(0.012 * var(--motion-intensity, 1))");
+		expect(haloRule).toContain("rgba(var(--pip-synthetic-wake-rgb)");
+		expect(haloRule).toContain("animation: synthetic-wake-halo-breathe");
+		expect(haloRule).not.toContain("transition:");
+		expect(lyricsStyles).toContain("@keyframes synthetic-wake-halo-breathe");
+		expect(lyricsStyles).not.toContain("@keyframes synthetic-wake-sweep");
+	});
+
+	test("keeps the progress wake at zero intensity while disabling independent halo motion for reduced motion", () => {
+		const wakeRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing \.syllable\.active \{[^}]+\}/)?.[0] ?? "";
+		const reducedHaloRule =
+			lyricsStyles.match(/\.aura-lyrics\.synthetic-timing\.reduce-motion \.vocals-group\.syllable-group\.active::after \{[^}]+\}/)?.[0] ?? "";
+
+		expect(wakeRule).not.toContain("--motion-intensity");
+		expect(reducedHaloRule).toContain("animation: none");
+		expect(reducedHaloRule).toContain("transition: none");
+		expect(reducedHaloRule).toContain("transform: scale(1)");
+	});
+
+	test("does not add a second JavaScript or CSS sweep clock for the synthetic wake", () => {
+		expect(lyricsStyles).not.toContain("requestAnimationFrame");
+		expect(lyricsStyles).not.toContain("setInterval");
+		const animatedGlyphRules = [...lyricsStyles.matchAll(/([^{}]+)\{([^{}]+)\}/g)]
+			.filter(([, selector, body]) => selector.split(",").some((part) => /\.syllable(?:\.active)?$/.test(part.trim()) && body.includes("animation:")))
+			.map(([, selector]) => selector.trim());
+		expect(animatedGlyphRules).toEqual([]);
 	});
 
 	test("styles a colored interlude frame and soft lyric blur", () => {

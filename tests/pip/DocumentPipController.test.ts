@@ -267,7 +267,8 @@ describe("DocumentPipController", () => {
 			requestWindow: vi.fn(async () => pipWindow),
 		};
 
-		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "");
+		const controller = new DocumentPipController();
+		const session = await controller.open(DEFAULT_SETTINGS, "");
 		const theme = buildTrackTheme({
 			DARK_VIBRANT: "#101820",
 			DESATURATED: "#778899",
@@ -285,6 +286,8 @@ describe("DocumentPipController", () => {
 		expect(root?.style.getPropertyValue("--pip-surface-tone")).toBe(theme.surfaceTone);
 		expect(root?.style.getPropertyValue("--pip-foreground-color")).toBe(theme.foreground);
 		expect(root?.style.getPropertyValue("--pip-foreground-rgb")).toBe(theme.foregroundRgb);
+		expect(root?.style.getPropertyValue("--pip-synthetic-wake-color")).toBe(theme.syntheticWakeForeground);
+		expect(root?.style.getPropertyValue("--pip-synthetic-wake-rgb")).toBe(theme.syntheticWakeRgb);
 		expect(root?.style.getPropertyValue("--pip-muted-foreground-color")).toBe(theme.mutedForeground);
 		expect(root?.style.getPropertyValue("--pip-muted-rgb")).toBe(theme.mutedRgb);
 		expect(root?.style.getPropertyValue("--pip-glow-rgb")).toBe(theme.glowRgb);
@@ -300,6 +303,8 @@ describe("DocumentPipController", () => {
 			"--pip-surface-tone",
 			"--pip-foreground-color",
 			"--pip-foreground-rgb",
+			"--pip-synthetic-wake-color",
+			"--pip-synthetic-wake-rgb",
 			"--pip-muted-foreground-color",
 			"--pip-muted-rgb",
 			"--pip-glow-rgb",
@@ -309,5 +314,10 @@ describe("DocumentPipController", () => {
 			expect(root?.style.getPropertyValue(property)).toBe("");
 		}
 		expect(root?.dataset.surfaceTone).toBeUndefined();
+
+		session.applyTheme(theme);
+		controller.close();
+		expect(root?.style.getPropertyValue("--pip-synthetic-wake-color")).toBe("");
+		expect(root?.style.getPropertyValue("--pip-synthetic-wake-rgb")).toBe("");
 	});
 });

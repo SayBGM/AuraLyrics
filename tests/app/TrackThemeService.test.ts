@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
 	buildTrackTheme,
 	compositeThemeSurface,
+	contrastRatio,
 	FALLBACK_TRACK_THEME,
 	pickAccentColor,
 	TrackThemeService,
@@ -88,6 +89,38 @@ describe("TrackThemeService", () => {
 		expect(theme.scrimOpacity).toBeGreaterThan(0);
 		expect(ratios.active).toBeGreaterThanOrEqual(4.5);
 		expect(ratios.secondary).toBeGreaterThanOrEqual(3);
+		expect(themeMeetsContrast(theme)).toBe(true);
+	});
+
+	test.each([
+		["dark", palette({ PROMINENT: "#101820", VIBRANT_NON_ALARMING: "#2d9cdb" })],
+		["light", palette({ PROMINENT: "#f3e8cf", VIBRANT_NON_ALARMING: "#7b4d18" })],
+		["mid-tone", palette({ PROMINENT: "#777777", VIBRANT_NON_ALARMING: "#c75bda" })],
+		["low-contrast accent", palette({ PROMINENT: "#101820", VIBRANT_NON_ALARMING: "#f6f7f8" })],
+		[
+			"invalid fallback",
+			palette({
+				DARK_VIBRANT: "none",
+				DESATURATED: "rgb(1, 2, 3)",
+				LIGHT_VIBRANT: "#12345",
+				PROMINENT: "",
+				VIBRANT: "blue",
+				VIBRANT_NON_ALARMING: "transparent",
+			}),
+		],
+	] as const)("keeps the %s synthetic wake foreground readable on the worst-case scrimmed surface", (_name, colors) => {
+		const theme = buildTrackTheme(colors);
+		const worstCaseCoverPixel = theme.surfaceTone === "dark" ? "#ffffff" : "#000000";
+		const surface = compositeThemeSurface(theme, worstCaseCoverPixel);
+
+		expect(theme.syntheticWakeForeground).toMatch(/^#[\da-f]{6}$/);
+		expect(theme.syntheticWakeRgb).toMatch(/^\d{1,3}, \d{1,3}, \d{1,3}$/);
+		expect(contrastRatio(theme.syntheticWakeForeground, surface)).toBeGreaterThanOrEqual(4.5);
+		if (contrastRatio(theme.accent, surface) < 4.5) {
+			expect(theme.syntheticWakeForeground).not.toBe(theme.accent);
+		}
+		expect(themeContrastRatios(theme, worstCaseCoverPixel).active).toBeGreaterThanOrEqual(4.5);
+		expect(themeContrastRatios(theme, worstCaseCoverPixel).secondary).toBeGreaterThanOrEqual(3);
 		expect(themeMeetsContrast(theme)).toBe(true);
 	});
 

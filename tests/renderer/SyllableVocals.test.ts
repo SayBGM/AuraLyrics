@@ -19,6 +19,21 @@ const vocal: SyllableVocal = {
 const liveSprings = (vocals: SyllableVocals): LiveSpringSet => (vocals as unknown as { liveSyllables: LiveSpringSet[] }).liveSyllables[0];
 
 describe("SyllableVocals live spring tuning", () => {
+	test.each([
+		[2.5, "25%"],
+		[5, "50%"],
+		[7.5, "75%"],
+	] as const)("reuses lyric animation progress at %s seconds without synthetic-only DOM state", (timestamp, expectedProgress) => {
+		const vocals = new SyllableVocals(vocal, false, DEFAULT_SETTINGS);
+		const syllable = vocals.element.querySelector<HTMLElement>(".syllable.synced");
+
+		vocals.animate(timestamp, 1 / 60, true);
+
+		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe(expectedProgress);
+		expect(syllable?.style.getPropertyValue("--synthetic-wake-progress")).toBe("");
+		expect(syllable?.className).not.toContain("synthetic-wake");
+	});
+
 	test("keeps live spring identities and state while softness changes their next response", () => {
 		const tuned = new SyllableVocals(vocal, false, DEFAULT_SETTINGS);
 		const control = new SyllableVocals(vocal, false, DEFAULT_SETTINGS);

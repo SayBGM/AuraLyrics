@@ -263,6 +263,81 @@ describe("LyricsRenderer", () => {
 		expect(root.querySelector(".aura-timing-marker")).toBeNull();
 	});
 
+	test("drives a synthetic syllable wake from the existing lyric progress without adding another DOM clock", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [{ text: "Wake", startTime: 0, endTime: 4, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: { ...DEFAULT_SETTINGS, motionIntensity: 0 }, timingSource: "synthetic" });
+		const scene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const syllable = root.querySelector<HTMLElement>(".syllable.synced");
+
+		for (const [timestamp, expectedProgress] of [
+			[1, "25%"],
+			[2, "50%"],
+			[3, "75%"],
+		] as const) {
+			renderer.update(timestamp, 1 / 60);
+			expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe(expectedProgress);
+		}
+		expect(scene?.matches(".aura-lyrics.synthetic-timing[data-timing-source='synthetic']")).toBe(true);
+		expect(scene?.style.getPropertyValue("--motion-intensity")).toBe("0");
+		expect(syllable?.style.getPropertyValue("--synthetic-wake-progress")).toBe("");
+		expect(root.querySelector(".synthetic-wake-halo")).toBeNull();
+
+		renderer.applySettings({ ...DEFAULT_SETTINGS, motionEnabled: false });
+		expect(scene?.classList.contains("reduce-motion")).toBe(true);
+		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("75%");
+
+		renderer.applySettings({ ...DEFAULT_SETTINGS, reduceMotion: true });
+		expect(scene?.classList.contains("reduce-motion")).toBe(true);
+	});
+
+	test("keeps native syllables on the existing gradient and spring DOM contract", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [{ text: "Native", startTime: 0, endTime: 4, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS, timingSource: "native" });
+		renderer.update(2, 1 / 60);
+		const scene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const syllable = root.querySelector<HTMLElement>(".syllable.synced");
+
+		expect(scene?.classList.contains("synthetic-timing")).toBe(false);
+		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("50%");
+		expect(syllable?.style.getPropertyValue("--synthetic-wake-progress")).toBe("");
+		expect(syllable?.className).not.toContain("synthetic-wake");
+		expect(root.querySelector(".synthetic-wake-halo")).toBeNull();
+	});
+
 	test.each(["native", undefined] as const)("keeps %s timing free of synthetic scene state", (timingSource) => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {
@@ -367,6 +442,7 @@ describe("LyricsRenderer", () => {
 		expect(scene?.matches(".aura-lyrics.synthetic-timing[data-timing-source='synthetic']")).toBe(true);
 		expect(descriptionId ? root.querySelector(`#${descriptionId}`)?.textContent : null).toBe("Synthesized karaoke sync");
 		expect(root.querySelector(".aura-timing-marker")).toBeNull();
+		expect(root.querySelector(".syllable, .syllable-group, .synthetic-wake-halo")).toBeNull();
 	});
 	test("shows album art mode without lyric or status content", () => {
 		const pipRoot = document.createElement("div");

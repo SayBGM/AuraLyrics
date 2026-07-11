@@ -137,6 +137,7 @@ export class DocumentPipController {
 
 	public close(): void {
 		this.generation++;
+		this.session?.applyTheme(undefined);
 		this.session?.window.close();
 		this.session = undefined;
 	}
@@ -250,6 +251,8 @@ export class DocumentPipController {
 			"--pip-surface-tone": theme.surfaceTone,
 			"--pip-foreground-color": theme.foreground,
 			"--pip-foreground-rgb": theme.foregroundRgb,
+			"--pip-synthetic-wake-color": theme.syntheticWakeForeground,
+			"--pip-synthetic-wake-rgb": theme.syntheticWakeRgb,
 			"--pip-muted-foreground-color": theme.mutedForeground,
 			"--pip-muted-rgb": theme.mutedRgb,
 			"--pip-glow-rgb": theme.glowRgb,
@@ -281,6 +284,8 @@ const THEME_CSS_PROPERTIES = [
 	"--pip-surface-tone",
 	"--pip-foreground-color",
 	"--pip-foreground-rgb",
+	"--pip-synthetic-wake-color",
+	"--pip-synthetic-wake-rgb",
 	"--pip-muted-foreground-color",
 	"--pip-muted-rgb",
 	"--pip-glow-rgb",

@@ -358,6 +358,63 @@ export const lyricsStyles = `
 	will-change: transform, scale;
 }
 
+.aura-lyrics.synthetic-timing .syllable.active {
+	background: linear-gradient(
+		90deg,
+		var(--pip-foreground-color) 0%,
+		var(--pip-foreground-color) max(0%, calc(var(--gradient-progress, 0%) - 8%)),
+		var(--pip-synthetic-wake-color) var(--gradient-progress, 0%),
+		var(--pip-muted-foreground-color) var(--gradient-progress, 0%)
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+}
+
+.aura-lyrics.synthetic-timing .vocals-group.syllable-group.active {
+	position: relative;
+	isolation: isolate;
+}
+
+.aura-lyrics.synthetic-timing .vocals-group.syllable-group.active::after {
+	--synthetic-halo-opacity: calc(0.16 * var(--motion-intensity, 1));
+	--synthetic-halo-amplitude: calc(0.012 * var(--motion-intensity, 1));
+	content: "";
+	position: absolute;
+	inset: calc(var(--lyrics-size) * -0.18);
+	z-index: -1;
+	border-radius: calc(var(--lyrics-size) * 0.48);
+	pointer-events: none;
+	opacity: var(--synthetic-halo-opacity);
+	background: radial-gradient(
+		ellipse at center,
+		rgba(var(--pip-synthetic-wake-rgb), 0.24) 0%,
+		rgba(var(--pip-foreground-rgb), 0.08) 48%,
+		transparent 74%
+	);
+	box-shadow: 0 0 calc(var(--lyrics-size) * 0.34) rgba(var(--pip-synthetic-wake-rgb), 0.14);
+	transform: scale(1);
+	transform-origin: center;
+	animation: synthetic-wake-halo-breathe 1.8s ease-in-out infinite alternate;
+}
+
+.aura-lyrics.synthetic-timing.reduce-motion .vocals-group.syllable-group.active::after {
+	animation: none;
+	transition: none;
+	transform: scale(1);
+}
+
+@keyframes synthetic-wake-halo-breathe {
+	from {
+		opacity: calc(var(--synthetic-halo-opacity) * 0.72);
+		transform: scale(1);
+	}
+
+	to {
+		opacity: var(--synthetic-halo-opacity);
+		transform: scale(calc(1 + var(--synthetic-halo-amplitude)));
+	}
+}
+
 .provider-source {
 	margin-top: calc(var(--lyrics-size) * 0.12);
 	font-size: max(10px, calc(var(--lyrics-size) * 0.34));

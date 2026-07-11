@@ -433,6 +433,8 @@ function applyTheme(root: HTMLElement, theme: TrackTheme): void {
 		"--pip-surface-tone": theme.surfaceTone,
 		"--pip-foreground-color": theme.foreground,
 		"--pip-foreground-rgb": theme.foregroundRgb,
+		"--pip-synthetic-wake-color": theme.syntheticWakeForeground,
+		"--pip-synthetic-wake-rgb": theme.syntheticWakeRgb,
 		"--pip-muted-foreground-color": theme.mutedForeground,
 		"--pip-muted-rgb": theme.mutedRgb,
 		"--pip-glow-rgb": theme.glowRgb,

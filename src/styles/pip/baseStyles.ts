@@ -20,6 +20,7 @@ body {
 	margin: -1px;
 	overflow: hidden;
 	clip: rect(0, 0, 0, 0);
+	clip-path: inset(50%);
 	white-space: nowrap;
 	border: 0;
 }
@@ -34,6 +35,8 @@ body {
 	--pip-surface-tone: dark;
 	--pip-foreground-color: #ffffff;
 	--pip-foreground-rgb: 255, 255, 255;
+	--pip-synthetic-wake-color: #ffffff;
+	--pip-synthetic-wake-rgb: 255, 255, 255;
 	--pip-muted-foreground-color: #919191;
 	--pip-muted-rgb: 145, 145, 145;
 	--pip-glow-rgb: 248, 248, 244;

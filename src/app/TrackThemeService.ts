@@ -10,6 +10,8 @@ export type TrackTheme = {
 	surfaceTone: SurfaceTone;
 	foreground: string;
 	foregroundRgb: string;
+	syntheticWakeForeground: string;
+	syntheticWakeRgb: string;
 	mutedForeground: string;
 	mutedRgb: string;
 	glowRgb: string;
@@ -79,17 +81,21 @@ export const buildTrackTheme = (colors: SpicetifyColorPalette): TrackTheme => {
 export const compositeThemeSurface = (theme: TrackTheme, coverPixel = theme.background): string =>
 	rgbToHex(blendRgb(requireRgb(coverPixel), parseRgbString(theme.scrimRgb), theme.scrimOpacity));
 
-export const themeContrastRatios = (theme: TrackTheme, coverPixel = theme.background): { active: number; secondary: number } => {
+export const themeContrastRatios = (
+	theme: TrackTheme,
+	coverPixel = theme.background
+): { active: number; secondary: number; syntheticWake: number } => {
 	const surface = compositeThemeSurface(theme, coverPixel);
 	return {
 		active: contrastRatio(theme.foreground, surface),
 		secondary: contrastRatio(theme.mutedForeground, surface),
+		syntheticWake: contrastRatio(theme.syntheticWakeForeground, surface),
 	};
 };
 
 export const themeMeetsContrast = (theme: TrackTheme): boolean => {
 	const ratios = themeContrastRatios(theme);
-	return ratios.active >= ACTIVE_CONTRAST_TARGET && ratios.secondary >= SECONDARY_CONTRAST_TARGET;
+	return ratios.active >= ACTIVE_CONTRAST_TARGET && ratios.secondary >= SECONDARY_CONTRAST_TARGET && ratios.syntheticWake >= ACTIVE_CONTRAST_TARGET;
 };
 
 export const contrastRatio = (first: string, second: string): number => {
@@ -116,6 +122,7 @@ const createTheme = (background: string, accent: string, minimumScrimOpacity: nu
 	const worstCaseCoverPixel = surfaceTone === "dark" ? LIGHT_SCRIM : DARK_SCRIM;
 	const scrimOpacity = findScrimOpacity(worstCaseCoverPixel, foreground, scrim, minimumScrimOpacity);
 	const worstCaseSurface = rgbToHex(blendRgb(requireRgb(worstCaseCoverPixel), requireRgb(scrim), scrimOpacity));
+	const syntheticWakeForeground = syntheticWakeColorForSurface(worstCaseSurface, foreground, accent);
 	const mutedForeground = mutedColorForSurface(worstCaseSurface, foreground);
 	return {
 		accent,
@@ -124,12 +131,26 @@ const createTheme = (background: string, accent: string, minimumScrimOpacity: nu
 		surfaceTone,
 		foreground,
 		foregroundRgb: rgbString(requireRgb(foreground)),
+		syntheticWakeForeground,
+		syntheticWakeRgb: rgbString(requireRgb(syntheticWakeForeground)),
 		mutedForeground,
 		mutedRgb: rgbString(requireRgb(mutedForeground)),
 		glowRgb: rgbString(requireRgb(accent)),
 		scrimRgb: rgbString(requireRgb(scrim)),
 		scrimOpacity,
 	};
+};
+
+const syntheticWakeColorForSurface = (surface: string, foreground: string, accent: string): string => {
+	const foregroundRgb = requireRgb(foreground);
+	const accentRgb = requireRgb(accent);
+	for (let step = 28; step >= 0; step -= 1) {
+		const candidate = rgbToHex(blendRgb(foregroundRgb, accentRgb, step / 100));
+		if (contrastRatio(candidate, surface) >= ACTIVE_CONTRAST_TARGET) {
+			return candidate;
+		}
+	}
+	return foreground;
 };
 
 const findScrimOpacity = (background: string, foreground: string, scrim: string, minimum: number): number => {
