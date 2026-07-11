@@ -822,6 +822,89 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
+	test.each([
+		{
+			name: "provider error",
+			track: metadataTrack("spotify:track:reopen-error"),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "error", track, message: "offline" }),
+		},
+		{
+			name: "missing lyrics",
+			track: metadataTrack("spotify:track:reopen-empty"),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "no-lyrics" }),
+		},
+		{
+			name: "instrumental",
+			track: metadataTrack("spotify:track:reopen-instrumental"),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "instrumental" }),
+		},
+		{
+			name: "unsupported local track",
+			track: metadataTrack("spotify:local:aura:reopen:local:180", { isLocal: true }),
+			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "unsupported-local" }),
+		},
+	])("does not restore stale revealed lyrics after a final $name result and reopen", async ({ track, finalState }) => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = () => 8_000;
+		spicetify.Player.data = {
+			item: {
+				uri: track.uri,
+				metadata: {
+					title: track.title,
+					artist_name: track.artist,
+					album_title: track.album,
+					duration: String(track.durationMs),
+				},
+			},
+		};
+		spicetify.URI = { isTrack: () => !track.isLocal, isLocalTrack: () => track.isLocal };
+		const app = new ExtensionApp(spicetify);
+		const reopenResult = deferred<LyricsLoadState>();
+		const load = vi
+			.fn()
+			.mockResolvedValueOnce(readyLoadStateAt(track, 10))
+			.mockResolvedValueOnce(finalState(track))
+			.mockImplementationOnce(() => reopenResult.promise);
+		const roots: HTMLElement[] = [];
+		const open = vi.fn(async () => {
+			const root = document.createElement("main");
+			roots.push(root);
+			return {
+				window,
+				root,
+				setCover: vi.fn(),
+				setPlaying: vi.fn(),
+				applyTheme: vi.fn(),
+				applySettings: vi.fn(),
+			};
+		});
+		vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+		const internals = app as unknown as {
+			pip: { open: typeof open; close: () => void };
+			lyricsService: { load: typeof load; refreshCooldowns: () => void; invalidate: () => void };
+			openPip: () => Promise<void>;
+			closePip: (closeWindow?: boolean) => void;
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.pip = { open, close: vi.fn() };
+		internals.lyricsService = { load, refreshCooldowns: vi.fn(), invalidate: vi.fn() };
+		await internals.openPip();
+		expect(roots[0]?.querySelector(".lyrics-track")).not.toBeNull();
+		await internals.loadCurrentTrack(true);
+		expect(roots[0]?.querySelector(".lyrics-track")).toBeNull();
+		internals.closePip(false);
+
+		const reopening = internals.openPip();
+		await vi.waitFor(() => expect(roots).toHaveLength(2));
+
+		expect(roots[1]?.querySelector(".lyrics-track")).toBeNull();
+		expect(roots[1]?.querySelector(".track-metadata-scene.loading")).not.toBeNull();
+		reopenResult.resolve(readyLoadStateAt(track, 10));
+		await reopening;
+		internals.closePip(false);
+		app.destroy();
+	});
+
 	test("mounts only the latest result when structural setting rebuilds overlap", async () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);

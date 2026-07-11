@@ -268,6 +268,9 @@ export class ExtensionApp {
 		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh);
 		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.session || this.currentTrack?.uri !== track.uri) return;
 		this.playbackSynchronizer.resync();
+		if (!isReadyTrackSessionSnapshot(snapshot)) {
+			this.revealedSnapshot = undefined;
+		}
 		this.renderLoadState(snapshot);
 		const enrichment = this.trackSession.enrichmentFor(snapshot);
 		if (enrichment && isReadyTrackSessionSnapshot(snapshot)) {
