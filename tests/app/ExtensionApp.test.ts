@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
+import type { IntroPresentationGate } from "../../src/app/IntroPresentationGate";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
 import type { LineLyrics, LyricsLoadState, TrackIdentity } from "../../src/lyrics/types";
@@ -92,7 +93,96 @@ const readyLoadState = (track: TrackIdentity, source: "cache" | "network" = "net
 	diagnostics: { cache: source === "cache" ? { status: "hit", provider: "lrclib" } : { status: "miss" }, attempts: [] },
 });
 
+const readyLoadStateAt = (track: TrackIdentity, firstVocalStartSec: number): LyricsLoadState => ({
+	status: "ready",
+	track,
+	lyrics: {
+		type: "line",
+		startTime: 0,
+		endTime: firstVocalStartSec + 4,
+		content: [
+			{ type: "interlude", startTime: 0, endTime: firstVocalStartSec, generated: true },
+			{
+				type: "vocal",
+				text: "First vocal",
+				startTime: firstVocalStartSec,
+				endTime: firstVocalStartSec + 4,
+				oppositeAligned: false,
+			},
+		],
+	},
+	provider: "lrclib",
+	source: "network",
+	diagnostics: { cache: { status: "miss" }, attempts: [] },
+});
+
+const introGateOf = (app: ExtensionApp): IntroPresentationGate => (app as unknown as { introGate: IntroPresentationGate }).introGate;
+
+const beginIntroEpoch = (app: ExtensionApp): void => {
+	introGateOf(app).beginTrackEpoch();
+};
+
 describe("ExtensionApp", () => {
+	test("reveals intro-ready lyrics immediately when the first vocal is within 1.5 seconds", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = vi.fn(() => 0);
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:fast-intro");
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			renderer: { update: (timestampSec: number, deltaTime: number) => void };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = {
+			load: vi.fn(async () => readyLoadStateAt(track, 1.5)),
+			refreshCooldowns: vi.fn(),
+			invalidate: vi.fn(),
+		};
+		internals.introGate.beginTrackEpoch();
+		const accept = vi.spyOn(internals.introGate, "accept");
+		const update = vi.spyOn(internals.renderer, "update");
+
+		await internals.loadCurrentTrack(false);
+
+		expect(root.querySelector(".lyrics-track")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-scene")).toBeNull();
+		expect(accept.mock.calls[0]?.[2]).toBe(0);
+		expect(update).toHaveBeenCalledWith(0, 0);
+		expect(accept.mock.invocationCallOrder[0]).toBeLessThan(update.mock.invocationCallOrder[0] ?? 0);
+	});
+
+	test("holds intro-ready lyrics behind plain track metadata when the first vocal is 8 seconds away", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = vi.fn(() => 0);
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:long-intro");
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState> };
+			introGate: { beginTrackEpoch: () => void };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = { load: vi.fn(async () => readyLoadStateAt(track, 8)) };
+		internals.introGate.beginTrackEpoch();
+
+		await internals.loadCurrentTrack(false);
+
+		expect(root.querySelector(".track-metadata-scene.intro")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-eyebrow")).toBeNull();
+		expect(root.querySelector(".track-metadata-progress")).toBeNull();
+		expect(root.querySelector(".lyrics-track")).toBeNull();
+	});
+
 	test("shows track metadata while lyrics are unresolved and replaces it immediately when ready", async () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
@@ -108,6 +198,7 @@ describe("ExtensionApp", () => {
 		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
 		internals.currentTrack = track;
 		internals.lyricsService = { load: vi.fn(() => result.promise) };
+		beginIntroEpoch(app);
 
 		const loading = internals.loadCurrentTrack(false);
 
@@ -138,6 +229,7 @@ describe("ExtensionApp", () => {
 		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
 		internals.currentTrack = track;
 		internals.lyricsService = { load: vi.fn(async () => readyLoadState(track, "cache")) };
+		beginIntroEpoch(app);
 
 		const loading = internals.loadCurrentTrack(false);
 		const outcome = await Promise.race([
@@ -181,6 +273,7 @@ describe("ExtensionApp", () => {
 				})
 			),
 		};
+		beginIntroEpoch(app);
 
 		await internals.loadCurrentTrack(false);
 		const initialLyricsScene = root.firstElementChild;
@@ -219,6 +312,7 @@ describe("ExtensionApp", () => {
 		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
 		internals.currentTrack = track;
 		internals.lyricsService = { load: vi.fn(async () => state(track)) };
+		const acceptIntro = vi.spyOn(introGateOf(app), "accept");
 
 		await internals.loadCurrentTrack(false);
 
@@ -228,6 +322,7 @@ describe("ExtensionApp", () => {
 		expect(root.querySelector(".track-metadata-progress")).toBeNull();
 		expect(root.querySelector(".status-card")).toBeNull();
 		expect(root.querySelector("button")).toBeNull();
+		expect(acceptIntro).not.toHaveBeenCalled();
 	});
 
 	test("ignores an older track result after a newer loading scene has replaced it", async () => {
@@ -390,14 +485,15 @@ describe("ExtensionApp", () => {
 			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
 			settings: { update: (patch: unknown) => void };
 			trackSession: { updateSettings: typeof updateSettings; isCurrent: () => boolean };
-			renderer: { applySettings: () => void; mount: typeof mount };
+			renderer: { applySettings: () => void; mount: typeof mount; update: (timestampSec: number, deltaTime: number) => void };
 			applySettings: () => Promise<void>;
 		};
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.currentTrack = snapshot.loadState.track;
 		internals.trackSession = { updateSettings, isCurrent: () => true };
-		internals.renderer = { applySettings: vi.fn(), mount };
+		internals.renderer = { applySettings: vi.fn(), mount, update: vi.fn() };
 		internals.settings.update({ showTranslation: false });
+		beginIntroEpoch(app);
 
 		await internals.applySettings();
 
@@ -418,13 +514,14 @@ describe("ExtensionApp", () => {
 			currentTrack: ReadyTrackSessionSnapshot["loadState"]["track"];
 			settings: { update: (patch: unknown) => void };
 			trackSession: { updateSettings: typeof updateSettings; isCurrent: () => boolean };
-			renderer: { applySettings: () => void; mount: typeof mount };
+			renderer: { applySettings: () => void; mount: typeof mount; update: (timestampSec: number, deltaTime: number) => void };
 			applySettings: () => Promise<void>;
 		};
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.currentTrack = snapshot.loadState.track;
 		internals.trackSession = { updateSettings, isCurrent: () => true };
-		internals.renderer = { applySettings: vi.fn(), mount };
+		internals.renderer = { applySettings: vi.fn(), mount, update: vi.fn() };
+		beginIntroEpoch(app);
 
 		internals.settings.update({ showTranslation: false });
 		const firstApply = internals.applySettings();
@@ -466,7 +563,7 @@ describe("ExtensionApp", () => {
 				update: (patch: Partial<ExtensionSettings>) => void;
 			};
 			trackSession: TrackSessionController;
-			renderer: { applySettings: () => void; mount: typeof mount };
+			renderer: { applySettings: () => void; mount: typeof mount; update: (timestampSec: number, deltaTime: number) => void };
 			applySettings: () => Promise<void>;
 		};
 		internals.settings.update({ pseudoKaraoke: false });
@@ -478,7 +575,8 @@ describe("ExtensionApp", () => {
 		internals.session = { root, applySettings: vi.fn() };
 		internals.currentTrack = track;
 		internals.trackSession = controller;
-		internals.renderer = { applySettings: vi.fn(), mount };
+		internals.renderer = { applySettings: vi.fn(), mount, update: vi.fn() };
+		beginIntroEpoch(app);
 
 		internals.settings.update({ pseudoKaraoke: true, syncPreference: "prefer-syllable" });
 		const older = internals.applySettings();
@@ -551,7 +649,7 @@ describe("ExtensionApp", () => {
 			appliedSettings: ExtensionSettings;
 			settings: { get: () => ExtensionSettings; update: (patch: Partial<ExtensionSettings>) => void };
 			trackSession: TrackSessionController;
-			renderer: { applySettings: () => void; mount: typeof mount };
+			renderer: { applySettings: () => void; mount: typeof mount; update: (timestampSec: number, deltaTime: number) => void };
 			applySettings: () => Promise<void>;
 		};
 		internals.settings.update({ pseudoKaraoke: false, interludeStyle: "wave" });
@@ -563,7 +661,8 @@ describe("ExtensionApp", () => {
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.currentTrack = track;
 		internals.trackSession = controller;
-		internals.renderer = { applySettings: vi.fn(), mount };
+		internals.renderer = { applySettings: vi.fn(), mount, update: vi.fn() };
+		beginIntroEpoch(app);
 
 		internals.settings.update({ pseudoKaraoke: true, syncPreference: "prefer-syllable" });
 		const applying = internals.applySettings();
@@ -580,6 +679,143 @@ describe("ExtensionApp", () => {
 		const mountOptions = mount.mock.calls[0]?.[1] as { rhythm?: TrackWaveformProfile; waveforms?: Record<string, { source: string }> } | undefined;
 		expect(mountOptions).toMatchObject({ rhythm: currentProfile });
 		expect(Object.values(mountOptions?.waveforms ?? {})).toContainEqual(expect.objectContaining({ source: "audio-analysis" }));
+	});
+
+	test("starts and ends intro epochs for track changes while PiP is closed", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:closed-epoch");
+		const internals = app as unknown as {
+			introGate: {
+				beginTrackEpoch: () => void;
+				endTrackEpoch: () => void;
+				hasActiveEpoch: () => boolean;
+			};
+			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+		};
+		const beginTrackEpoch = vi.spyOn(internals.introGate, "beginTrackEpoch");
+		const endTrackEpoch = vi.spyOn(internals.introGate, "endTrackEpoch");
+
+		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(track);
+
+		expect(beginTrackEpoch).toHaveBeenCalledTimes(2);
+		expect(internals.introGate.hasActiveEpoch()).toBe(true);
+
+		await internals.onTrackChanged(undefined);
+
+		expect(endTrackEpoch).toHaveBeenCalledOnce();
+		expect(internals.introGate.hasActiveEpoch()).toBe(false);
+	});
+
+	test("starts an intro epoch once on first PiP open and preserves it across reopen", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.data = {
+			item: {
+				uri: "spotify:track:open-epoch",
+				metadata: { title: "Open Epoch", artist_name: "Aura", album_title: "Lifecycle", duration: "180000" },
+			},
+		};
+		spicetify.URI = { isTrack: () => true, isLocalTrack: () => false };
+		const app = new ExtensionApp(spicetify);
+		const open = vi.fn(async () => ({
+			window,
+			root: document.createElement("main"),
+			setCover: vi.fn(),
+			setPlaying: vi.fn(),
+			applyTheme: vi.fn(),
+			applySettings: vi.fn(),
+		}));
+		const loadCurrentTrack = vi.fn(async () => undefined);
+		vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+		const internals = app as unknown as {
+			pip: { open: typeof open; isOpen: () => boolean };
+			introGate: { beginTrackEpoch: () => void; hasActiveEpoch: () => boolean };
+			openPip: () => Promise<void>;
+			loadCurrentTrack: typeof loadCurrentTrack;
+			closePip: (closeWindow?: boolean) => void;
+		};
+		internals.pip = { open, isOpen: () => false };
+		internals.loadCurrentTrack = loadCurrentTrack;
+		const beginTrackEpoch = vi.spyOn(internals.introGate, "beginTrackEpoch");
+
+		await internals.openPip();
+		expect(beginTrackEpoch).toHaveBeenCalledOnce();
+		expect(internals.introGate.hasActiveEpoch()).toBe(true);
+
+		internals.closePip(false);
+		await internals.openPip();
+
+		expect(beginTrackEpoch).toHaveBeenCalledOnce();
+		expect(internals.introGate.hasActiveEpoch()).toBe(true);
+		expect(loadCurrentTrack).toHaveBeenCalledTimes(2);
+		internals.closePip(false);
+	});
+
+	test("keeps the revealed intro latch on PiP close and does not start a new epoch on manual refresh", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:revealed-close");
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
+			settings: { get: () => ExtensionSettings };
+			introGate: IntroPresentationGate;
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+			closePip: (closeWindow?: boolean) => void;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = {
+			load: vi.fn(async () => readyLoadStateAt(track, 1.5)),
+			refreshCooldowns: vi.fn(),
+			invalidate: vi.fn(),
+		};
+		internals.introGate.beginTrackEpoch();
+		const beginTrackEpoch = vi.spyOn(internals.introGate, "beginTrackEpoch");
+		const discardPendingSession = vi.spyOn(internals.introGate, "discardPendingSession");
+
+		await internals.loadCurrentTrack(false);
+		await internals.loadCurrentTrack(true);
+
+		expect(beginTrackEpoch).not.toHaveBeenCalled();
+		internals.closePip(false);
+		expect(discardPendingSession).toHaveBeenCalledOnce();
+		expect(internals.introGate.hasActiveEpoch()).toBe(true);
+		const longIntroState = readyLoadStateAt(track, 8);
+		if (longIntroState.status !== "ready") throw new Error("Expected ready long-intro state.");
+		const longIntroSnapshot: ReadyTrackSessionSnapshot = {
+			loadState: longIntroState,
+			lyrics: longIntroState.lyrics,
+			timingSource: "native",
+		};
+		expect(internals.introGate.accept(longIntroSnapshot, internals.settings.get(), 0)).toEqual({
+			kind: "reveal",
+			snapshot: longIntroSnapshot,
+		});
+	});
+
+	test("ends the intro epoch in the defensive no-track branch and on destroy", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack?: TrackIdentity;
+			introGate: { beginTrackEpoch: () => void; hasActiveEpoch: () => boolean };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+		};
+		internals.session = { root: document.createElement("main"), setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = undefined;
+		internals.introGate.beginTrackEpoch();
+
+		await internals.loadCurrentTrack(false);
+		expect(internals.introGate.hasActiveEpoch()).toBe(false);
+
+		internals.introGate.beginTrackEpoch();
+		app.destroy();
+		expect(internals.introGate.hasActiveEpoch()).toBe(false);
 	});
 
 	test("invalidates track sessions on track change, PiP close, and destroy", async () => {
@@ -1191,6 +1427,7 @@ describe("ExtensionApp", () => {
 					}) as const
 			),
 		};
+		const acceptIntro = vi.spyOn(introGateOf(app), "accept");
 
 		await internals.loadCurrentTrack(false);
 
@@ -1198,6 +1435,7 @@ describe("ExtensionApp", () => {
 		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
 		expect(content.children).toHaveLength(0);
 		expect(content.textContent).not.toContain("Instrumental");
+		expect(acceptIntro).not.toHaveBeenCalled();
 	});
 
 	test("clears provider cooldowns before a manual lyrics refresh", async () => {
@@ -1321,6 +1559,7 @@ describe("ExtensionApp", () => {
 					}) as const
 			),
 		};
+		beginIntroEpoch(app);
 
 		await internals.loadCurrentTrack(false);
 		await vi.waitFor(() => expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s"));

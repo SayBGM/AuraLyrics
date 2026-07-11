@@ -186,6 +186,31 @@ describe("LyricsRenderer", () => {
 		expect(root.querySelector("button")).toBeNull();
 	});
 
+	test("renders intro metadata without a label or progress line", () => {
+		const root = document.createElement("div");
+		const track: TrackIdentity = {
+			uri: "spotify:track:intro",
+			title: "First Light",
+			artist: "Aura",
+			album: "Dawn",
+			durationMs: 180_000,
+			coverUrl: "https://example.com/dawn.jpg",
+			isLocal: false,
+		};
+		const renderer = new LyricsRenderer();
+
+		renderer.showTrackMetadata(root, { mode: "intro", track }, DEFAULT_SETTINGS);
+
+		expect(root.querySelector(".track-metadata-scene.intro")).not.toBeNull();
+		expect(root.querySelector(".track-metadata-eyebrow")).toBeNull();
+		expect(root.querySelector(".track-metadata-progress")).toBeNull();
+		const text = root.textContent ?? "";
+		expect(text).toContain(track.title);
+		expect(text.match(/Dawn/g)).toHaveLength(1);
+		expect(text).not.toContain("LOADING");
+		expect(text).not.toContain(["NOW", "PLAYING"].join(" "));
+	});
+
 	test("omits empty metadata separators and a missing cover while preserving the title", () => {
 		const root = document.createElement("div");
 		const track: TrackIdentity = {

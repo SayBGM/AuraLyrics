@@ -1,7 +1,7 @@
 import type { TrackIdentity } from "../../lyrics/types";
 
 export type TrackMetadataViewModel = {
-	mode: "loading" | "persistent";
+	mode: "loading" | "persistent" | "intro";
 	track: TrackIdentity;
 };
 

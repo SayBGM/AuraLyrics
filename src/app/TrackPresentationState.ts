@@ -3,6 +3,7 @@ import type { ReadyTrackSessionSnapshot, TrackSessionSnapshot } from "./TrackSes
 
 export type TrackPresentationState =
 	| { kind: "loading"; track: TrackIdentity }
+	| { kind: "intro"; track: TrackIdentity }
 	| { kind: "lyrics"; snapshot: ReadyTrackSessionSnapshot }
 	| {
 			kind: "metadata";

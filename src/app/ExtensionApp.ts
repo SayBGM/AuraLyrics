@@ -19,6 +19,7 @@ import { SettingsStore } from "../settings/SettingsStore";
 import { SettingsView } from "../settings/SettingsView";
 import type { ExtensionSettings } from "../settings/settingsSchema";
 import { pipStyles } from "../styles/pipStyles";
+import { IntroPresentationGate } from "./IntroPresentationGate";
 import { MusicStateMachine } from "./MusicStateMachine";
 import { rendererSettingsChange } from "./SettingsChange";
 import { TopbarController } from "./TopbarController";
@@ -41,6 +42,7 @@ export class ExtensionApp {
 	private readonly pip = new DocumentPipController();
 	private readonly renderer = new LyricsRenderer();
 	private readonly stateMachine = new MusicStateMachine();
+	private readonly introGate = new IntroPresentationGate();
 	private readonly cache: LyricsCache;
 	private readonly registry = new ProviderRegistry([new SpotifyProvider(), new LrclibProvider(), new MusixmatchProvider()]);
 	private readonly lyricsService: LyricsService;
@@ -134,6 +136,7 @@ export class ExtensionApp {
 
 	public destroy(): void {
 		this.trackSession.invalidate();
+		this.introGate.endTrackEpoch();
 		this.themeGeneration += 1;
 		this.session = undefined;
 		this.started = false;
@@ -189,6 +192,9 @@ export class ExtensionApp {
 			this.clock.start();
 			this.playbackSynchronizer.resync();
 			this.currentTrack = this.player.getCurrentTrack();
+			if (this.currentTrack && !this.introGate.hasActiveEpoch()) {
+				this.introGate.beginTrackEpoch();
+			}
 			await this.loadCurrentTrack(false);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -199,6 +205,7 @@ export class ExtensionApp {
 
 	private closePip(closeWindow = true): void {
 		this.trackSession.invalidate();
+		this.introGate.discardPendingSession();
 		this.themeGeneration += 1;
 		this.clock?.stop();
 		this.clock = undefined;
@@ -214,6 +221,11 @@ export class ExtensionApp {
 	private async onTrackChanged(track: TrackIdentity | undefined): Promise<void> {
 		this.trackSession.invalidate();
 		this.currentTrack = track;
+		if (track) {
+			this.introGate.beginTrackEpoch();
+		} else {
+			this.introGate.endTrackEpoch();
+		}
 		if (!this.session) {
 			return;
 		}
@@ -231,6 +243,7 @@ export class ExtensionApp {
 		this.currentTrack = track;
 		if (!track) {
 			this.trackSession.invalidate();
+			this.introGate.endTrackEpoch();
 			this.session.setCover(undefined);
 			this.session.applyTheme(undefined);
 			this.showStatus("Waiting for music", "Start playing a Spotify track.");
@@ -286,9 +299,11 @@ export class ExtensionApp {
 			case "loading":
 				this.renderer.showTrackMetadata(this.session.root, { mode: "loading", track: state.track }, this.settings.get());
 				return;
+			case "intro":
+				this.renderer.showTrackMetadata(this.session.root, { mode: "intro", track: state.track }, this.settings.get());
+				return;
 			case "lyrics":
-				this.stateMachine.dispatch({ type: "lyricsReady" });
-				this.mountReadySnapshot(state.snapshot);
+				this.presentReadySnapshot(state.snapshot);
 				return;
 			case "instrumental":
 				this.stateMachine.dispatch({ type: "noLyrics", message: "instrumental" });
@@ -317,7 +332,7 @@ export class ExtensionApp {
 		if (!hasRenderableEnrichmentChanges(initialSnapshot, snapshot, this.settings.get())) {
 			return;
 		}
-		this.mountReadySnapshot(snapshot);
+		this.presentReadySnapshot(snapshot);
 	}
 
 	private showStatus(title: string, detail?: string, actionLabel?: string, tone: "neutral" | "danger" = "neutral"): void {
@@ -382,7 +397,25 @@ export class ExtensionApp {
 			this.currentTrack?.uri !== snapshot.loadState.track.uri
 		)
 			return;
+		this.presentReadySnapshot(snapshot);
+	}
+
+	private presentReadySnapshot(snapshot: ReadyTrackSessionSnapshot): void {
+		const timestampSec = this.playbackSynchronizer.timestampSec;
+		const result = this.introGate.accept(snapshot, this.settings.get(), timestampSec);
+		if (result.kind === "hold") {
+			this.renderPresentationState({ kind: "intro", track: snapshot.loadState.track });
+			return;
+		}
+		if (result.kind === "reveal") {
+			this.revealReadySnapshot(result.snapshot, timestampSec);
+		}
+	}
+
+	private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): void {
+		this.stateMachine.dispatch({ type: "lyricsReady" });
 		this.mountReadySnapshot(snapshot);
+		this.renderer.update(timestampSec, 0);
 	}
 
 	private mountReadySnapshot(snapshot: ReadyTrackSessionSnapshot): void {
