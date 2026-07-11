@@ -1269,6 +1269,50 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
+	test("keeps visible lyrics live on playing and paused ticks while a manual refresh is pending", async () => {
+		const { spicetify } = createSpicetify();
+		let progressMs = 8_000;
+		spicetify.Player.getProgress = () => progressMs;
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:live-pending-refresh");
+		const refreshResult = deferred<LyricsLoadState>();
+		const load = vi
+			.fn()
+			.mockResolvedValueOnce(readyLoadStateAt(track, 10))
+			.mockImplementationOnce(() => refreshResult.promise);
+		const root = document.createElement("main");
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			lyricsService: { load: typeof load; refreshCooldowns: () => void; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			isPlaybackActive: boolean;
+			renderer: { update: (timestampSec: number, deltaTimeSec: number) => void };
+			loadCurrentTrack: (refresh: boolean) => Promise<void>;
+			tick: (deltaTimeSec: number) => void;
+		};
+		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.lyricsService = { load, refreshCooldowns: vi.fn(), invalidate: vi.fn() };
+		internals.introGate.beginTrackEpoch();
+		internals.isPlaybackActive = true;
+		await internals.loadCurrentTrack(false);
+		const refreshing = internals.loadCurrentTrack(true);
+		progressMs = 10_000;
+
+		internals.tick(0.25);
+
+		expect(root.querySelector(".line-group.active")?.textContent).toContain("First vocal");
+		const update = vi.spyOn(internals.renderer, "update");
+		update.mockClear();
+		internals.isPlaybackActive = false;
+		internals.tick(0.1);
+		expect(update).toHaveBeenCalledWith(10, 0.1);
+		refreshResult.resolve(readyLoadStateAt(track, 10));
+		await refreshing;
+		app.destroy();
+	});
+
 	test.each([
 		{
 			name: "provider error",
@@ -1400,6 +1444,155 @@ describe("ExtensionApp", () => {
 		await internals.loadCurrentTrack(true);
 		expect(roots[1]?.querySelector(".lyrics-track")).not.toBeNull();
 		expect(roots[1]?.querySelector(".track-metadata-scene.intro")).toBeNull();
+		internals.closePip(false);
+		app.destroy();
+	});
+
+	test("keeps restored lyrics live on playing and paused ticks while reopen loading is pending", async () => {
+		const { spicetify } = createSpicetify();
+		const track = metadataTrack("spotify:track:live-pending-reopen");
+		let progressMs = 8_000;
+		spicetify.Player.getProgress = () => progressMs;
+		spicetify.Player.data = {
+			item: {
+				uri: track.uri,
+				metadata: {
+					title: track.title,
+					artist_name: track.artist,
+					album_title: track.album,
+					duration: String(track.durationMs),
+				},
+			},
+		};
+		spicetify.URI = { isTrack: () => true, isLocalTrack: () => false };
+		const app = new ExtensionApp(spicetify);
+		const reopenResult = deferred<LyricsLoadState>();
+		const load = vi
+			.fn()
+			.mockResolvedValueOnce(readyLoadStateAt(track, 10))
+			.mockImplementationOnce(() => reopenResult.promise);
+		const roots: HTMLElement[] = [];
+		const open = vi.fn(async () => {
+			const root = document.createElement("main");
+			roots.push(root);
+			return {
+				window,
+				root,
+				setCover: vi.fn(),
+				setPlaying: vi.fn(),
+				applyTheme: vi.fn(),
+				applySettings: vi.fn(),
+			};
+		});
+		vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+		const internals = app as unknown as {
+			pip: { open: typeof open; close: () => void };
+			lyricsService: { load: typeof load; refreshCooldowns: () => void; invalidate: () => void };
+			isPlaybackActive: boolean;
+			renderer: { update: (timestampSec: number, deltaTimeSec: number) => void };
+			openPip: () => Promise<void>;
+			closePip: (closeWindow?: boolean) => void;
+			tick: (deltaTimeSec: number) => void;
+		};
+		internals.pip = { open, close: vi.fn() };
+		internals.lyricsService = { load, refreshCooldowns: vi.fn(), invalidate: vi.fn() };
+		await internals.openPip();
+		internals.closePip(false);
+
+		const reopening = internals.openPip();
+		await vi.waitFor(() => expect(roots).toHaveLength(2));
+		progressMs = 10_000;
+		internals.isPlaybackActive = true;
+		internals.tick(0.25);
+		expect(roots[1]?.querySelector(".line-group.active")?.textContent).toContain("First vocal");
+		const update = vi.spyOn(internals.renderer, "update");
+		update.mockClear();
+		internals.isPlaybackActive = false;
+		internals.tick(0.1);
+		expect(update).toHaveBeenCalledWith(10, 0.1);
+		reopenResult.resolve(readyLoadStateAt(track, 10));
+		await reopening;
+		internals.closePip(false);
+		app.destroy();
+	});
+
+	test("rematerializes a restored synthetic snapshot for structural settings changed while PiP is closed", async () => {
+		const { spicetify } = createSpicetify();
+		const track = metadataTrack("spotify:track:closed-structural-settings");
+		spicetify.Player.getProgress = () => 8_000;
+		spicetify.Player.data = {
+			item: {
+				uri: track.uri,
+				metadata: {
+					title: track.title,
+					artist_name: track.artist,
+					album_title: track.album,
+					duration: String(track.durationMs),
+				},
+			},
+		};
+		spicetify.URI = { isTrack: () => true, isLocalTrack: () => false };
+		const canonicalLoadState = readyLoadStateAt(track, 10);
+		if (canonicalLoadState.status !== "ready") throw new Error("Expected ready canonical load state.");
+		const syntheticSnapshot: ReadyTrackSessionSnapshot = {
+			...readySyllableSnapshot(track, 10),
+			loadState: canonicalLoadState,
+			timingSource: "synthetic",
+		};
+		const app = new ExtensionApp(spicetify);
+		const initialRoot = document.createElement("main");
+		const reopenResult = deferred<LyricsLoadState>();
+		const roots: HTMLElement[] = [];
+		const open = vi.fn(async () => {
+			const root = document.createElement("main");
+			roots.push(root);
+			return {
+				window,
+				root,
+				setCover: vi.fn(),
+				setPlaying: vi.fn(),
+				applyTheme: vi.fn(),
+				applySettings: vi.fn(),
+			};
+		});
+		vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+		const internals = app as unknown as {
+			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			currentTrack: TrackIdentity;
+			pip: { open: typeof open; close: () => void };
+			settings: { update: (patch: Partial<ExtensionSettings>) => void };
+			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
+			introGate: IntroPresentationGate;
+			playbackSynchronizer: PlaybackSynchronizer;
+			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			applySettings: () => Promise<void>;
+			openPip: () => Promise<void>;
+			closePip: (closeWindow?: boolean) => void;
+		};
+		internals.session = { root: initialRoot, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.currentTrack = track;
+		internals.playbackSynchronizer.resync();
+		internals.introGate.beginTrackEpoch();
+		internals.presentReadySnapshot(syntheticSnapshot);
+		expect(initialRoot.querySelector("[data-aura-timing-marker]")).not.toBeNull();
+		internals.closePip(false);
+		internals.settings.update({ pseudoKaraoke: false, syncPreference: "line-only" });
+		await internals.applySettings();
+		internals.pip = { open, close: vi.fn() };
+		internals.lyricsService = {
+			load: vi.fn(() => reopenResult.promise),
+			refreshCooldowns: vi.fn(),
+			invalidate: vi.fn(),
+		};
+
+		const reopening = internals.openPip();
+		await vi.waitFor(() => expect(roots).toHaveLength(1));
+
+		expect(roots[0]?.querySelector(".lyrics-track")?.textContent).toContain("First vocal");
+		expect(roots[0]?.querySelector("[data-aura-timing-marker]")).toBeNull();
+		expect(roots[0]?.querySelector(".line-group")).not.toBeNull();
+		reopenResult.resolve(canonicalLoadState);
+		await reopening;
 		internals.closePip(false);
 		app.destroy();
 	});
@@ -1746,9 +1939,12 @@ describe("ExtensionApp", () => {
 		const getProgress = vi.fn().mockReturnValueOnce(10000).mockReturnValueOnce(11000).mockReturnValueOnce(5000);
 		spicetify.Player.getProgress = getProgress;
 		const app = new ExtensionApp(spicetify);
+		const snapshot = readySnapshot();
 		const update = vi.fn();
 		const internals = app as unknown as {
 			session: { setPlaying: (playing: boolean) => void };
+			currentTrack: TrackIdentity;
+			revealedSnapshot: ReadyTrackSessionSnapshot;
 			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
@@ -1757,6 +1953,8 @@ describe("ExtensionApp", () => {
 		};
 		app.start();
 		internals.session = { setPlaying: vi.fn() };
+		internals.currentTrack = snapshot.loadState.track;
+		internals.revealedSnapshot = snapshot;
 		internals.trackSession = {
 			getSnapshot: () => ({ loadState: { status: "ready" } }) as unknown as TrackSessionSnapshot,
 			invalidate: vi.fn(),
@@ -1781,9 +1979,12 @@ describe("ExtensionApp", () => {
 		const getProgress = vi.fn().mockReturnValueOnce(10000).mockReturnValue(45000);
 		spicetify.Player.getProgress = getProgress;
 		const app = new ExtensionApp(spicetify);
+		const snapshot = readySnapshot();
 		const update = vi.fn();
 		const internals = app as unknown as {
 			session: { setPlaying: (playing: boolean) => void };
+			currentTrack: TrackIdentity;
+			revealedSnapshot: ReadyTrackSessionSnapshot;
 			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
@@ -1792,6 +1993,8 @@ describe("ExtensionApp", () => {
 		};
 		app.start();
 		internals.session = { setPlaying: vi.fn() };
+		internals.currentTrack = snapshot.loadState.track;
+		internals.revealedSnapshot = snapshot;
 		internals.trackSession = {
 			getSnapshot: () => ({ loadState: { status: "ready" } }) as unknown as TrackSessionSnapshot,
 			invalidate: vi.fn(),
@@ -1904,10 +2107,14 @@ describe("ExtensionApp", () => {
 	test("keeps sampling playback while a ready intro is held even when lyrics DOM is not mounted", () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:unmounted-held-ready");
+		const snapshot = readySnapshotAt(track, 8);
 		const updatePlayback = vi.fn();
+		const updateRenderer = vi.fn();
 		const internals = app as unknown as {
 			session: { root: HTMLElement };
 			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
+			introGate: IntroPresentationGate;
 			isPlaybackActive: boolean;
 			playbackSynchronizer: { timestampSec: number; update: typeof updatePlayback };
 			renderer: { destroy: () => void; update: () => void };
@@ -1915,16 +2122,19 @@ describe("ExtensionApp", () => {
 		};
 		internals.session = { root: document.createElement("main") };
 		internals.trackSession = {
-			getSnapshot: () => ({ loadState: { status: "loading" } }) as unknown as TrackSessionSnapshot,
+			getSnapshot: () => snapshot,
 			invalidate: vi.fn(),
 		};
 		internals.isPlaybackActive = true;
 		internals.playbackSynchronizer = { timestampSec: 3, update: updatePlayback };
-		internals.renderer = { destroy: vi.fn(), update: vi.fn() };
+		internals.renderer = { destroy: vi.fn(), update: updateRenderer };
+		internals.introGate.beginTrackEpoch();
+		expect(internals.introGate.accept(snapshot, internalsSettingsOf(app), 3).kind).toBe("hold");
 
 		internals.tick(0.25);
 
 		expect(updatePlayback).toHaveBeenCalledWith(0.25, true);
+		expect(updateRenderer).not.toHaveBeenCalled();
 		app.destroy();
 	});
 
@@ -2152,7 +2362,7 @@ describe("ExtensionApp", () => {
 		playerProgressMs = 13_000;
 		internals.tick(0.25);
 		expect(internals.playbackSynchronizer.timestampSec).toBe(tickTimestampSec);
-		expect(update).toHaveBeenLastCalledWith(tickTimestampSec, expect.any(Number));
+		expect(update).not.toHaveBeenCalled();
 
 		internals.onPlaybackChanged(false);
 		playerProgressMs = 18_000 + delayMs;
