@@ -8,6 +8,7 @@ import { pipStyles } from "../../../src/styles/pipStyles";
 
 type ScenarioName =
 	| "album-art-instrumental"
+	| "aurora-intro-ready"
 	| "aurora-loading-dark"
 	| "aurora-metadata-light"
 	| "background-opposite"
@@ -26,7 +27,7 @@ type Scenario = {
 	timingSource?: "native" | "synthetic";
 	mode?: "album-art" | "lyrics" | "metadata" | "settings";
 	metadata?: {
-		mode: "loading" | "persistent";
+		mode: "intro" | "loading" | "persistent";
 		track: TrackIdentity;
 	};
 	theme?: TrackTheme;
@@ -120,6 +121,30 @@ const scenarios: Record<ScenarioName, Scenario> = {
 			mode: "loading",
 			track: {
 				uri: "spotify:track:visual-dark",
+				title: "Midnight Bloom",
+				artist: "Haneul Park",
+				album: "Afterglow",
+				durationMs: 213_000,
+				coverUrl: darkAuroraCover,
+				isLocal: false,
+			},
+		},
+		theme: buildTrackTheme({
+			DARK_VIBRANT: "#102d3a",
+			DESATURATED: "#3c6870",
+			LIGHT_VIBRANT: "#8ce6e3",
+			PROMINENT: "#102d3a",
+			VIBRANT: "#63d2d5",
+			VIBRANT_NON_ALARMING: "#63d2d5",
+		}),
+	},
+	"aurora-intro-ready": {
+		timestamp: 0,
+		mode: "metadata",
+		metadata: {
+			mode: "intro",
+			track: {
+				uri: "spotify:track:visual-intro",
 				title: "Midnight Bloom",
 				artist: "Haneul Park",
 				album: "Afterglow",
@@ -251,8 +276,19 @@ const scenarios: Record<ScenarioName, Scenario> = {
 	},
 	"synthetic-word-sync": {
 		timestamp: 4.2,
-		settings: settingsForVisuals,
+		settings: {
+			...settingsForVisuals,
+			reduceMotion: false,
+		},
 		timingSource: "synthetic",
+		theme: buildTrackTheme({
+			DARK_VIBRANT: "#102d3a",
+			DESATURATED: "#3c6870",
+			LIGHT_VIBRANT: "#8ce6e3",
+			PROMINENT: "#102d3a",
+			VIBRANT: "#63d2d5",
+			VIBRANT_NON_ALARMING: "#63d2d5",
+		}),
 		lyrics: syllableLyrics([
 			[
 				["먼", 0, 0.5],
@@ -335,6 +371,9 @@ window.auraVisualHarness = {
 		}
 		if (!scenario.lyrics) {
 			throw new Error(`Scenario has no lyrics: ${name}`);
+		}
+		if (scenario.theme) {
+			applyTheme(pipRoot, scenario.theme);
 		}
 		renderer.mount(mountRoot, {
 			lyrics: structuredClone(scenario.lyrics),

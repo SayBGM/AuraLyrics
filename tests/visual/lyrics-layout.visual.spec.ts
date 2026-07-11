@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 type ScenarioName =
 	| "album-art-instrumental"
+	| "aurora-intro-ready"
 	| "aurora-loading-dark"
 	| "aurora-metadata-light"
 	| "background-opposite"
@@ -35,6 +36,32 @@ test.use({
 test.beforeEach(async ({ page }) => {
 	await page.goto(baseUrl);
 	await expect(page.locator("#aura-lyrics-root")).toBeVisible();
+});
+
+test("Aurora intro-ready metadata shows only the track identity on the adaptive dark surface", async ({ page }) => {
+	await renderScenario(page, "aurora-intro-ready");
+
+	const metrics = await metadataMetrics(page);
+
+	expect(metrics).toMatchObject({
+		eyebrow: null,
+		title: "Midnight Bloom",
+		byline: "Haneul Park · Afterglow",
+		hasProgress: false,
+		surfaceTone: "dark",
+		foregroundVariable: "#ffffff",
+		titleColor: "rgb(255, 255, 255)",
+		controlsOpacity: "1",
+		playColor: "rgb(17, 20, 24)",
+	});
+	expect(metrics.coverWidth).toBeGreaterThan(60);
+	expect(metrics.coverSource).toContain("data:image/svg+xml");
+	await expect(page.locator(".track-metadata-scene.intro")).toBeVisible();
+	await expect(page.locator(".track-metadata-eyebrow")).toHaveCount(0);
+	await expect(page.locator(".track-metadata-progress")).toHaveCount(0);
+	await expect(page.getByText("LOADING", { exact: true })).toHaveCount(0);
+	await expect(page.getByText("NOW PLAYING", { exact: true })).toHaveCount(0);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("aurora-intro-ready.png", screenshotTolerance);
 });
 
 test("Aurora loading metadata stays editorial and readable on a dark album", async ({ page }) => {
@@ -112,33 +139,79 @@ test("settings modal keeps its dark desktop sidebar layout within the viewport",
 	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-dark-sidebar.png", screenshotTolerance);
 });
 
-test("synthetic karaoke shows a small folded corner inside the lyrics surface", async ({ page }) => {
+test("synthetic karaoke uses the themed syllable wake without a visible timing marker", async ({ page }) => {
 	await renderScenario(page, "synthetic-word-sync");
 
 	const metrics = await page.evaluate(() => {
-		const marker = document.querySelector<HTMLElement>("[data-aura-timing-marker]");
 		const lyrics = document.querySelector<HTMLElement>(".aura-lyrics");
-		if (!marker || !lyrics) {
-			throw new Error("Missing synthetic timing marker.");
+		const activeSyllable = document.querySelector<HTMLElement>(".syllable-group.active .syllable.active");
+		const activeGroup = document.querySelector<HTMLElement>(".vocals-group.syllable-group.active");
+		const pipRoot = document.querySelector<HTMLElement>("#aura-lyrics-root");
+		if (!lyrics || !activeSyllable || !activeGroup || !pipRoot) {
+			throw new Error("Missing synthetic syllable wake elements.");
 		}
-		const markerRect = marker.getBoundingClientRect();
-		const lyricsRect = lyrics.getBoundingClientRect();
+		const descriptionId = lyrics.getAttribute("aria-describedby");
+		const description = descriptionId ? document.getElementById(descriptionId) : null;
+		const wakeColor = pipRoot.style.getPropertyValue("--pip-synthetic-wake-color");
+		const wakeRgb = pipRoot.style.getPropertyValue("--pip-synthetic-wake-rgb");
+		const colorProbe = document.createElement("span");
+		colorProbe.style.color = wakeColor;
+		document.body.append(colorProbe);
+		const computedWakeColor = getComputedStyle(colorProbe).color;
+		colorProbe.remove();
+		const activeStyle = getComputedStyle(activeSyllable);
+		const haloStyle = getComputedStyle(activeGroup, "::after");
+		const syntheticStyleSource = Array.from(document.querySelectorAll("style"))
+			.map((style) => style.textContent ?? "")
+			.find((source) => source.includes(".aura-lyrics.synthetic-timing .syllable.active"));
+		const gradientProgress = activeSyllable.style.getPropertyValue("--gradient-progress");
 		return {
-			label: marker.getAttribute("aria-label"),
-			leftOffset: Math.round(markerRect.left - lyricsRect.left),
-			topOffset: Math.round(markerRect.top - lyricsRect.top),
-			width: Math.round(markerRect.width),
-			height: Math.round(markerRect.height),
+			hasSyntheticClass: lyrics.classList.contains("synthetic-timing"),
+			timingSource: lyrics.dataset.timingSource,
+			descriptionId,
+			descriptionText: description?.textContent ?? null,
+			descriptionIsLocalizedNode: description?.hasAttribute("data-aura-synthetic-description") ?? false,
+			legacyClassMarkerCount: document.querySelectorAll(".aura-timing-marker").length,
+			legacyDataMarkerCount: document.querySelectorAll("[data-aura-timing-marker]").length,
+			wakeColor,
+			wakeRgb,
+			computedWakeColor,
+			backgroundImage: activeStyle.backgroundImage,
+			syntheticStyleSource: syntheticStyleSource ?? "",
+			gradientProgress,
+			gradientProgressValue: Number.parseFloat(gradientProgress),
+			halo: {
+				content: haloStyle.content,
+				opacity: Number.parseFloat(haloStyle.opacity),
+				animationName: haloStyle.animationName,
+				position: haloStyle.position,
+				pointerEvents: haloStyle.pointerEvents,
+			},
 		};
 	});
 
-	expect(metrics.label).toBe("Synthesized karaoke sync");
-	expect(metrics.leftOffset).toBeGreaterThanOrEqual(0);
-	expect(metrics.topOffset).toBeGreaterThanOrEqual(0);
-	expect(metrics.width).toBeGreaterThanOrEqual(12);
-	expect(metrics.width).toBeLessThanOrEqual(14);
-	expect(metrics.height).toBe(metrics.width);
-	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("synthetic-timing-marker.png", screenshotTolerance);
+	expect(metrics.hasSyntheticClass).toBe(true);
+	expect(metrics.timingSource).toBe("synthetic");
+	expect(metrics.descriptionId).toMatch(/^aura-synthetic-timing-description-\d+$/);
+	expect(metrics.descriptionText).toBe("Synthesized karaoke sync");
+	expect(metrics.descriptionIsLocalizedNode).toBe(true);
+	expect(metrics.legacyClassMarkerCount).toBe(0);
+	expect(metrics.legacyDataMarkerCount).toBe(0);
+	expect(metrics.wakeColor).not.toBe("#ffffff");
+	expect(metrics.wakeRgb).not.toBe("255, 255, 255");
+	expect(metrics.backgroundImage).toContain("linear-gradient");
+	expect(metrics.backgroundImage).toContain(metrics.computedWakeColor);
+	expect(metrics.syntheticStyleSource).toContain("var(--pip-synthetic-wake-color)");
+	expect(metrics.gradientProgress).toMatch(/^\d+(?:\.\d+)?%$/);
+	expect(metrics.gradientProgressValue).toBeGreaterThan(0);
+	expect(metrics.gradientProgressValue).toBeLessThan(100);
+	expect(metrics.halo.content).toBe('""');
+	expect(metrics.halo.opacity).toBeGreaterThan(0);
+	expect(metrics.halo.opacity).toBeLessThanOrEqual(0.16);
+	expect(metrics.halo.animationName).toBe("synthetic-wake-halo-breathe");
+	expect(metrics.halo.position).toBe("absolute");
+	expect(metrics.halo.pointerEvents).toBe("none");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("synthetic-syllable-wake.png", screenshotTolerance);
 });
 
 test("line-sync rows stay centered without changing lyric layout width", async ({ page }) => {
@@ -179,6 +252,22 @@ test("word and syllable sync keeps readable tracking and visible glow", async ({
 
 	const metrics = await wordRowMetrics(page, ".syllable-row.active .syllable-main .word");
 	const glow = await glowMetrics(page, ".syllable-row.active");
+	const nativeState = await page.evaluate(() => {
+		const lyrics = document.querySelector<HTMLElement>(".aura-lyrics");
+		const activeSyllable = document.querySelector<HTMLElement>(".syllable-group.active .syllable.active");
+		const activeGroup = document.querySelector<HTMLElement>(".vocals-group.syllable-group.active");
+		if (!lyrics || !activeSyllable || !activeGroup) {
+			throw new Error("Missing native syllable elements.");
+		}
+		return {
+			hasSyntheticClass: lyrics.classList.contains("synthetic-timing"),
+			timingSource: lyrics.dataset.timingSource ?? null,
+			describedBy: lyrics.getAttribute("aria-describedby"),
+			syntheticDescriptionCount: document.querySelectorAll("[data-aura-synthetic-description]").length,
+			wakeSyllableSelectorMatches: activeSyllable.matches(".aura-lyrics.synthetic-timing .syllable.active"),
+			wakeHaloSelectorMatches: activeGroup.matches(".aura-lyrics.synthetic-timing .vocals-group.syllable-group.active"),
+		};
+	});
 
 	expect(metrics.activeCenterDelta).toBeLessThanOrEqual(syllableCenterTolerancePx);
 	expect(metrics.minGap).toBeGreaterThanOrEqual(-1);
@@ -186,6 +275,14 @@ test("word and syllable sync keeps readable tracking and visible glow", async ({
 	expect(glow.trackOverflow).toEqual({ x: "visible", y: "visible" });
 	expect(glow.glowTop).toBeGreaterThanOrEqual(glow.viewportTop);
 	expect(glow.glowBottom).toBeLessThanOrEqual(glow.viewportBottom);
+	expect(nativeState).toEqual({
+		hasSyntheticClass: false,
+		timingSource: null,
+		describedBy: null,
+		syntheticDescriptionCount: 0,
+		wakeSyllableSelectorMatches: false,
+		wakeHaloSelectorMatches: false,
+	});
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("word-sync-active.png", screenshotTolerance);
 });
 
@@ -387,6 +484,7 @@ const metadataMetrics = async (page: Page) =>
 			throw new Error("Missing Aurora metadata or playback controls.");
 		}
 		const progress = document.querySelector<HTMLElement>(".track-metadata-progress");
+		const cover = document.querySelector<HTMLImageElement>(".track-metadata-cover");
 		return {
 			eyebrow: document.querySelector(".track-metadata-eyebrow")?.textContent ?? null,
 			title: title.textContent,
@@ -399,6 +497,8 @@ const metadataMetrics = async (page: Page) =>
 			controlsOpacity: getComputedStyle(controls).opacity,
 			controlsBackground: getComputedStyle(controls).backgroundImage,
 			playColor: getComputedStyle(play).color,
+			coverWidth: cover?.getBoundingClientRect().width ?? 0,
+			coverSource: cover?.src ?? null,
 		};
 	});
 
