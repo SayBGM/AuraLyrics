@@ -15,6 +15,8 @@ export type { StatusViewModel } from "./components/StatusScene";
 export { interludeKey } from "./interludeProgress";
 export type { InterludeWaveformMap } from "./interludeWaveforms";
 
+let nextRendererInstanceId = 0;
+
 export type LyricsRendererMountOptions = {
 	lyrics: LyricsDocument;
 	settings: ExtensionSettings;
@@ -27,6 +29,7 @@ export type LyricsRendererMountOptions = {
 };
 
 export class LyricsRenderer {
+	private readonly rendererInstanceId = ++nextRendererInstanceId;
 	private hostRoot?: HTMLElement;
 	private container?: HTMLDivElement;
 	private lyricsViewport?: HTMLDivElement;
@@ -54,13 +57,15 @@ export class LyricsRenderer {
 		this.container.append(this.lyricsViewport);
 		root.replaceChildren(this.container);
 		if (timingSource === "synthetic") {
-			const marker = ownerDocument.createElement("span");
-			marker.className = "aura-timing-marker";
-			marker.dataset.auraTimingMarker = "true";
-			marker.setAttribute("role", "img");
-			marker.setAttribute("aria-label", timingMarkerLabel(settings.language));
-			marker.title = timingMarkerLabel(settings.language);
-			this.container.append(marker);
+			const description = ownerDocument.createElement("span");
+			description.id = `aura-synthetic-timing-description-${this.rendererInstanceId}`;
+			description.className = "aura-visually-hidden";
+			description.dataset.auraSyntheticDescription = "true";
+			description.textContent = syntheticTimingLabel(settings.language);
+			this.container.classList.add("synthetic-timing");
+			this.container.dataset.timingSource = "synthetic";
+			this.container.setAttribute("aria-describedby", description.id);
+			this.container.append(description);
 		}
 		this.groups = buildLyricsScene(this.lyricsTrack, { lyrics, settings, waveforms, rhythm }).groups;
 		this.viewportController = new LyricsViewportController(this.lyricsTrack, this.lyricsViewport, this.container, settings, this.groups);
@@ -165,7 +170,7 @@ export class LyricsRenderer {
 
 const roundSeconds = (value: number): number => Number(value.toFixed(3));
 
-const timingMarkerLabel = (language: ExtensionSettings["language"]): string => {
+const syntheticTimingLabel = (language: ExtensionSettings["language"]): string => {
 	if (language === "ko") return "가상 노래방 싱크";
 	if (language === "ja") return "仮想カラオケ同期";
 	return "Synthesized karaoke sync";

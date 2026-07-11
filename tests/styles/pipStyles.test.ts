@@ -37,6 +37,22 @@ describe("pipStyles", () => {
 		expect(interludeStyles).not.toContain(".status-card");
 	});
 
+	test("hides synthetic timing descriptions accessibly without folded-corner marker styles", () => {
+		const visuallyHiddenRule = baseStyles.match(/\.aura-visually-hidden \{[^}]+\}/)?.[0] ?? "";
+
+		expect(visuallyHiddenRule).toContain("position: absolute");
+		expect(visuallyHiddenRule).toContain("width: 1px");
+		expect(visuallyHiddenRule).toContain("height: 1px");
+		expect(visuallyHiddenRule).toContain("padding: 0");
+		expect(visuallyHiddenRule).toContain("margin: -1px");
+		expect(visuallyHiddenRule).toContain("overflow: hidden");
+		expect(visuallyHiddenRule).toContain("clip: rect(0, 0, 0, 0)");
+		expect(visuallyHiddenRule).toContain("white-space: nowrap");
+		expect(visuallyHiddenRule).toContain("border: 0");
+		expect(lyricsStyles).not.toContain(".aura-timing-marker");
+		expect(lyricsStyles).not.toContain("clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 70%, 70% 100%, 0 100%)");
+	});
+
 	test("themes PiP content while keeping playback and close controls on fixed glass contrast", () => {
 		const rootRule = baseStyles.match(/#aura-lyrics-root \{[^}]+\}/)?.[0] ?? "";
 		const scrimRule = baseStyles.match(/\.pip-scrim \{[^}]+\}/)?.[0] ?? "";

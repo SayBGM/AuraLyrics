@@ -169,6 +169,18 @@ const beginIntroEpoch = (app: ExtensionApp): void => {
 	introGateOf(app).beginTrackEpoch();
 };
 
+const expectSyntheticTimingScene = (root: HTMLElement, expectedLabel = "Synthesized karaoke sync"): void => {
+	const scene = root.querySelector<HTMLElement>(".aura-lyrics.synthetic-timing");
+	const descriptionId = scene?.getAttribute("aria-describedby");
+	const description = descriptionId ? root.querySelector<HTMLElement>(`#${descriptionId}`) : null;
+
+	expect(scene?.dataset.timingSource).toBe("synthetic");
+	expect(description?.matches("[data-aura-synthetic-description].aura-visually-hidden")).toBe(true);
+	expect(description?.textContent).toBe(expectedLabel);
+	expect(scene?.getAttribute("aria-describedby")).toBe(description?.id);
+	expect(root.querySelector(".aura-timing-marker")).toBeNull();
+};
+
 describe("ExtensionApp", () => {
 	test("reveals intro-ready lyrics immediately when the first vocal is within 1.5 seconds", async () => {
 		const { spicetify } = createSpicetify();
@@ -291,7 +303,7 @@ describe("ExtensionApp", () => {
 		expect(lyricsWereVisibleBeforeAnalysis).toBe(true);
 		expect(root.querySelector(".lyrics-track")?.textContent).toContain("Ready");
 		expect(root.querySelector(".track-metadata-scene")).toBeNull();
-		await vi.waitFor(() => expect(root.querySelector("[data-aura-timing-marker]")).not.toBeNull());
+		await vi.waitFor(() => expectSyntheticTimingScene(root));
 	});
 
 	test("keeps the initial lyrics DOM when late enrichment has no renderable changes", async () => {
@@ -1574,7 +1586,7 @@ describe("ExtensionApp", () => {
 		internals.playbackSynchronizer.resync();
 		internals.introGate.beginTrackEpoch();
 		internals.presentReadySnapshot(syntheticSnapshot);
-		expect(initialRoot.querySelector("[data-aura-timing-marker]")).not.toBeNull();
+		expectSyntheticTimingScene(initialRoot);
 		internals.closePip(false);
 		internals.settings.update({ pseudoKaraoke: false, syncPreference: "line-only" });
 		await internals.applySettings();
@@ -1589,7 +1601,12 @@ describe("ExtensionApp", () => {
 		await vi.waitFor(() => expect(roots).toHaveLength(1));
 
 		expect(roots[0]?.querySelector(".lyrics-track")?.textContent).toContain("First vocal");
-		expect(roots[0]?.querySelector("[data-aura-timing-marker]")).toBeNull();
+		const reopenedScene = roots[0]?.querySelector<HTMLElement>(".aura-lyrics");
+		expect(reopenedScene?.classList.contains("synthetic-timing")).toBe(false);
+		expect(reopenedScene?.dataset.timingSource).toBeUndefined();
+		expect(reopenedScene?.hasAttribute("aria-describedby")).toBe(false);
+		expect(roots[0]?.querySelector("[data-aura-synthetic-description]")).toBeNull();
+		expect(roots[0]?.querySelector(".aura-timing-marker")).toBeNull();
 		expect(roots[0]?.querySelector(".line-group")).not.toBeNull();
 		reopenResult.resolve(canonicalLoadState);
 		await reopening;

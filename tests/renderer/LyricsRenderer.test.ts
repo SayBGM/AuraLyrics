@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { LineLyrics, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
+import type { LineLyrics, StaticLyrics, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
 import { interludeKey, LyricsRenderer } from "../../src/renderer/LyricsRenderer";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
 
@@ -231,25 +231,39 @@ describe("LyricsRenderer", () => {
 		expect(root.textContent).not.toContain("·");
 	});
 
-	test("shows a folded-corner marker only for synthesized karaoke", () => {
+	test("exposes synthetic timing as a localized scene description without a visible marker", () => {
 		const root = document.createElement("div");
-		const lyrics: LineLyrics = {
-			type: "line",
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
 			startTime: 0,
 			endTime: 4,
-			content: [{ type: "vocal", text: "Synthesized", startTime: 0, endTime: 4, oppositeAligned: false }],
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [{ text: "Synthesized", startTime: 0, endTime: 4, isPartOfWord: false }],
+					},
+				},
+			],
 		};
 		const renderer = new LyricsRenderer();
 		renderer.mount(root, { lyrics, settings: { ...DEFAULT_SETTINGS, language: "ko" }, timingSource: "synthetic" });
-		const marker = root.querySelector<HTMLElement>("[data-aura-timing-marker]");
-		expect(marker).not.toBeNull();
-		expect(marker?.getAttribute("aria-label")).toBe("가상 노래방 싱크");
-		expect(marker?.classList.contains("aura-timing-marker")).toBe(true);
-		expect(marker?.parentElement?.classList.contains("aura-lyrics")).toBe(true);
-		expect(marker?.parentElement?.querySelector(":scope > .lyrics-viewport")).not.toBeNull();
+		const scene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const description = root.querySelector<HTMLElement>("[data-aura-synthetic-description]");
+		const descriptionId = scene?.getAttribute("aria-describedby");
+
+		expect(scene?.classList.contains("synthetic-timing")).toBe(true);
+		expect(scene?.dataset.timingSource).toBe("synthetic");
+		expect(description?.textContent).toBe("가상 노래방 싱크");
+		expect(descriptionId).toBe(description?.id);
+		expect(descriptionId ? root.querySelector(`#${descriptionId}`) : null).toBe(description);
+		expect(root.querySelector(".aura-timing-marker")).toBeNull();
 	});
 
-	test("does not show a folded-corner marker for native or missing timing", () => {
+	test.each(["native", undefined] as const)("keeps %s timing free of synthetic scene state", (timingSource) => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {
 			type: "line",
@@ -258,10 +272,101 @@ describe("LyricsRenderer", () => {
 			content: [{ type: "vocal", text: "Native", startTime: 0, endTime: 4, oppositeAligned: false }],
 		};
 		const renderer = new LyricsRenderer();
-		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS, timingSource: "native" });
-		expect(root.querySelector("[data-aura-timing-marker]")).toBeNull();
-		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS });
-		expect(root.querySelector("[data-aura-timing-marker]")).toBeNull();
+		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS, timingSource });
+		const scene = root.querySelector<HTMLElement>(".aura-lyrics");
+
+		expect(scene?.classList.contains("synthetic-timing")).toBe(false);
+		expect(scene?.dataset.timingSource).toBeUndefined();
+		expect(scene?.hasAttribute("aria-describedby")).toBe(false);
+		expect(root.querySelector("[data-aura-synthetic-description]")).toBeNull();
+		expect(root.querySelector(".aura-timing-marker")).toBeNull();
+	});
+
+	test.each([
+		["ko", "가상 노래방 싱크"],
+		["en", "Synthesized karaoke sync"],
+		["ja", "仮想カラオケ同期"],
+	] as const)("localizes the synthetic timing scene description in %s", (language, expectedLabel) => {
+		const root = document.createElement("div");
+		const lyrics: StaticLyrics = { type: "static", lines: [{ text: "Synthetic" }] };
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: { ...DEFAULT_SETTINGS, language }, timingSource: "synthetic" });
+		const scene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const descriptionId = scene?.getAttribute("aria-describedby");
+		const description = descriptionId ? root.querySelector<HTMLElement>(`#${descriptionId}`) : null;
+
+		expect(description?.matches("[data-aura-synthetic-description].aura-visually-hidden")).toBe(true);
+		expect(description?.textContent).toBe(expectedLabel);
+	});
+
+	test("updates the synthetic timing description and its link on a language remount", () => {
+		const root = document.createElement("div");
+		const lyrics: StaticLyrics = { type: "static", lines: [{ text: "Synthetic" }] };
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, {
+			lyrics,
+			settings: { ...DEFAULT_SETTINGS, language: "en" },
+			timingSource: "synthetic",
+		});
+		const firstScene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const firstDescriptionId = firstScene?.getAttribute("aria-describedby");
+
+		renderer.mount(root, {
+			lyrics,
+			settings: { ...DEFAULT_SETTINGS, language: "ja" },
+			timingSource: "synthetic",
+		});
+		const remountedScene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const remountedDescriptionId = remountedScene?.getAttribute("aria-describedby");
+		const remountedDescription = remountedDescriptionId ? root.querySelector<HTMLElement>(`#${remountedDescriptionId}`) : null;
+
+		expect(remountedScene).not.toBe(firstScene);
+		expect(remountedDescriptionId).toBe(firstDescriptionId);
+		expect(remountedDescription?.textContent).toBe("仮想カラオケ同期");
+		expect(remountedScene?.getAttribute("aria-describedby")).toBe(remountedDescription?.id);
+	});
+
+	test("gives synthetic descriptions unique ids across renderer instances in one document", () => {
+		const rootA = document.createElement("div");
+		const rootB = document.createElement("div");
+		const lyrics: StaticLyrics = { type: "static", lines: [{ text: "Synthetic" }] };
+		const rendererA = new LyricsRenderer();
+		const rendererB = new LyricsRenderer();
+		rendererA.mount(rootA, { lyrics, settings: DEFAULT_SETTINGS, timingSource: "synthetic" });
+		rendererB.mount(rootB, { lyrics, settings: DEFAULT_SETTINGS, timingSource: "synthetic" });
+		const sceneA = rootA.querySelector<HTMLElement>(".aura-lyrics");
+		const sceneB = rootB.querySelector<HTMLElement>(".aura-lyrics");
+		const descriptionIdA = sceneA?.getAttribute("aria-describedby");
+		const descriptionIdB = sceneB?.getAttribute("aria-describedby");
+
+		expect(descriptionIdA).toBeTruthy();
+		expect(descriptionIdB).toBeTruthy();
+		expect(descriptionIdA).not.toBe(descriptionIdB);
+		expect(descriptionIdA ? rootA.querySelector(`#${descriptionIdA}`) : null).toBe(rootA.querySelector("[data-aura-synthetic-description]"));
+		expect(descriptionIdB ? rootB.querySelector(`#${descriptionIdB}`) : null).toBe(rootB.querySelector("[data-aura-synthetic-description]"));
+	});
+
+	test.each([
+		[
+			"line",
+			{
+				type: "line",
+				startTime: 0,
+				endTime: 4,
+				content: [{ type: "vocal", text: "Line", startTime: 0, endTime: 4, oppositeAligned: false }],
+			} satisfies LineLyrics,
+		],
+		["static", { type: "static", lines: [{ text: "Static" }] } satisfies StaticLyrics],
+	] as const)("exposes synthetic timing scene state for %s lyrics without a visible marker", (_type, lyrics) => {
+		const root = document.createElement("div");
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: DEFAULT_SETTINGS, timingSource: "synthetic" });
+		const scene = root.querySelector<HTMLElement>(".aura-lyrics");
+		const descriptionId = scene?.getAttribute("aria-describedby");
+
+		expect(scene?.matches(".aura-lyrics.synthetic-timing[data-timing-source='synthetic']")).toBe(true);
+		expect(descriptionId ? root.querySelector(`#${descriptionId}`)?.textContent : null).toBe("Synthesized karaoke sync");
+		expect(root.querySelector(".aura-timing-marker")).toBeNull();
 	});
 	test("shows album art mode without lyric or status content", () => {
 		const pipRoot = document.createElement("div");
