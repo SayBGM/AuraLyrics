@@ -11,7 +11,7 @@ export type TrackChangedEvent = {
 
 type TrackProgress = {
 	progressSec: number;
-	durationSec: number;
+	durationSec?: number;
 };
 
 type PreviousEpochCandidate = {
@@ -36,23 +36,28 @@ export class SpicetifyPlayerAdapter {
 		const candidate = this.previousEpochCandidate;
 		const previousEpochCandidate = candidate?.uri === previousTrackUri ? candidate?.progress : undefined;
 		const track = this.getCurrentTrack();
-		const preserveLatestProgress = previousTrackUri === track?.uri && previousEpochCandidate !== undefined;
-		const previousProgress = preserveLatestProgress ? previousEpochCandidate : latestPreviousProgress;
+		const isSameUriRepeat = previousTrackUri === track?.uri && previousEpochCandidate !== undefined;
+		const previousProgress = isSameUriRepeat ? previousEpochCandidate : latestPreviousProgress;
+		const currentProgress = track ? this.progressByTrackUri.get(track.uri) : undefined;
 		this.currentTrackUri = track?.uri;
+		this.progressByTrackUri.clear();
+		if (track && currentProgress && (track.uri !== previousTrackUri || isSameUriRepeat)) {
+			this.progressByTrackUri.set(track.uri, currentProgress);
+		}
+		this.previousEpochCandidate = undefined;
 		this.trackChanged.emit({
 			track,
 			previousTrackUri,
 			previousProgressSec: previousProgress?.progressSec,
 			previousDurationSec: previousProgress?.durationSec,
 		});
-		if (previousTrackUri && !preserveLatestProgress) {
-			this.progressByTrackUri.delete(previousTrackUri);
-		}
-		this.previousEpochCandidate = undefined;
 	};
 	private readonly onPlayPause = () => this.playbackChanged.emit(this.isPlaying());
 	private readonly onProgress = (event: { data: number }) => {
 		const progressSec = event.data / 1000;
+		if (!Number.isFinite(progressSec) || progressSec < 0) {
+			return;
+		}
 		this.progressChanged.emit(progressSec);
 
 		const track = this.getCurrentTrack();
@@ -68,9 +73,10 @@ export class SpicetifyPlayerAdapter {
 		) {
 			this.previousEpochCandidate = { uri: track.uri, progress: previousProgress };
 		}
+		const durationSec = track.durationMs / 1000;
 		this.progressByTrackUri.set(track.uri, {
 			progressSec,
-			durationSec: track.durationMs / 1000,
+			durationSec: Number.isFinite(durationSec) && durationSec > 0 ? durationSec : undefined,
 		});
 	};
 
@@ -149,9 +155,11 @@ export class SpicetifyPlayerAdapter {
 }
 
 const isSameUriNaturalRepeatReset = (previousProgress: TrackProgress, progressSec: number): boolean =>
+	previousProgress.durationSec !== undefined &&
 	previousProgress.progressSec >= previousProgress.durationSec - SAME_URI_REPEAT_BOUNDARY_SEC &&
 	progressSec >= 0 &&
-	progressSec <= SAME_URI_REPEAT_BOUNDARY_SEC;
+	progressSec <= SAME_URI_REPEAT_BOUNDARY_SEC &&
+	progressSec < previousProgress.progressSec;
 
 const COVER_METADATA_KEYS = ["image_url", "image_xlarge_url", "image_large_url", "image_medium_url", "image_small_url"] as const;
 
