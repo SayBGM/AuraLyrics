@@ -10,6 +10,7 @@ import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { buildLyricsScene } from "./LyricsSceneBuilder";
 import { LyricsViewportController } from "./LyricsViewportController";
 import { appendProviderSource } from "./lyricsTrackHelpers";
+import { SceneTransitionController, type SceneTransitionDirection, type SceneTransitionHandle } from "./SceneTransitionController";
 
 export type { StatusViewModel } from "./components/StatusScene";
 export { interludeKey } from "./interludeProgress";
@@ -28,112 +29,266 @@ export type LyricsRendererMountOptions = {
 	rhythm?: RhythmProfile;
 };
 
+export type ScenePresentationOptions = {
+	direction?: SceneTransitionDirection;
+	animate?: boolean;
+};
+
+type SceneResources = {
+	scene: HTMLDivElement;
+	container?: HTMLDivElement;
+	lyricsViewport?: HTMLDivElement;
+	lyricsTrack?: HTMLDivElement;
+	groups: AnimatedGroup[];
+	viewportController?: LyricsViewportController;
+	interludeFrameController?: InterludeFrameController;
+	cleaned: boolean;
+};
+
+const ROOT_PRESENTATION_CLASSES = [
+	"interlude-active",
+	"interlude-frame-active",
+	"interlude-style-frame",
+	"interlude-style-dots",
+	"interlude-style-wave",
+] as const;
+
 export class LyricsRenderer {
 	private readonly rendererInstanceId = ++nextRendererInstanceId;
 	private hostRoot?: HTMLElement;
-	private container?: HTMLDivElement;
-	private lyricsViewport?: HTMLDivElement;
-	private lyricsTrack?: HTMLDivElement;
-	private groups: AnimatedGroup[] = [];
-	private viewportController?: LyricsViewportController;
-	private interludeFrameController?: InterludeFrameController;
+	private sceneTransitionController?: SceneTransitionController;
+	private currentScene?: SceneResources;
+	private readonly retiredScenes = new Set<SceneResources>();
 
 	public mount(
 		root: HTMLElement,
-		{ lyrics, settings, timingSource = "native", provider, source, diagnostics, waveforms = {}, rhythm }: LyricsRendererMountOptions
-	): void {
-		this.destroy();
-		this.hostRoot = root;
+		{ lyrics, settings, timingSource = "native", provider, source, diagnostics, waveforms = {}, rhythm }: LyricsRendererMountOptions,
+		presentation?: ScenePresentationOptions
+	): SceneTransitionHandle {
 		const ownerDocument = root.ownerDocument;
-		this.container = ownerDocument.createElement("div");
-		this.container.className = "aura-lyrics";
-		this.applyRootSettings(this.container, settings);
-		this.applyRhythmProfile(this.container, rhythm);
-		this.lyricsViewport = ownerDocument.createElement("div");
-		this.lyricsViewport.className = "lyrics-viewport";
-		this.lyricsTrack = ownerDocument.createElement("div");
-		this.lyricsTrack.className = `lyrics-track align-${settings.alignmentMode}`;
-		this.lyricsViewport.append(this.lyricsTrack);
-		this.container.append(this.lyricsViewport);
-		root.replaceChildren(this.container);
+		const container = ownerDocument.createElement("div");
+		container.className = "aura-lyrics";
+		this.applyRootSettings(container, settings);
+		this.applyRhythmProfile(container, rhythm);
+		const lyricsViewport = ownerDocument.createElement("div");
+		lyricsViewport.className = "lyrics-viewport";
+		const lyricsTrack = ownerDocument.createElement("div");
+		lyricsTrack.className = `lyrics-track align-${settings.alignmentMode}`;
+		lyricsViewport.append(lyricsTrack);
+		container.append(lyricsViewport);
 		if (timingSource === "synthetic") {
 			const description = ownerDocument.createElement("span");
 			description.id = `aura-synthetic-timing-description-${this.rendererInstanceId}`;
 			description.className = "aura-visually-hidden";
 			description.dataset.auraSyntheticDescription = "true";
 			description.textContent = syntheticTimingLabel(settings.language);
-			this.container.classList.add("synthetic-timing");
-			this.container.dataset.timingSource = "synthetic";
-			this.container.setAttribute("aria-describedby", description.id);
-			this.container.append(description);
+			container.classList.add("synthetic-timing");
+			container.dataset.timingSource = "synthetic";
+			container.setAttribute("aria-describedby", description.id);
+			container.append(description);
 		}
-		this.groups = buildLyricsScene(this.lyricsTrack, { lyrics, settings, waveforms, rhythm }).groups;
-		this.viewportController = new LyricsViewportController(this.lyricsTrack, this.lyricsViewport, this.container, settings, this.groups);
-		this.interludeFrameController = new InterludeFrameController(root, this.container, settings.interludeStyle, this.groups);
-		appendProviderSource(ownerDocument, this.lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
+		const groups = buildLyricsScene(lyricsTrack, { lyrics, settings, waveforms, rhythm }).groups;
+		const viewportController = new LyricsViewportController(lyricsTrack, lyricsViewport, container, settings, groups);
+		const interludeFrameController = new InterludeFrameController(root, container, settings.interludeStyle, groups);
+		appendProviderSource(ownerDocument, lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
+		return this.presentScene(
+			root,
+			{
+				scene: container,
+				container,
+				lyricsViewport,
+				lyricsTrack,
+				groups,
+				viewportController,
+				interludeFrameController,
+				cleaned: false,
+			},
+			presentation,
+			this.shouldAnimate(presentation, settings),
+			false
+		);
 	}
 
-	public showStatus(root: HTMLElement, status: StatusViewModel, settings: ExtensionSettings): void {
-		this.destroy();
-		this.hostRoot = root;
-		this.setAlbumArtMode(root, false);
+	public showStatus(
+		root: HTMLElement,
+		status: StatusViewModel,
+		settings: ExtensionSettings,
+		presentation?: ScenePresentationOptions
+	): SceneTransitionHandle {
 		const ownerDocument = root.ownerDocument;
-		this.container = createStatusScene(ownerDocument, status);
-		this.applyRootSettings(this.container, settings);
-		root.replaceChildren(this.container);
+		const container = createStatusScene(ownerDocument, status);
+		this.applyRootSettings(container, settings);
+		return this.presentScene(
+			root,
+			{ scene: container, container, groups: [], cleaned: false },
+			presentation,
+			this.shouldAnimate(presentation, settings),
+			false
+		);
 	}
 
-	public showTrackMetadata(root: HTMLElement, metadata: TrackMetadataViewModel, settings: ExtensionSettings): void {
-		this.destroy();
-		this.hostRoot = root;
-		this.setAlbumArtMode(root, false);
-		this.container = createTrackMetadataScene(root.ownerDocument, metadata);
-		this.applyRootSettings(this.container, settings);
-		root.replaceChildren(this.container);
+	public showTrackMetadata(
+		root: HTMLElement,
+		metadata: TrackMetadataViewModel,
+		settings: ExtensionSettings,
+		presentation?: ScenePresentationOptions
+	): SceneTransitionHandle {
+		const container = createTrackMetadataScene(root.ownerDocument, metadata);
+		this.applyRootSettings(container, settings);
+		return this.presentScene(
+			root,
+			{ scene: container, container, groups: [], cleaned: false },
+			presentation,
+			this.shouldAnimate(presentation, settings),
+			false
+		);
 	}
 
-	public showAlbumArt(root: HTMLElement): void {
-		this.destroy();
-		this.hostRoot = root;
-		this.setAlbumArtMode(root, true);
-		root.replaceChildren();
+	public showAlbumArt(root: HTMLElement, presentation?: ScenePresentationOptions): SceneTransitionHandle {
+		const scene = root.ownerDocument.createElement("div");
+		scene.className = "album-art-scene";
+		scene.dataset.scene = "album-art";
+		scene.setAttribute("aria-hidden", "true");
+		return this.presentScene(root, { scene, groups: [], cleaned: false }, presentation, presentation?.animate === true, true);
 	}
 
 	public update(timestamp: number, deltaTime: number): void {
-		for (const group of this.groups) {
+		const scene = this.currentScene;
+		if (!scene || scene.cleaned) {
+			return;
+		}
+		for (const group of scene.groups) {
 			group.animate(timestamp, deltaTime);
 		}
-		this.interludeFrameController?.update();
-		this.viewportController?.update();
+		scene.interludeFrameController?.update();
+		scene.viewportController?.update();
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
-		if (this.container) {
-			this.applyRootSettings(this.container, settings);
+		const scene = this.currentScene;
+		if (!scene || scene.cleaned) {
+			return;
 		}
-		if (this.lyricsTrack) {
+		if (scene.container) {
+			this.applyRootSettings(scene.container, settings);
+		}
+		if (scene.lyricsTrack) {
 			for (const alignment of ["natural", "center", "left"] as const) {
-				this.lyricsTrack.classList.toggle(`align-${alignment}`, settings.alignmentMode === alignment);
+				scene.lyricsTrack.classList.toggle(`align-${alignment}`, settings.alignmentMode === alignment);
 			}
 		}
-		this.viewportController?.applySettings(settings);
-		this.viewportController?.update();
-		for (const group of this.groups) {
+		scene.viewportController?.applySettings(settings);
+		scene.viewportController?.update();
+		for (const group of scene.groups) {
 			group.applySettings?.(settings);
 		}
 	}
 
 	public destroy(): void {
-		this.interludeFrameController?.destroy();
-		this.setAlbumArtMode(this.hostRoot, false);
-		this.groups = [];
-		this.container?.remove();
+		const root = this.hostRoot;
+		const controller = this.sceneTransitionController;
+		const scenes = new Set(this.retiredScenes);
+		if (this.currentScene) {
+			scenes.add(this.currentScene);
+		}
 		this.hostRoot = undefined;
-		this.container = undefined;
-		this.lyricsViewport = undefined;
-		this.lyricsTrack = undefined;
-		this.viewportController = undefined;
-		this.interludeFrameController = undefined;
+		this.sceneTransitionController = undefined;
+		this.currentScene = undefined;
+		this.retiredScenes.clear();
+		controller?.destroy();
+		for (const scene of scenes) {
+			this.cleanupScene(scene);
+		}
+		this.setAlbumArtMode(root, false);
+		this.clearRootPresentationState(root);
+	}
+
+	private presentScene(
+		root: HTMLElement,
+		scene: SceneResources,
+		presentation: ScenePresentationOptions | undefined,
+		animate: boolean,
+		albumArtMode: boolean
+	): SceneTransitionHandle {
+		this.ensurePresenter(root);
+		const previous = this.currentScene;
+		const animatedReplacement = previous !== undefined && root.firstElementChild !== null && animate && presentation?.direction !== undefined;
+		this.currentScene = scene;
+		this.setAlbumArtMode(root, albumArtMode);
+		const handle = this.sceneTransitionController?.present(scene.scene, {
+			direction: presentation?.direction,
+			animate,
+		});
+		if (!handle) {
+			throw new Error("Scene transition controller was not initialized.");
+		}
+		if (previous) {
+			if (animatedReplacement) {
+				this.retiredScenes.add(previous);
+				void handle.settled.then(() => this.releaseRetiredScene(previous, root));
+			} else {
+				this.cleanupScene(previous);
+				this.reapplyCurrentInterludeFrame(root);
+			}
+		}
+		if (albumArtMode) {
+			if (animatedReplacement) {
+				void handle.settled.then(() => scene.scene.remove());
+			} else {
+				scene.scene.remove();
+			}
+		}
+		return handle;
+	}
+
+	private ensurePresenter(root: HTMLElement): void {
+		if (this.hostRoot === root && this.sceneTransitionController) {
+			return;
+		}
+		if (this.hostRoot || this.sceneTransitionController || this.currentScene || this.retiredScenes.size > 0) {
+			this.destroy();
+		}
+		this.hostRoot = root;
+		this.sceneTransitionController = new SceneTransitionController(root);
+	}
+
+	private releaseRetiredScene(scene: SceneResources, root: HTMLElement): void {
+		this.retiredScenes.delete(scene);
+		this.cleanupScene(scene);
+		this.reapplyCurrentInterludeFrame(root);
+	}
+
+	private cleanupScene(scene: SceneResources): void {
+		if (scene.cleaned) {
+			return;
+		}
+		scene.cleaned = true;
+		scene.interludeFrameController?.destroy();
+		scene.scene.remove();
+		scene.groups.length = 0;
+		scene.container = undefined;
+		scene.lyricsViewport = undefined;
+		scene.lyricsTrack = undefined;
+		scene.viewportController = undefined;
+		scene.interludeFrameController = undefined;
+	}
+
+	private reapplyCurrentInterludeFrame(root: HTMLElement): void {
+		if (this.hostRoot === root && this.currentScene && !this.currentScene.cleaned) {
+			this.currentScene.interludeFrameController?.update();
+		}
+	}
+
+	private shouldAnimate(presentation: ScenePresentationOptions | undefined, settings: ExtensionSettings): boolean {
+		return presentation?.animate === true && settings.motionEnabled && !settings.reduceMotion;
+	}
+
+	private clearRootPresentationState(root: HTMLElement | undefined): void {
+		if (!root) {
+			return;
+		}
+		root.classList.remove(...ROOT_PRESENTATION_CLASSES);
+		root.parentElement?.classList.remove(...ROOT_PRESENTATION_CLASSES);
 	}
 
 	private applyRootSettings(root: HTMLElement, settings: ExtensionSettings): void {

@@ -1,6 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { LineLyrics, StaticLyrics, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
 import { interludeKey, LyricsRenderer } from "../../src/renderer/LyricsRenderer";
+import { SCENE_TRANSITION_DURATION_MS } from "../../src/renderer/SceneTransitionController";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
 
 type RendererMountOptions = Parameters<LyricsRenderer["mount"]>[1];
@@ -17,7 +18,262 @@ const mountRenderer = (
 	renderer.mount(root, { lyrics, settings, provider, waveforms, rhythm });
 };
 
+const transitionLyrics = (label: string): LineLyrics => ({
+	type: "line",
+	startTime: 0,
+	endTime: 10,
+	content: [
+		{ type: "vocal", text: `${label} first`, startTime: 0, endTime: 5, oppositeAligned: false },
+		{ type: "vocal", text: `${label} second`, startTime: 5, endTime: 10, oppositeAligned: false },
+	],
+});
+
+const transitionTrack = (title: string): TrackIdentity => ({
+	uri: `spotify:track:${title.toLowerCase().replaceAll(" ", "-")}`,
+	title,
+	artist: "Aura",
+	album: "Transitions",
+	durationMs: 10_000,
+	isLocal: false,
+});
+
 describe("LyricsRenderer", () => {
+	describe("scene presentation", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+			document.body.replaceChildren();
+		});
+
+		afterEach(() => {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+			document.body.replaceChildren();
+		});
+
+		test("transitions lyrics up to persistent metadata and settles with only metadata after 720ms", async () => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.mount(root, { lyrics: transitionLyrics("Outgoing"), settings: DEFAULT_SETTINGS });
+
+			const handle = renderer.showTrackMetadata(root, { mode: "persistent", track: transitionTrack("Incoming metadata") }, DEFAULT_SETTINGS, {
+				direction: "up",
+				animate: true,
+			});
+
+			const outgoing = root.querySelector<HTMLElement>('[data-scene-plane="outgoing"]');
+			const incoming = root.querySelector<HTMLElement>('[data-scene-plane="incoming"]');
+			expect(root.classList.contains("scene-transition-up")).toBe(true);
+			expect(outgoing?.querySelector(".aura-lyrics .lyrics-track")?.textContent).toContain("Outgoing first");
+			expect(incoming?.querySelector(".track-metadata-title")?.textContent).toBe("Incoming metadata");
+			expect(root.children).toHaveLength(2);
+
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+
+			expect(await handle.settled).toEqual({ generation: 2, completed: true });
+			expect(root.children).toHaveLength(1);
+			expect(root.querySelector("[data-scene-plane]")).toBeNull();
+			expect(root.querySelector(".track-metadata-title")?.textContent).toBe("Incoming metadata");
+			expect(root.querySelector(".lyrics-track")).toBeNull();
+		});
+
+		test("uses next and previous directions for consecutive metadata scenes and returns each controller handle", async () => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.showTrackMetadata(root, { mode: "intro", track: transitionTrack("First") }, DEFAULT_SETTINGS);
+
+			const next = renderer.showTrackMetadata(root, { mode: "intro", track: transitionTrack("Second") }, DEFAULT_SETTINGS, {
+				direction: "next",
+				animate: true,
+			});
+			expect(root.classList.contains("scene-transition-next")).toBe(true);
+			expect(root.querySelector('[data-scene-plane="outgoing"] .track-metadata-title')?.textContent).toBe("First");
+			expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-title')?.textContent).toBe("Second");
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await next.settled).toEqual({ generation: 2, completed: true });
+
+			const previous = renderer.showTrackMetadata(root, { mode: "intro", track: transitionTrack("Third") }, DEFAULT_SETTINGS, {
+				direction: "previous",
+				animate: true,
+			});
+			expect(root.classList.contains("scene-transition-previous")).toBe(true);
+			expect(root.querySelector('[data-scene-plane="outgoing"] .track-metadata-title')?.textContent).toBe("Second");
+			expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-title')?.textContent).toBe("Third");
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await previous.settled).toEqual({ generation: 3, completed: true });
+		});
+
+		test("routes status, album art, and lyrics through the shared presenter", async () => {
+			const pipRoot = document.createElement("div");
+			const root = document.createElement("main");
+			pipRoot.append(root);
+			const renderer = new LyricsRenderer();
+			renderer.showStatus(root, { title: "Status scene" }, DEFAULT_SETTINGS);
+
+			const album = renderer.showAlbumArt(root, { direction: "up", animate: true });
+			expect(root.querySelector('[data-scene-plane="outgoing"] .status-card')?.textContent).toContain("Status scene");
+			expect(root.querySelector('[data-scene-plane="incoming"] .album-art-scene')).not.toBeNull();
+			expect(root.classList.contains("album-art-mode")).toBe(true);
+			expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await album.settled).toEqual({ generation: 2, completed: true });
+			expect(root.children).toHaveLength(0);
+
+			renderer.showStatus(root, { title: "Before lyrics" }, DEFAULT_SETTINGS);
+			const lyrics = renderer.mount(root, { lyrics: transitionLyrics("Lyrics"), settings: DEFAULT_SETTINGS }, { direction: "next", animate: true });
+			expect(root.querySelector('[data-scene-plane="outgoing"] .status-card')?.textContent).toContain("Before lyrics");
+			expect(root.querySelector('[data-scene-plane="incoming"] .lyrics-track')?.textContent).toContain("Lyrics first");
+			expect(root.classList.contains("album-art-mode")).toBe(false);
+			expect(pipRoot.classList.contains("album-art-mode")).toBe(false);
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await lyrics.settled).toEqual({ generation: 4, completed: true });
+		});
+
+		test.each([
+			["reduced motion", { ...DEFAULT_SETTINGS, reduceMotion: true }],
+			["disabled motion", { ...DEFAULT_SETTINGS, motionEnabled: false }],
+		] as const)("presents a requested animation immediately with %s", async (_label, settings) => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.showStatus(root, { title: "Before" }, DEFAULT_SETTINGS);
+
+			const handle = renderer.showTrackMetadata(root, { mode: "persistent", track: transitionTrack("Immediate") }, settings, {
+				direction: "next",
+				animate: true,
+			});
+
+			expect(root.children).toHaveLength(1);
+			expect(root.firstElementChild?.classList.contains("track-metadata-scene")).toBe(true);
+			expect(root.querySelector("[data-scene-plane]")).toBeNull();
+			expect(root.className).toBe("");
+			expect(await handle.settled).toEqual({ generation: 2, completed: true });
+			expect(vi.getTimerCount()).toBe(0);
+		});
+
+		test("keeps callers without presentation options immediate", async () => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.showStatus(root, { title: "Before" }, DEFAULT_SETTINGS);
+
+			const handle = renderer.showTrackMetadata(root, { mode: "persistent", track: transitionTrack("Default immediate") }, DEFAULT_SETTINGS);
+
+			expect(root.children).toHaveLength(1);
+			expect(root.querySelector("[data-scene-plane]")).toBeNull();
+			expect(await handle.settled).toEqual({ generation: 2, completed: true });
+		});
+
+		test("updates and applies settings only to the current incoming lyrics resources", () => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.mount(root, { lyrics: transitionLyrics("Outgoing"), settings: DEFAULT_SETTINGS });
+			renderer.update(1, 1 / 60);
+
+			renderer.mount(root, { lyrics: transitionLyrics("Incoming"), settings: DEFAULT_SETTINGS }, { direction: "up", animate: true });
+			renderer.update(6, 1 / 60);
+			renderer.applySettings({ ...DEFAULT_SETTINGS, alignmentMode: "left", visibleContextLines: 0 });
+
+			const outgoing = root.querySelector<HTMLElement>('[data-scene-plane="outgoing"]');
+			const incoming = root.querySelector<HTMLElement>('[data-scene-plane="incoming"]');
+			expect(outgoing?.querySelector(".vocals-group.active")?.textContent).toContain("Outgoing first");
+			expect(outgoing?.querySelector(".vocals-group.sung")).toBeNull();
+			expect(outgoing?.querySelector(".lyrics-track")?.classList.contains("align-center")).toBe(true);
+			expect(outgoing?.querySelector(".lyrics-track")?.classList.contains("align-left")).toBe(false);
+			expect(incoming?.querySelector(".vocals-group.active")?.textContent).toContain("Incoming second");
+			expect(incoming?.querySelector(".lyrics-track")?.classList.contains("align-left")).toBe(true);
+			renderer.destroy();
+		});
+
+		test("settles a rapidly replaced handle false and keeps only the latest scene", async () => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.showTrackMetadata(root, { mode: "intro", track: transitionTrack("First") }, DEFAULT_SETTINGS);
+			const interrupted = renderer.showTrackMetadata(root, { mode: "intro", track: transitionTrack("Second") }, DEFAULT_SETTINGS, {
+				direction: "next",
+				animate: true,
+			});
+
+			const latest = renderer.showStatus(root, { title: "Latest" }, DEFAULT_SETTINGS, { direction: "previous", animate: true });
+
+			expect(await interrupted.settled).toEqual({ generation: 2, completed: false });
+			expect(root.querySelector('[data-scene-plane="outgoing"] .track-metadata-title')?.textContent).toBe("Second");
+			expect(root.querySelector('[data-scene-plane="incoming"] .status-card')?.textContent).toContain("Latest");
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await latest.settled).toEqual({ generation: 3, completed: true });
+			expect(root.children).toHaveLength(1);
+			expect(root.querySelector(".status-card")?.textContent).toContain("Latest");
+			expect(root.querySelector(".track-metadata-scene")).toBeNull();
+		});
+
+		test("destroy cancels an active transition and clears DOM, transition classes, and album art mode", async () => {
+			const pipRoot = document.createElement("div");
+			const root = document.createElement("main");
+			pipRoot.append(root);
+			const renderer = new LyricsRenderer();
+			renderer.showStatus(root, { title: "Before" }, DEFAULT_SETTINGS);
+			const handle = renderer.showAlbumArt(root, { direction: "up", animate: true });
+
+			renderer.destroy();
+
+			expect(await handle.settled).toEqual({ generation: 2, completed: false });
+			expect(root.children).toHaveLength(0);
+			expect(root.className).toBe("");
+			expect(pipRoot.classList.contains("album-art-mode")).toBe(false);
+			expect(vi.getTimerCount()).toBe(0);
+		});
+
+		test("cleans the retired interlude resources and reapplies the current frame state after settlement", async () => {
+			const pipRoot = document.createElement("div");
+			const root = document.createElement("main");
+			pipRoot.append(root);
+			Object.defineProperty(pipRoot, "clientWidth", { configurable: true, value: 300 });
+			Object.defineProperty(pipRoot, "clientHeight", { configurable: true, value: 100 });
+			const frameLyrics: LineLyrics = {
+				type: "line",
+				startTime: 0,
+				endTime: 10,
+				content: [{ type: "interlude", startTime: 0, endTime: 10 }],
+			};
+			const settings = { ...DEFAULT_SETTINGS, interludeStyle: "frame" as const };
+			const renderer = new LyricsRenderer();
+			renderer.mount(root, { lyrics: frameLyrics, settings });
+			renderer.update(5, 1 / 60);
+			const retired = root.querySelector<HTMLElement>(".aura-lyrics");
+
+			const handle = renderer.mount(root, { lyrics: frameLyrics, settings }, { direction: "next", animate: true });
+			renderer.update(5, 1 / 60);
+			const current = root.querySelector<HTMLElement>('[data-scene-plane="incoming"] .aura-lyrics');
+			expect(retired?.classList.contains("interlude-active")).toBe(true);
+			expect(current?.classList.contains("interlude-active")).toBe(true);
+			expect(pipRoot.classList.contains("interlude-frame-active")).toBe(true);
+
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await handle.settled).toEqual({ generation: 2, completed: true });
+			expect(retired?.classList.contains("interlude-active")).toBe(false);
+			expect(current?.classList.contains("interlude-active")).toBe(true);
+			expect(root.firstElementChild).toBe(current);
+			expect(pipRoot.classList.contains("interlude-frame-active")).toBe(true);
+			expect(pipRoot.style.getPropertyValue("--pip-interlude-progress")).toBe("0.5");
+		});
+
+		test("switching roots destroys the old presenter before presenting on the new root", async () => {
+			const rootA = document.createElement("main");
+			const rootB = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.showStatus(rootA, { title: "Root A" }, DEFAULT_SETTINGS);
+			const interrupted = renderer.showTrackMetadata(rootA, { mode: "intro", track: transitionTrack("Moving") }, DEFAULT_SETTINGS, {
+				direction: "next",
+				animate: true,
+			});
+
+			const nextRoot = renderer.showStatus(rootB, { title: "Root B" }, DEFAULT_SETTINGS, { direction: "up", animate: true });
+
+			expect(await interrupted.settled).toEqual({ generation: 2, completed: false });
+			expect(rootA.children).toHaveLength(0);
+			expect(rootA.className).toBe("");
+			expect(rootB.querySelector(".status-card")?.textContent).toContain("Root B");
+			expect(await nextRoot.settled).toEqual({ generation: 1, completed: true });
+		});
+	});
+
 	test("applies visual settings to an existing lyrics scene without replacing its DOM", () => {
 		const root = document.createElement("div");
 		const lyrics: SyllableLyrics = {
@@ -456,6 +712,7 @@ describe("LyricsRenderer", () => {
 
 		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
 		expect(root.children).toHaveLength(0);
+		expect(root.querySelector(".aura-lyrics, .status-card")).toBeNull();
 
 		renderer.showStatus(root, { title: "No synced lyrics" }, DEFAULT_SETTINGS);
 
