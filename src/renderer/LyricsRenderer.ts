@@ -223,13 +223,14 @@ export class LyricsRenderer {
 			throw new Error("Scene transition controller was not initialized.");
 		}
 		if (previous) {
+			this.deactivateInterludeFrame(previous);
 			if (animatedReplacement) {
 				this.retiredScenes.add(previous);
 				void handle.settled.then(() => this.releaseRetiredScene(previous, root));
 			} else {
 				this.cleanupScene(previous);
-				this.reapplyCurrentInterludeFrame(root);
 			}
+			this.reapplyCurrentInterludeFrame(root);
 		}
 		if (albumArtMode) {
 			if (animatedReplacement) {
@@ -263,14 +264,19 @@ export class LyricsRenderer {
 			return;
 		}
 		scene.cleaned = true;
-		scene.interludeFrameController?.destroy();
+		this.deactivateInterludeFrame(scene);
 		scene.scene.remove();
 		scene.groups.length = 0;
 		scene.container = undefined;
 		scene.lyricsViewport = undefined;
 		scene.lyricsTrack = undefined;
 		scene.viewportController = undefined;
+	}
+
+	private deactivateInterludeFrame(scene: SceneResources): void {
+		const controller = scene.interludeFrameController;
 		scene.interludeFrameController = undefined;
+		controller?.destroy();
 	}
 
 	private reapplyCurrentInterludeFrame(root: HTMLElement): void {

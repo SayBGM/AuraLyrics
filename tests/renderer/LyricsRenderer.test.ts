@@ -241,7 +241,7 @@ describe("LyricsRenderer", () => {
 			const handle = renderer.mount(root, { lyrics: frameLyrics, settings }, { direction: "next", animate: true });
 			renderer.update(5, 1 / 60);
 			const current = root.querySelector<HTMLElement>('[data-scene-plane="incoming"] .aura-lyrics');
-			expect(retired?.classList.contains("interlude-active")).toBe(true);
+			expect(retired?.classList.contains("interlude-active")).toBe(false);
 			expect(current?.classList.contains("interlude-active")).toBe(true);
 			expect(pipRoot.classList.contains("interlude-frame-active")).toBe(true);
 
@@ -252,6 +252,61 @@ describe("LyricsRenderer", () => {
 			expect(root.firstElementChild).toBe(current);
 			expect(pipRoot.classList.contains("interlude-frame-active")).toBe(true);
 			expect(pipRoot.style.getPropertyValue("--pip-interlude-progress")).toBe("0.5");
+		});
+
+		test.each([
+			"metadata",
+			"status",
+		] as const)("clears outgoing frame side effects immediately when starting an animated %s transition", (sceneKind) => {
+			const pipRoot = document.createElement("div");
+			const root = document.createElement("main");
+			pipRoot.append(root);
+			Object.defineProperty(pipRoot, "clientWidth", { configurable: true, value: 300 });
+			Object.defineProperty(pipRoot, "clientHeight", { configurable: true, value: 100 });
+			const renderer = new LyricsRenderer();
+			renderer.mount(root, {
+				lyrics: {
+					type: "line",
+					startTime: 0,
+					endTime: 10,
+					content: [{ type: "interlude", startTime: 0, endTime: 10 }],
+				},
+				settings: { ...DEFAULT_SETTINGS, interludeStyle: "frame" },
+			});
+			renderer.update(5, 1 / 60);
+			expect(root.classList.contains("interlude-frame-active")).toBe(true);
+			expect(pipRoot.classList.contains("interlude-frame-active")).toBe(true);
+			expect(root.style.getPropertyValue("--pip-interlude-progress")).toBe("0.5");
+			expect(pipRoot.style.getPropertyValue("--pip-interlude-progress")).toBe("0.5");
+
+			if (sceneKind === "metadata") {
+				renderer.showTrackMetadata(root, { mode: "persistent", track: transitionTrack("Frame cleared") }, DEFAULT_SETTINGS, {
+					direction: "up",
+					animate: true,
+				});
+			} else {
+				renderer.showStatus(root, { title: "Frame cleared" }, DEFAULT_SETTINGS, { direction: "up", animate: true });
+			}
+
+			expect(root.classList.contains("scene-transition-up")).toBe(true);
+			expect(root.children).toHaveLength(2);
+			expect(root.querySelector('[data-scene-plane="outgoing"] .aura-lyrics')).not.toBeNull();
+			expect(root.querySelector('[data-scene-plane="outgoing"] .aura-lyrics')?.classList.contains("interlude-active")).toBe(false);
+			for (const host of [root, pipRoot]) {
+				expect(host.classList.contains("interlude-active")).toBe(false);
+				expect(host.classList.contains("interlude-frame-active")).toBe(false);
+				for (const property of [
+					"--pip-interlude-progress",
+					"--pip-interlude-progress-percent",
+					"--pip-frame-progress-top",
+					"--pip-frame-progress-right",
+					"--pip-frame-progress-bottom",
+					"--pip-frame-progress-left",
+				]) {
+					expect(host.style.getPropertyValue(property)).toBe("");
+				}
+			}
+			renderer.destroy();
 		});
 
 		test("switching roots destroys the old presenter before presenting on the new root", async () => {
