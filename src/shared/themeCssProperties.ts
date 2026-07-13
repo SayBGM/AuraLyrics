@@ -1,0 +1,15 @@
+export const THEME_CSS_PROPERTIES = [
+	"--pip-accent-color",
+	"--pip-accent-rgb",
+	"--pip-background-color",
+	"--pip-surface-tone",
+	"--pip-foreground-color",
+	"--pip-foreground-rgb",
+	"--pip-synthetic-wake-color",
+	"--pip-synthetic-wake-rgb",
+	"--pip-muted-foreground-color",
+	"--pip-muted-rgb",
+	"--pip-glow-rgb",
+	"--pip-scrim-rgb",
+	"--pip-scrim-opacity",
+] as const;

@@ -8,11 +8,12 @@ import {
 	pipStyleModules,
 	pipStyles,
 	statusStyles,
+	transitionStyles,
 } from "../../src/styles/pipStyles";
 
 describe("pipStyles", () => {
 	test("assembles the final CSS from focused style modules in display order", () => {
-		expect(pipStyleModules).toEqual([baseStyles, controlsStyles, lyricsStyles, interludeStyles, metadataStyles, statusStyles]);
+		expect(pipStyleModules).toEqual([baseStyles, transitionStyles, controlsStyles, lyricsStyles, interludeStyles, metadataStyles, statusStyles]);
 		expect(pipStyles).toBe(pipStyleModules.join("\n"));
 		expect(baseStyles).toContain("#aura-lyrics-root");
 		expect(controlsStyles).toContain(".pip-controls");
@@ -20,6 +21,28 @@ describe("pipStyles", () => {
 		expect(interludeStyles).toContain(".interlude");
 		expect(metadataStyles).toContain(".track-metadata-scene");
 		expect(statusStyles).toContain(".status-card");
+	});
+
+	test("assembles directional scene plane animations with the shared timing contract", () => {
+		expect(transitionStyles).toContain(".pip-content > [data-scene-plane]");
+		expect(transitionStyles).toContain("position: absolute");
+		expect(transitionStyles).toContain("inset: 0");
+		expect(transitionStyles).toContain("width: 100%");
+		expect(transitionStyles).toContain("height: 100%");
+		expect(transitionStyles).toContain("overflow: hidden");
+		expect(transitionStyles).toContain("720ms cubic-bezier(0.22, 1, 0.36, 1)");
+		for (const direction of ["up", "next", "previous"]) {
+			expect(transitionStyles).toContain(`.pip-content.scene-transition-${direction}`);
+			expect(transitionStyles).toContain(`@keyframes scene-transition-${direction}-outgoing`);
+			expect(transitionStyles).toContain(`@keyframes scene-transition-${direction}-incoming`);
+		}
+		expect(transitionStyles).toContain("translate3d(-100%, 0, 0)");
+		expect(transitionStyles).toContain("translate3d(100%, 0, 0)");
+		expect(transitionStyles).toContain("translate3d(0, -100%, 0)");
+		expect(transitionStyles).toContain("translate3d(0, 100%, 0)");
+		expect(transitionStyles).not.toContain(".pip-controls");
+		expect(transitionStyles).not.toContain(".pip-close");
+		expect(transitionStyles).not.toContain(".pip-border-frame");
 	});
 
 	test("animates loading progress for three seconds with themed foreground and scrim colors", () => {
