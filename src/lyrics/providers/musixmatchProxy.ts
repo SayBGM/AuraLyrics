@@ -1,5 +1,4 @@
-export const applyMusixmatchProxy = (targetUrl: string, proxyBaseUrl?: string): string =>
-	proxyBaseUrl ? `${proxyBaseUrl}${encodeURIComponent(targetUrl)}` : targetUrl;
+import { applyUrlProxy } from "./urlProxy";
 
 export type RequestMusixmatchOptions<T> = {
 	targetUrl: string;
@@ -18,7 +17,7 @@ export type RequestMusixmatchOptions<T> = {
  */
 export const requestMusixmatch = async <T>(options: RequestMusixmatchOptions<T>): Promise<T> => {
 	if (options.proxyBaseUrl) {
-		const response = await options.fetch(applyMusixmatchProxy(options.targetUrl, options.proxyBaseUrl), {
+		const response = await options.fetch(applyUrlProxy(options.targetUrl, options.proxyBaseUrl), {
 			headers: options.cosmosHeaders,
 		});
 		return (await response.json()) as T;

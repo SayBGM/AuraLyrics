@@ -106,7 +106,7 @@ export type ProviderContext = {
 	fetch: typeof fetch;
 	userAgent: string;
 	musixmatchToken?: string;
-	musixmatchProxyBaseUrl?: string;
+	proxyBaseUrl?: string;
 };
 
 export interface LyricsProvider {

@@ -76,7 +76,7 @@ export class MusixmatchProvider implements LyricsProvider {
 		});
 		const payload = await requestMusixmatch<MusixmatchMacroResponse>({
 			targetUrl: `https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?${params.toString()}`,
-			proxyBaseUrl: context.musixmatchProxyBaseUrl,
+			proxyBaseUrl: context.proxyBaseUrl,
 			cosmosGet: context.cosmosGet,
 			cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
 			fetch: context.fetch,
@@ -125,7 +125,7 @@ export class MusixmatchProvider implements LyricsProvider {
 		try {
 			const payload = await requestMusixmatch<MusixmatchTranslationsResponse>({
 				targetUrl: `https://apic-desktop.musixmatch.com/ws/1.1/crowd.track.translations.get?${params.toString()}`,
-				proxyBaseUrl: context.musixmatchProxyBaseUrl,
+				proxyBaseUrl: context.proxyBaseUrl,
 				cosmosGet: context.cosmosGet,
 				cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
 				fetch: context.fetch,
@@ -149,7 +149,7 @@ export class MusixmatchProvider implements LyricsProvider {
 		try {
 			const payload = await requestMusixmatch<MusixmatchRichsyncResponse>({
 				targetUrl: `https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?${params.toString()}`,
-				proxyBaseUrl: context.musixmatchProxyBaseUrl,
+				proxyBaseUrl: context.proxyBaseUrl,
 				cosmosGet: context.cosmosGet,
 				cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
 				fetch: context.fetch,

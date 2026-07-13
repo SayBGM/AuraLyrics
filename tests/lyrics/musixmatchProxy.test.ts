@@ -1,9 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
-import { applyMusixmatchProxy, requestMusixmatch } from "../../src/lyrics/providers/musixmatchProxy";
+import { requestMusixmatch } from "../../src/lyrics/providers/musixmatchProxy";
+import { applyUrlProxy } from "../../src/lyrics/providers/urlProxy";
 
-describe("applyMusixmatchProxy", () => {
+describe("applyUrlProxy", () => {
 	test("returns the target URL unchanged when no proxy is configured", () => {
-		expect(applyMusixmatchProxy("https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0")).toBe(
+		expect(applyUrlProxy("https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0")).toBe(
 			"https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0"
 		);
 	});
@@ -11,9 +12,7 @@ describe("applyMusixmatchProxy", () => {
 	test("appends the URL-encoded target after the proxy base URL", () => {
 		const targetUrl = "https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0";
 
-		expect(applyMusixmatchProxy(targetUrl, "https://my-proxy.example.com/?url=")).toBe(
-			`https://my-proxy.example.com/?url=${encodeURIComponent(targetUrl)}`
-		);
+		expect(applyUrlProxy(targetUrl, "https://my-proxy.example.com/?url=")).toBe(`https://my-proxy.example.com/?url=${encodeURIComponent(targetUrl)}`);
 	});
 });
 

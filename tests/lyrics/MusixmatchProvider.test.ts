@@ -234,7 +234,7 @@ describe("MusixmatchProvider", () => {
 			}) as typeof fetch,
 			userAgent: "test",
 			musixmatchToken: "token",
-			musixmatchProxyBaseUrl: "https://my-proxy.example.com/?url=",
+			proxyBaseUrl: "https://my-proxy.example.com/?url=",
 		};
 
 		await provider.fetch(track, context);

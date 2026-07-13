@@ -89,7 +89,7 @@ export class ExtensionApp {
 			fetch: window.fetch.bind(window),
 			userAgent: `spicetify v${this.spicetify.Config?.version ?? "unknown"} AuraLyrics`,
 			musixmatchToken: settings.providers.musixmatchToken,
-			musixmatchProxyBaseUrl: this.resolveMusixmatchProxyBaseUrl(settings.providers),
+			proxyBaseUrl: this.resolveProviderProxyBaseUrl(settings.providers),
 		}));
 		this.trackSession = new TrackSessionController(
 			{
@@ -293,7 +293,7 @@ export class ExtensionApp {
 	}
 
 	private fetchMusixmatchToken(): Promise<string | undefined> {
-		return this.musixmatchTokenService.refresh(this.resolveMusixmatchProxyBaseUrl(this.settings.get().providers));
+		return this.musixmatchTokenService.refresh(this.resolveProviderProxyBaseUrl(this.settings.get().providers));
 	}
 
 	private showSettingsPersistenceFailure(): void {
@@ -302,7 +302,7 @@ export class ExtensionApp {
 		}
 	}
 
-	private resolveMusixmatchProxyBaseUrl(providers: ExtensionSettings["providers"]): string | undefined {
+	private resolveProviderProxyBaseUrl(providers: ExtensionSettings["providers"]): string | undefined {
 		return providers.musixmatchProxyMode === "custom" && providers.musixmatchProxyBaseUrl ? providers.musixmatchProxyBaseUrl : undefined;
 	}
 
