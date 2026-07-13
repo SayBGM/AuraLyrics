@@ -126,7 +126,7 @@ export class ExtensionApp {
 		this.started = true;
 		this.player.attach();
 		this.disposers.push(
-			this.player.trackChanged.subscribe((track) => void this.onTrackChanged(track)),
+			this.player.trackChanged.subscribe((event) => void this.onTrackChanged(event.track)),
 			this.player.playbackChanged.subscribe((isPlaying) => this.onPlaybackChanged(isPlaying)),
 			this.settings.subscribe(() => void this.applySettings()),
 			this.settings.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),

@@ -1845,7 +1845,10 @@ describe("ExtensionApp", () => {
 		app.start();
 		app.start();
 
-		expect(spicetify.Player.addEventListener).toHaveBeenCalledTimes(2);
+		expect(spicetify.Player.addEventListener).toHaveBeenCalledTimes(3);
+		expect(spicetify.Player.addEventListener).toHaveBeenCalledWith("songchange", expect.any(Function));
+		expect(spicetify.Player.addEventListener).toHaveBeenCalledWith("onplaypause", expect.any(Function));
+		expect(spicetify.Player.addEventListener).toHaveBeenCalledWith("onprogress", expect.any(Function));
 		expect(spicetify.Topbar?.Button).toHaveBeenCalledTimes(1);
 		app.destroy();
 	});

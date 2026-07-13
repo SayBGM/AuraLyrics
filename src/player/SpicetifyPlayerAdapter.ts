@@ -2,23 +2,96 @@ import type { TrackIdentity } from "../domain/types";
 import type { SpicetifyGlobal } from "../runtime/spicetify";
 import { EventEmitter } from "../shared/EventEmitter";
 
-export class SpicetifyPlayerAdapter {
-	public readonly trackChanged = new EventEmitter<TrackIdentity | undefined>();
-	public readonly playbackChanged = new EventEmitter<boolean>();
+export type TrackChangedEvent = {
+	track: TrackIdentity | undefined;
+	previousTrackUri?: string;
+	previousProgressSec?: number;
+	previousDurationSec?: number;
+};
 
-	private readonly onSongChange = () => this.trackChanged.emit(this.getCurrentTrack());
+type TrackProgress = {
+	progressSec: number;
+	durationSec: number;
+};
+
+type PreviousEpochCandidate = {
+	uri: string;
+	progress: TrackProgress;
+};
+
+const SAME_URI_REPEAT_BOUNDARY_SEC = 2;
+
+export class SpicetifyPlayerAdapter {
+	public readonly trackChanged = new EventEmitter<TrackChangedEvent>();
+	public readonly playbackChanged = new EventEmitter<boolean>();
+	public readonly progressChanged = new EventEmitter<number>();
+
+	private currentTrackUri: string | undefined;
+	private readonly progressByTrackUri = new Map<string, TrackProgress>();
+	private previousEpochCandidate: PreviousEpochCandidate | undefined;
+
+	private readonly onSongChange = () => {
+		const previousTrackUri = this.currentTrackUri;
+		const latestPreviousProgress = previousTrackUri ? this.progressByTrackUri.get(previousTrackUri) : undefined;
+		const candidate = this.previousEpochCandidate;
+		const previousEpochCandidate = candidate?.uri === previousTrackUri ? candidate?.progress : undefined;
+		const track = this.getCurrentTrack();
+		const preserveLatestProgress = previousTrackUri === track?.uri && previousEpochCandidate !== undefined;
+		const previousProgress = preserveLatestProgress ? previousEpochCandidate : latestPreviousProgress;
+		this.currentTrackUri = track?.uri;
+		this.trackChanged.emit({
+			track,
+			previousTrackUri,
+			previousProgressSec: previousProgress?.progressSec,
+			previousDurationSec: previousProgress?.durationSec,
+		});
+		if (previousTrackUri && !preserveLatestProgress) {
+			this.progressByTrackUri.delete(previousTrackUri);
+		}
+		this.previousEpochCandidate = undefined;
+	};
 	private readonly onPlayPause = () => this.playbackChanged.emit(this.isPlaying());
+	private readonly onProgress = (event: { data: number }) => {
+		const progressSec = event.data / 1000;
+		this.progressChanged.emit(progressSec);
+
+		const track = this.getCurrentTrack();
+		if (!track) {
+			return;
+		}
+		const previousProgress = this.progressByTrackUri.get(track.uri);
+		if (
+			track.uri === this.currentTrackUri &&
+			previousProgress &&
+			this.previousEpochCandidate?.uri !== track.uri &&
+			isSameUriNaturalRepeatReset(previousProgress, progressSec)
+		) {
+			this.previousEpochCandidate = { uri: track.uri, progress: previousProgress };
+		}
+		this.progressByTrackUri.set(track.uri, {
+			progressSec,
+			durationSec: track.durationMs / 1000,
+		});
+	};
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {}
 
 	public attach(): void {
+		this.progressByTrackUri.clear();
+		this.previousEpochCandidate = undefined;
+		this.currentTrackUri = this.getCurrentTrack()?.uri;
 		this.spicetify.Player.addEventListener("songchange", this.onSongChange);
 		this.spicetify.Player.addEventListener("onplaypause", this.onPlayPause);
+		this.spicetify.Player.addEventListener("onprogress", this.onProgress);
 	}
 
 	public detach(): void {
 		this.spicetify.Player.removeEventListener?.("songchange", this.onSongChange);
 		this.spicetify.Player.removeEventListener?.("onplaypause", this.onPlayPause);
+		this.spicetify.Player.removeEventListener?.("onprogress", this.onProgress);
+		this.progressByTrackUri.clear();
+		this.previousEpochCandidate = undefined;
+		this.currentTrackUri = undefined;
 	}
 
 	public getCurrentTrack(): TrackIdentity | undefined {
@@ -74,6 +147,12 @@ export class SpicetifyPlayerAdapter {
 		this.spicetify.Player.next?.();
 	}
 }
+
+const isSameUriNaturalRepeatReset = (previousProgress: TrackProgress, progressSec: number): boolean =>
+	previousProgress.progressSec >= previousProgress.durationSec - SAME_URI_REPEAT_BOUNDARY_SEC &&
+	progressSec >= 0 &&
+	progressSec <= SAME_URI_REPEAT_BOUNDARY_SEC &&
+	previousProgress.progressSec - progressSec > SAME_URI_REPEAT_BOUNDARY_SEC;
 
 const COVER_METADATA_KEYS = ["image_url", "image_xlarge_url", "image_large_url", "image_medium_url", "image_small_url"] as const;
 

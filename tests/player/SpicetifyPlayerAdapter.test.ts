@@ -2,6 +2,14 @@ import { describe, expect, test, vi } from "vitest";
 import { SpicetifyPlayerAdapter } from "../../src/player/SpicetifyPlayerAdapter";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 
+type ProgressEvent = { data: number };
+
+type PlayerEventListeners = {
+	songchange?: () => void;
+	onplaypause?: () => void;
+	onprogress?: (event: ProgressEvent) => void;
+};
+
 const createSpicetify = (overrides: Partial<SpicetifyGlobal["Player"]>): SpicetifyGlobal =>
 	({
 		Player: {
@@ -11,6 +19,26 @@ const createSpicetify = (overrides: Partial<SpicetifyGlobal["Player"]>): Spiceti
 			...overrides,
 		},
 	}) as unknown as SpicetifyGlobal;
+
+const playerItem = (uri: string, durationMs: number) => ({
+	uri,
+	metadata: {
+		title: `Title ${uri}`,
+		artist_name: "Artist",
+		album_title: "Album",
+		duration: String(durationMs),
+	},
+});
+
+const capturePlayerListeners = () => {
+	const listeners: PlayerEventListeners = {};
+	const addEventListener = vi.fn((event: string, listener: unknown) => {
+		if (event === "songchange") listeners.songchange = listener as () => void;
+		if (event === "onplaypause") listeners.onplaypause = listener as () => void;
+		if (event === "onprogress") listeners.onprogress = listener as (event: ProgressEvent) => void;
+	});
+	return { addEventListener, listeners };
+};
 
 describe("SpicetifyPlayerAdapter", () => {
 	test("subscribes to playback changes through Spicetify player events", () => {
@@ -26,6 +54,211 @@ describe("SpicetifyPlayerAdapter", () => {
 
 		expect(addEventListener).toHaveBeenCalledWith("songchange", expect.any(Function));
 		expect(addEventListener).toHaveBeenCalledWith("onplaypause", expect.any(Function));
+		expect(addEventListener).toHaveBeenCalledWith("onprogress", expect.any(Function));
+		expect(addEventListener).toHaveBeenCalledTimes(3);
+	});
+
+	test("removes the same three player listeners when detached", () => {
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const removeEventListener = vi.fn();
+		const player = new SpicetifyPlayerAdapter(createSpicetify({ addEventListener, removeEventListener }));
+
+		player.attach();
+		player.detach();
+
+		expect(removeEventListener).toHaveBeenCalledWith("songchange", listeners.songchange);
+		expect(removeEventListener).toHaveBeenCalledWith("onplaypause", listeners.onplaypause);
+		expect(removeEventListener).toHaveBeenCalledWith("onprogress", listeners.onprogress);
+		expect(removeEventListener).toHaveBeenCalledTimes(3);
+	});
+
+	test("emits progress events in seconds", () => {
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const player = new SpicetifyPlayerAdapter(createSpicetify({ addEventListener }));
+		const listener = vi.fn();
+		player.progressChanged.subscribe(listener);
+
+		player.attach();
+		listeners.onprogress?.({ data: 12_500 });
+
+		expect(listener).toHaveBeenCalledWith(12.5);
+	});
+
+	test("preserves previous track progress and duration in song change events", () => {
+		const previousUri = "spotify:track:previous";
+		const nextUri = "spotify:track:next";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			data: { item: playerItem(previousUri, 180_000) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const listener = vi.fn();
+		player.trackChanged.subscribe(listener);
+
+		player.attach();
+		listeners.onprogress?.({ data: 42_500 });
+		spicetify.Player.data = { item: playerItem(nextUri, 240_000) };
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenCalledWith({
+			track: expect.objectContaining({ uri: nextUri }),
+			previousTrackUri: previousUri,
+			previousProgressSec: 42.5,
+			previousDurationSec: 180,
+		});
+	});
+
+	test("emits safe undefined progress context when no previous progress was observed", () => {
+		const previousUri = "spotify:track:no-progress";
+		const nextUri = "spotify:track:next";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			data: { item: playerItem(previousUri, 180_000) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const listener = vi.fn();
+		player.trackChanged.subscribe(listener);
+
+		player.attach();
+		spicetify.Player.data = { item: playerItem(nextUri, 240_000) };
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenCalledWith({
+			track: expect.objectContaining({ uri: nextUri }),
+			previousTrackUri: previousUri,
+			previousProgressSec: undefined,
+			previousDurationSec: undefined,
+		});
+	});
+
+	test("keeps URI-specific progress when the new track reports progress before songchange", () => {
+		const previousUri = "spotify:track:previous";
+		const nextUri = "spotify:track:next";
+		const finalUri = "spotify:track:final";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			data: { item: playerItem(previousUri, 180_000) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const listener = vi.fn();
+		player.trackChanged.subscribe(listener);
+
+		player.attach();
+		listeners.onprogress?.({ data: 90_000 });
+		spicetify.Player.data = { item: playerItem(nextUri, 240_000) };
+		listeners.onprogress?.({ data: 2_000 });
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenNthCalledWith(1, {
+			track: expect.objectContaining({ uri: nextUri }),
+			previousTrackUri: previousUri,
+			previousProgressSec: 90,
+			previousDurationSec: 180,
+		});
+
+		spicetify.Player.data = { item: playerItem(finalUri, 300_000) };
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenNthCalledWith(2, {
+			track: expect.objectContaining({ uri: finalUri }),
+			previousTrackUri: nextUri,
+			previousProgressSec: 2,
+			previousDurationSec: 240,
+		});
+	});
+
+	test("preserves near-end context and the latest slot across a same-URI repeat reset", () => {
+		const repeatedUri = "spotify:track:repeat";
+		const nextUri = "spotify:track:next";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			data: { item: playerItem(repeatedUri, 180_000) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const listener = vi.fn();
+		player.trackChanged.subscribe(listener);
+
+		player.attach();
+		listeners.onprogress?.({ data: 179_000 });
+		listeners.onprogress?.({ data: 500 });
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenNthCalledWith(1, {
+			track: expect.objectContaining({ uri: repeatedUri }),
+			previousTrackUri: repeatedUri,
+			previousProgressSec: 179,
+			previousDurationSec: 180,
+		});
+
+		spicetify.Player.data = { item: playerItem(nextUri, 240_000) };
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenNthCalledWith(2, {
+			track: expect.objectContaining({ uri: nextUri }),
+			previousTrackUri: repeatedUri,
+			previousProgressSec: 0.5,
+			previousDurationSec: 180,
+		});
+	});
+
+	test.each([
+		{ name: "the old sample is not near the end", previousProgressMs: 177_999, nextProgressMs: 1_000 },
+		{ name: "the new sample is outside the start window", previousProgressMs: 179_000, nextProgressMs: 2_001 },
+		{ name: "the rewind is not larger than the boundary", previousProgressMs: 3_000, nextProgressMs: 1_000, durationMs: 4_000 },
+	])("keeps latest same-URI progress when $name", ({ previousProgressMs, nextProgressMs, durationMs = 180_000 }) => {
+		const repeatedUri = "spotify:track:repeat";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			data: { item: playerItem(repeatedUri, durationMs) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const listener = vi.fn();
+		player.trackChanged.subscribe(listener);
+
+		player.attach();
+		listeners.onprogress?.({ data: previousProgressMs });
+		listeners.onprogress?.({ data: nextProgressMs });
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenCalledWith({
+			track: expect.objectContaining({ uri: repeatedUri }),
+			previousTrackUri: repeatedUri,
+			previousProgressSec: nextProgressMs / 1000,
+			previousDurationSec: durationMs / 1000,
+		});
+	});
+
+	test("clears stale progress context across detach and reattach", () => {
+		const previousUri = "spotify:track:previous";
+		const nextUri = "spotify:track:next";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			removeEventListener: vi.fn(),
+			data: { item: playerItem(previousUri, 180_000) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const listener = vi.fn();
+		player.trackChanged.subscribe(listener);
+
+		player.attach();
+		listeners.onprogress?.({ data: 80_000 });
+		player.detach();
+		player.attach();
+		spicetify.Player.data = { item: playerItem(nextUri, 240_000) };
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenCalledWith({
+			track: expect.objectContaining({ uri: nextUri }),
+			previousTrackUri: previousUri,
+			previousProgressSec: undefined,
+			previousDurationSec: undefined,
+		});
 	});
 
 	test("emits playback state when Spicetify reports play/pause changes", () => {
