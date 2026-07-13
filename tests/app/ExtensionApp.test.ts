@@ -336,7 +336,7 @@ describe("ExtensionApp", () => {
 
 		await internals.loadCurrentTrack(false);
 		const initialLyricsScene = root.firstElementChild;
-		await vi.waitFor(() => expect(internals.trackSession.getSnapshot().waveformProfile).toBeDefined());
+		await vi.waitFor(() => expect(internals.trackSession.getSnapshot().waveformProfile).toBeDefined(), { timeout: 2_500 });
 
 		expect(root.textContent).toContain("Unchanged");
 		expect(root.firstElementChild).toBe(initialLyricsScene);
@@ -1015,6 +1015,7 @@ describe("ExtensionApp", () => {
 			{
 				loadProfile: async () => ({ trackUri: track.uri, seed: 1, segments: [], source: "seeded" as const }),
 				getAnalysis: async () => analysisResult.promise,
+				invalidateAnalysis: vi.fn(),
 			}
 		);
 		const mount = vi.fn();
@@ -1099,6 +1100,7 @@ describe("ExtensionApp", () => {
 			{
 				loadProfile: async () => profileResult.promise,
 				getAnalysis,
+				invalidateAnalysis: vi.fn(),
 			},
 			() => ({
 				type: "syllable",

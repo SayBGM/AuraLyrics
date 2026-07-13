@@ -32,13 +32,14 @@ export type TrackSessionLyricsService = {
 export type TrackSessionWaveformService = {
 	loadProfile(track: TrackIdentity): Promise<TrackWaveformProfile>;
 	getAnalysis(track: TrackIdentity): Promise<AudioAnalysisData | undefined>;
+	invalidateAnalysis(track: TrackIdentity): void;
 };
 
 type BuildPseudoKaraoke = (lyrics: LineLyrics, analysis: AudioAnalysisData | undefined, durationMs: number) => SyllableLyrics | null;
 
 type PseudoKaraokeEntry = {
 	source: LineLyrics;
-	lyrics: SyllableLyrics | null;
+	lyrics: SyllableLyrics;
 };
 
 export type TrackSessionEnrichment = Promise<ReadyTrackSessionSnapshot | undefined>;
@@ -103,11 +104,12 @@ export class TrackSessionController {
 			timingSource: "native",
 		};
 
-		const waveformProfilePromise = this.waveformService.loadProfile(track).catch(() => undefined);
 		if (refresh) {
 			this.lyricsService.refreshCooldowns();
 			this.pseudoKaraokeByUri.delete(track.uri);
+			this.waveformService.invalidateAnalysis(track);
 		}
+		const waveformProfilePromise = this.waveformService.loadProfile(track).catch(() => undefined);
 		const loadState = await this.lyricsService.load(track, settings, refresh);
 		if (!this.isGenerationCurrent(generation)) {
 			return undefined;
@@ -198,10 +200,10 @@ export class TrackSessionController {
 		if (!this.isPresentationCurrent(generation, presentationRevision)) {
 			return;
 		}
-		this.pseudoKaraokeByUri.set(track.uri, {
-			source: lineLyrics,
-			lyrics: this.buildPseudoKaraoke(lineLyrics, analysis, track.durationMs),
-		});
+		const lyrics = this.buildPseudoKaraoke(lineLyrics, analysis, track.durationMs);
+		if (lyrics) {
+			this.pseudoKaraokeByUri.set(track.uri, { source: lineLyrics, lyrics });
+		}
 	}
 
 	private displayLyricsFor(loadState: ReadyLoadState, settings: ExtensionSettings): LyricsDocument {
@@ -209,7 +211,7 @@ export class TrackSessionController {
 			return loadState.lyrics;
 		}
 		const entry = this.pseudoKaraokeByUri.get(loadState.track.uri);
-		return entry?.source === loadState.lyrics ? (entry.lyrics ?? loadState.lyrics) : loadState.lyrics;
+		return entry?.source === loadState.lyrics ? entry.lyrics : loadState.lyrics;
 	}
 
 	private isGenerationCurrent(generation: number): boolean {

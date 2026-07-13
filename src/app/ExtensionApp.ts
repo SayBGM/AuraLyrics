@@ -100,6 +100,7 @@ export class ExtensionApp {
 			{
 				loadProfile: (track) => this.waveformService.loadProfile(track),
 				getAnalysis: (track) => this.waveformService.getAnalysis(track),
+				invalidateAnalysis: (track) => this.waveformService.invalidateAnalysis(track.uri),
 			}
 		);
 		this.settingsView = new SettingsView(this.settings, this.registry.all(), {

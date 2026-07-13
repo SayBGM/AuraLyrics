@@ -76,6 +76,7 @@ const createController = (
 		load?: (currentTrack: TrackIdentity, currentSettings: ExtensionSettings, refresh: boolean) => Promise<LyricsLoadState>;
 		loadProfile?: (currentTrack: TrackIdentity) => Promise<TrackWaveformProfile>;
 		getAnalysis?: (currentTrack: TrackIdentity) => Promise<AudioAnalysisData | undefined>;
+		invalidateAnalysis?: (currentTrack: TrackIdentity) => void;
 		buildPseudoKaraoke?: (lyrics: LineLyrics, analysis: AudioAnalysisData | undefined, durationMs: number) => SyllableLyrics | null;
 	} = {}
 ) => {
@@ -84,9 +85,14 @@ const createController = (
 	const load = vi.fn(options.load ?? (async (currentTrack) => ready(currentTrack, lineLyrics())));
 	const loadProfile = vi.fn(options.loadProfile ?? (async (currentTrack) => profile(currentTrack)));
 	const getAnalysis = vi.fn(options.getAnalysis ?? (async () => undefined));
+	const invalidateAnalysis = vi.fn(options.invalidateAnalysis ?? (() => undefined));
 	const buildPseudoKaraoke = vi.fn(options.buildPseudoKaraoke ?? (() => syllableLyrics()));
-	const controller = new TrackSessionController({ load, refreshCooldowns, invalidate }, { loadProfile, getAnalysis }, buildPseudoKaraoke);
-	return { buildPseudoKaraoke, controller, getAnalysis, invalidate, load, loadProfile, refreshCooldowns };
+	const controller = new TrackSessionController(
+		{ load, refreshCooldowns, invalidate },
+		{ loadProfile, getAnalysis, invalidateAnalysis },
+		buildPseudoKaraoke
+	);
+	return { buildPseudoKaraoke, controller, getAnalysis, invalidate, invalidateAnalysis, load, loadProfile, refreshCooldowns };
 };
 
 describe("TrackSessionController", () => {
@@ -202,7 +208,7 @@ describe("TrackSessionController", () => {
 	test("refresh clears cooldowns and invalidates the URI pseudo cache before loading", async () => {
 		const currentTrack = track("spotify:track:refresh");
 		const source = lineLyrics();
-		const { buildPseudoKaraoke, controller, load, refreshCooldowns } = createController({
+		const { buildPseudoKaraoke, controller, invalidateAnalysis, load, loadProfile, refreshCooldowns } = createController({
 			load: async () => ready(currentTrack, source),
 		});
 		const initialSnapshot = await controller.load(currentTrack, settings(), false);
@@ -215,7 +221,11 @@ describe("TrackSessionController", () => {
 		await controller.enrichmentFor(refreshedSnapshot);
 
 		expect(refreshCooldowns).toHaveBeenCalledOnce();
+		expect(invalidateAnalysis).toHaveBeenCalledOnce();
+		expect(invalidateAnalysis).toHaveBeenCalledWith(currentTrack);
 		expect(refreshCooldowns.mock.invocationCallOrder[0]).toBeLessThan(load.mock.invocationCallOrder.at(-1) ?? 0);
+		expect(invalidateAnalysis.mock.invocationCallOrder[0]).toBeLessThan(loadProfile.mock.invocationCallOrder.at(-1) ?? 0);
+		expect(invalidateAnalysis.mock.invocationCallOrder[0]).toBeLessThan(load.mock.invocationCallOrder.at(-1) ?? 0);
 		expect(buildPseudoKaraoke).toHaveBeenCalledTimes(2);
 	});
 
@@ -257,6 +267,26 @@ describe("TrackSessionController", () => {
 		expect(buildPseudoKaraoke).toHaveBeenCalledTimes(2);
 		expect(buildPseudoKaraoke.mock.calls[0]?.[0]).toBe(sourceA);
 		expect(buildPseudoKaraoke.mock.calls[1]?.[0]).toBe(sourceB);
+	});
+
+	test("retries pseudo-karaoke synthesis after a failed result", async () => {
+		const currentTrack = track("spotify:track:synthesis-retry");
+		const source = lineLyrics();
+		const synthetic = syllableLyrics();
+		const buildPseudoKaraoke = vi.fn().mockReturnValueOnce(null).mockReturnValueOnce(synthetic);
+		const { controller } = createController({
+			load: async () => ready(currentTrack, source),
+			buildPseudoKaraoke,
+		});
+
+		const initialSnapshot = await controller.load(currentTrack, settings(), false);
+		if (!initialSnapshot) throw new Error("Expected an initial track snapshot.");
+		const firstEnrichedSnapshot = await controller.enrichmentFor(initialSnapshot);
+		const laterSnapshot = await controller.updateSettings(settings());
+
+		expect(firstEnrichedSnapshot).toMatchObject({ lyrics: source, timingSource: "native" });
+		expect(laterSnapshot).toMatchObject({ lyrics: synthetic, timingSource: "synthetic" });
+		expect(buildPseudoKaraoke).toHaveBeenCalledTimes(2);
 	});
 
 	test("applies pseudo-karaoke and sync preference changes live", async () => {
