@@ -104,7 +104,7 @@ export class LyricsRenderer {
 				cleaned: false,
 			},
 			presentation,
-			this.shouldAnimate(presentation, settings),
+			this.shouldAnimate(presentation, settings.motionEnabled && !settings.reduceMotion),
 			false
 		);
 	}
@@ -122,7 +122,7 @@ export class LyricsRenderer {
 			root,
 			{ scene: container, container, groups: [], cleaned: false },
 			presentation,
-			this.shouldAnimate(presentation, settings),
+			this.shouldAnimate(presentation, settings.motionEnabled && !settings.reduceMotion),
 			false
 		);
 	}
@@ -139,7 +139,7 @@ export class LyricsRenderer {
 			root,
 			{ scene: container, container, groups: [], cleaned: false },
 			presentation,
-			this.shouldAnimate(presentation, settings),
+			this.shouldAnimate(presentation, settings.motionEnabled && !settings.reduceMotion),
 			false
 		);
 	}
@@ -149,7 +149,13 @@ export class LyricsRenderer {
 		scene.className = "album-art-scene";
 		scene.dataset.scene = "album-art";
 		scene.setAttribute("aria-hidden", "true");
-		return this.presentScene(root, { scene, groups: [], cleaned: false }, presentation, presentation?.animate === true, true);
+		return this.presentScene(
+			root,
+			{ scene, groups: [], cleaned: false },
+			presentation,
+			this.shouldAnimate(presentation, !this.hasReducedMotion(root)),
+			true
+		);
 	}
 
 	public update(timestamp: number, deltaTime: number): void {
@@ -232,13 +238,6 @@ export class LyricsRenderer {
 			}
 			this.reapplyCurrentInterludeFrame(root);
 		}
-		if (albumArtMode) {
-			if (animatedReplacement) {
-				void handle.settled.then(() => scene.scene.remove());
-			} else {
-				scene.scene.remove();
-			}
-		}
 		return handle;
 	}
 
@@ -285,8 +284,12 @@ export class LyricsRenderer {
 		}
 	}
 
-	private shouldAnimate(presentation: ScenePresentationOptions | undefined, settings: ExtensionSettings): boolean {
-		return presentation?.animate === true && settings.motionEnabled && !settings.reduceMotion;
+	private shouldAnimate(presentation: ScenePresentationOptions | undefined, motionEnabled: boolean): boolean {
+		return presentation?.animate === true && motionEnabled;
+	}
+
+	private hasReducedMotion(root: HTMLElement): boolean {
+		return root.classList.contains("reduce-motion") || root.parentElement?.classList.contains("reduce-motion") === true;
 	}
 
 	private clearRootPresentationState(root: HTMLElement | undefined): void {

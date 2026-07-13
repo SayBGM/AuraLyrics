@@ -1480,7 +1480,9 @@ describe("ExtensionApp", () => {
 		expect(root.querySelector(".lyrics-track")).toBeNull();
 		if (expected === "instrumental") {
 			expect(root.classList.contains("album-art-mode")).toBe(true);
-			expect(root.children).toHaveLength(0);
+			expect(root.children).toHaveLength(1);
+			expect(root.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
+			expect(root.querySelector(".aura-lyrics, .status-card, .track-metadata-scene")).toBeNull();
 		} else {
 			expect(root.querySelector(".track-metadata-scene.persistent")).not.toBeNull();
 			expect(root.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
@@ -2811,7 +2813,9 @@ describe("ExtensionApp", () => {
 
 		expect(setCover).toHaveBeenCalledWith("https://i.scdn.co/image/cover");
 		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
-		expect(content.children).toHaveLength(0);
+		expect(content.children).toHaveLength(1);
+		expect(content.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
+		expect(content.querySelector(".aura-lyrics, .status-card, .track-metadata-scene")).toBeNull();
 		expect(content.textContent).not.toContain("Instrumental");
 		expect(acceptIntro).not.toHaveBeenCalled();
 	});

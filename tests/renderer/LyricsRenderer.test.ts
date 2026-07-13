@@ -102,6 +102,54 @@ describe("LyricsRenderer", () => {
 			expect(await previous.settled).toEqual({ generation: 3, completed: true });
 		});
 
+		test("keeps a settled album-art sentinel so metadata can enter with the requested next transition", async () => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			const album = renderer.showAlbumArt(root);
+			expect(await album.settled).toEqual({ generation: 1, completed: true });
+			expect(root.children).toHaveLength(1);
+			expect(root.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
+
+			const metadata = renderer.showTrackMetadata(root, { mode: "intro", track: transitionTrack("After album") }, DEFAULT_SETTINGS, {
+				direction: "next",
+				animate: true,
+			});
+
+			expect(root.classList.contains("scene-transition-next")).toBe(true);
+			expect(root.querySelector('[data-scene-plane="outgoing"] .album-art-scene')).not.toBeNull();
+			expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-title')?.textContent).toBe("After album");
+			expect(root.children).toHaveLength(2);
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await metadata.settled).toEqual({ generation: 2, completed: true });
+			expect(root.querySelector(".track-metadata-title")?.textContent).toBe("After album");
+			expect(root.querySelector(".album-art-scene")).toBeNull();
+		});
+
+		test("cancels an album-art metadata transition without letting stale cleanup replace the latest lyrics", async () => {
+			const root = document.createElement("main");
+			const renderer = new LyricsRenderer();
+			renderer.showAlbumArt(root);
+			const interrupted = renderer.showTrackMetadata(root, { mode: "intro", track: transitionTrack("Interrupted") }, DEFAULT_SETTINGS, {
+				direction: "next",
+				animate: true,
+			});
+
+			const latest = renderer.mount(
+				root,
+				{ lyrics: transitionLyrics("Latest"), settings: DEFAULT_SETTINGS },
+				{ direction: "previous", animate: true }
+			);
+
+			expect(await interrupted.settled).toEqual({ generation: 2, completed: false });
+			expect(root.querySelector('[data-scene-plane="outgoing"] .track-metadata-title')?.textContent).toBe("Interrupted");
+			expect(root.querySelector('[data-scene-plane="incoming"] .lyrics-track')?.textContent).toContain("Latest first");
+			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+			expect(await latest.settled).toEqual({ generation: 3, completed: true });
+			expect(root.children).toHaveLength(1);
+			expect(root.querySelector(".lyrics-track")?.textContent).toContain("Latest first");
+			expect(root.querySelector(".album-art-scene, .track-metadata-scene")).toBeNull();
+		});
+
 		test("routes status, album art, and lyrics through the shared presenter", async () => {
 			const pipRoot = document.createElement("div");
 			const root = document.createElement("main");
@@ -116,16 +164,37 @@ describe("LyricsRenderer", () => {
 			expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
 			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
 			expect(await album.settled).toEqual({ generation: 2, completed: true });
-			expect(root.children).toHaveLength(0);
+			expect(root.children).toHaveLength(1);
+			expect(root.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
 
-			renderer.showStatus(root, { title: "Before lyrics" }, DEFAULT_SETTINGS);
 			const lyrics = renderer.mount(root, { lyrics: transitionLyrics("Lyrics"), settings: DEFAULT_SETTINGS }, { direction: "next", animate: true });
-			expect(root.querySelector('[data-scene-plane="outgoing"] .status-card')?.textContent).toContain("Before lyrics");
+			expect(root.querySelector('[data-scene-plane="outgoing"] .album-art-scene')).not.toBeNull();
 			expect(root.querySelector('[data-scene-plane="incoming"] .lyrics-track')?.textContent).toContain("Lyrics first");
 			expect(root.classList.contains("album-art-mode")).toBe(false);
 			expect(pipRoot.classList.contains("album-art-mode")).toBe(false);
 			await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
-			expect(await lyrics.settled).toEqual({ generation: 4, completed: true });
+			expect(await lyrics.settled).toEqual({ generation: 3, completed: true });
+		});
+
+		test.each([
+			["reduced-motion root", (root: HTMLElement) => root.classList.add("reduce-motion")],
+			["motion-disabled parent", (_root: HTMLElement, parent: HTMLElement) => parent.classList.add("reduce-motion")],
+		] as const)("presents album art immediately for a %s", async (_label, applyMotionGate) => {
+			const parent = document.createElement("div");
+			const root = document.createElement("main");
+			parent.append(root);
+			const renderer = new LyricsRenderer();
+			renderer.showStatus(root, { title: "Before album" }, DEFAULT_SETTINGS);
+			applyMotionGate(root, parent);
+
+			const handle = renderer.showAlbumArt(root, { direction: "next", animate: true });
+
+			expect(root.children).toHaveLength(1);
+			expect(root.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
+			expect(root.querySelector("[data-scene-plane]")).toBeNull();
+			expect(root.classList.contains("scene-transition-next")).toBe(false);
+			expect(await handle.settled).toEqual({ generation: 2, completed: true });
+			expect(vi.getTimerCount()).toBe(0);
 		});
 
 		test.each([
@@ -766,8 +835,9 @@ describe("LyricsRenderer", () => {
 		renderer.showAlbumArt(root);
 
 		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
-		expect(root.children).toHaveLength(0);
-		expect(root.querySelector(".aura-lyrics, .status-card")).toBeNull();
+		expect(root.children).toHaveLength(1);
+		expect(root.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
+		expect(root.querySelector(".aura-lyrics, .status-card, .track-metadata-scene")).toBeNull();
 
 		renderer.showStatus(root, { title: "No synced lyrics" }, DEFAULT_SETTINGS);
 
