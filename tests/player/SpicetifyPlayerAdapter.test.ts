@@ -208,9 +208,9 @@ describe("SpicetifyPlayerAdapter", () => {
 	test.each([
 		{ name: "the old sample is not near the end", previousProgressMs: 177_999, nextProgressMs: 1_000 },
 		{ name: "the new sample is outside the start window", previousProgressMs: 179_000, nextProgressMs: 2_001 },
-		{ name: "the rewind is not larger than the boundary", previousProgressMs: 3_000, nextProgressMs: 1_000, durationMs: 4_000 },
-	])("keeps latest same-URI progress when $name", ({ previousProgressMs, nextProgressMs, durationMs = 180_000 }) => {
+	])("keeps latest same-URI progress when $name", ({ previousProgressMs, nextProgressMs }) => {
 		const repeatedUri = "spotify:track:repeat";
+		const durationMs = 180_000;
 		const { addEventListener, listeners } = capturePlayerListeners();
 		const spicetify = createSpicetify({
 			addEventListener,
@@ -230,6 +230,30 @@ describe("SpicetifyPlayerAdapter", () => {
 			previousTrackUri: repeatedUri,
 			previousProgressSec: nextProgressMs / 1000,
 			previousDurationSec: durationMs / 1000,
+		});
+	});
+
+	test("preserves a repeat candidate when a short track rewinds by exactly two seconds", () => {
+		const repeatedUri = "spotify:track:short-repeat";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			data: { item: playerItem(repeatedUri, 4_000) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const listener = vi.fn();
+		player.trackChanged.subscribe(listener);
+
+		player.attach();
+		listeners.onprogress?.({ data: 3_000 });
+		listeners.onprogress?.({ data: 1_000 });
+		listeners.songchange?.();
+
+		expect(listener).toHaveBeenCalledWith({
+			track: expect.objectContaining({ uri: repeatedUri }),
+			previousTrackUri: repeatedUri,
+			previousProgressSec: 3,
+			previousDurationSec: 4,
 		});
 	});
 

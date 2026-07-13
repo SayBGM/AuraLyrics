@@ -151,8 +151,7 @@ export class SpicetifyPlayerAdapter {
 const isSameUriNaturalRepeatReset = (previousProgress: TrackProgress, progressSec: number): boolean =>
 	previousProgress.progressSec >= previousProgress.durationSec - SAME_URI_REPEAT_BOUNDARY_SEC &&
 	progressSec >= 0 &&
-	progressSec <= SAME_URI_REPEAT_BOUNDARY_SEC &&
-	previousProgress.progressSec - progressSec > SAME_URI_REPEAT_BOUNDARY_SEC;
+	progressSec <= SAME_URI_REPEAT_BOUNDARY_SEC;
 
 const COVER_METADATA_KEYS = ["image_url", "image_xlarge_url", "image_large_url", "image_medium_url", "image_small_url"] as const;
 
