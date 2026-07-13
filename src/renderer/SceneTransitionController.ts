@@ -10,10 +10,10 @@ export type SceneTransitionHandle = {
 };
 
 type PendingTransition = {
+	cancelTimer: () => void;
 	generation: number;
 	incomingScene: HTMLElement;
 	resolve: (result: { generation: number; completed: boolean }) => void;
-	timer: ReturnType<typeof setTimeout>;
 };
 
 const TRANSITION_CLASSES = ["scene-transition-up", "scene-transition-next", "scene-transition-previous"] as const;
@@ -21,8 +21,13 @@ const TRANSITION_CLASSES = ["scene-transition-up", "scene-transition-next", "sce
 export class SceneTransitionController {
 	private generation = 0;
 	private pending?: PendingTransition;
+	private readonly root: HTMLElement;
+	private readonly timerOwner: Window | null;
 
-	public constructor(private readonly root: HTMLElement) {}
+	public constructor(root: HTMLElement) {
+		this.root = root;
+		this.timerOwner = root.ownerDocument.defaultView;
+	}
 
 	public present(scene: HTMLElement, options: { direction?: SceneTransitionDirection; animate: boolean }): SceneTransitionHandle {
 		const generation = ++this.generation;
@@ -39,6 +44,7 @@ export class SceneTransitionController {
 
 		const outgoing = this.createPlane("outgoing", currentScene);
 		outgoing.setAttribute("aria-hidden", "true");
+		outgoing.setAttribute("inert", "");
 		outgoing.style.pointerEvents = "none";
 		this.snapshotTheme(outgoing);
 		const incoming = this.createPlane("incoming", scene);
@@ -50,8 +56,8 @@ export class SceneTransitionController {
 		const settled = new Promise<{ generation: number; completed: boolean }>((settle) => {
 			resolve = settle;
 		});
-		const timer = setTimeout(() => this.complete(generation), SCENE_TRANSITION_DURATION_MS);
-		this.pending = { generation, incomingScene: scene, resolve, timer };
+		const cancelTimer = this.scheduleCompletion(generation);
+		this.pending = { cancelTimer, generation, incomingScene: scene, resolve };
 		return { generation, settled };
 	}
 
@@ -79,7 +85,7 @@ export class SceneTransitionController {
 			return;
 		}
 		this.pending = undefined;
-		clearTimeout(pending.timer);
+		pending.cancelTimer();
 		if (promoteIncoming) {
 			this.root.replaceChildren(pending.incomingScene);
 		}
@@ -108,6 +114,16 @@ export class SceneTransitionController {
 		if (host.dataset.surfaceTone) {
 			outgoing.dataset.surfaceTone = host.dataset.surfaceTone;
 		}
+	}
+
+	private scheduleCompletion(generation: number): () => void {
+		const owner = this.timerOwner;
+		if (owner) {
+			const timer = owner.setTimeout.call(owner, () => this.complete(generation), SCENE_TRANSITION_DURATION_MS);
+			return () => owner.clearTimeout.call(owner, timer);
+		}
+		const timer = globalThis.setTimeout(() => this.complete(generation), SCENE_TRANSITION_DURATION_MS);
+		return () => globalThis.clearTimeout(timer);
 	}
 
 	private clearTransitionClasses(): void {

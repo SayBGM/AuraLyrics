@@ -42,6 +42,7 @@ describe("SceneTransitionController", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 		document.body.replaceChildren();
 	});
 
@@ -98,6 +99,62 @@ describe("SceneTransitionController", () => {
 		expect(outgoing.style.pointerEvents).toBe("none");
 		expect(incoming.hasAttribute("aria-hidden")).toBe(false);
 		expect(incoming.style.pointerEvents).not.toBe("none");
+	});
+
+	test("uses the owning document timer realm for scheduling, cancel, and destroy", async () => {
+		const iframe = document.createElement("iframe");
+		document.body.append(iframe);
+		const ownerWindow = iframe.contentWindow;
+		const ownerDocument = iframe.contentDocument;
+		if (!ownerWindow || !ownerDocument) {
+			throw new Error("Expected an iframe document realm.");
+		}
+		const root = ownerDocument.createElement("main");
+		ownerDocument.body.append(root);
+		const ownerSetTimeout = vi.spyOn(ownerWindow, "setTimeout").mockReturnValue(17);
+		const ownerClearTimeout = vi.spyOn(ownerWindow, "clearTimeout").mockImplementation(() => undefined);
+		const globalSetTimeout = vi.spyOn(globalThis, "setTimeout");
+		const globalClearTimeout = vi.spyOn(globalThis, "clearTimeout");
+		const controller = new SceneTransitionController(root);
+		controller.present(scene("first"), { animate: false });
+
+		const cancelled = controller.present(scene("second"), { animate: true, direction: "next" });
+		expect(ownerSetTimeout).toHaveBeenCalledTimes(1);
+		expect(globalSetTimeout).not.toHaveBeenCalled();
+		controller.cancel();
+		expect(ownerClearTimeout).toHaveBeenCalledTimes(1);
+		expect(globalClearTimeout).not.toHaveBeenCalled();
+		expect(await cancelled.settled).toEqual({ generation: 2, completed: false });
+
+		const destroyed = controller.present(scene("third"), { animate: true, direction: "up" });
+		expect(ownerSetTimeout).toHaveBeenCalledTimes(2);
+		controller.destroy();
+		expect(ownerClearTimeout).toHaveBeenCalledTimes(2);
+		expect(globalClearTimeout).not.toHaveBeenCalled();
+		expect(await destroyed.settled).toEqual({ generation: 3, completed: false });
+	});
+
+	test("makes the outgoing focusable subtree inert and leaves the completed scene interactive", async () => {
+		const root = document.createElement("main");
+		const controller = new SceneTransitionController(root);
+		const first = scene("first");
+		first.append(document.createElement("button"));
+		const second = scene("second");
+		const secondButton = document.createElement("button");
+		second.append(secondButton);
+		controller.present(first, { animate: false });
+
+		controller.present(second, { animate: true, direction: "next" });
+
+		const { incoming, outgoing } = planes(root);
+		expect(outgoing.hasAttribute("inert")).toBe(true);
+		expect(incoming.hasAttribute("inert")).toBe(false);
+		expect(incoming.querySelector("button")?.closest("[inert]")).toBeNull();
+
+		await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+		expect(root.firstElementChild).toBe(second);
+		expect(second.hasAttribute("inert")).toBe(false);
+		expect(secondButton.closest("[inert]")).toBeNull();
 	});
 
 	test("promotes the incoming scene exactly after the 720ms transition contract", async () => {
@@ -157,14 +214,21 @@ describe("SceneTransitionController", () => {
 		const controller = new SceneTransitionController(root);
 		const first = scene("first");
 		const second = scene("second");
+		const secondButton = document.createElement("button");
+		second.append(secondButton);
 		controller.present(first, { animate: false });
 		const handle = controller.present(second, { animate: true, direction: "next" });
+		const { incoming, outgoing } = planes(root);
+		expect(outgoing.hasAttribute("inert")).toBe(true);
+		expect(incoming.hasAttribute("inert")).toBe(false);
 
 		controller.cancel();
 
 		expect(await handle.settled).toEqual({ generation: 2, completed: false });
 		expect(Array.from(root.children)).toEqual([second]);
 		expect(root.querySelector("[data-scene-plane]")).toBeNull();
+		expect(second.hasAttribute("inert")).toBe(false);
+		expect(secondButton.closest("[inert]")).toBeNull();
 		expect(root.className).toBe("");
 		expect(vi.getTimerCount()).toBe(0);
 	});
@@ -212,5 +276,31 @@ describe("SceneTransitionController", () => {
 		await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
 		expect(outgoing.isConnected).toBe(false);
 		expect(root.querySelector("[data-scene-plane]")).toBeNull();
+	});
+
+	test("freezes a computed class theme before the host switches cascade values", () => {
+		const style = document.createElement("style");
+		style.textContent = `
+			.theme-before { --pip-accent-color: #123456; }
+			.theme-after { --pip-accent-color: #abcdef; }
+		`;
+		document.head.append(style);
+		const host = document.createElement("div");
+		host.className = "theme-before";
+		const root = document.createElement("main");
+		host.append(root);
+		document.body.append(host);
+		const controller = new SceneTransitionController(root);
+		controller.present(scene("first"), { animate: false });
+
+		controller.present(scene("second"), { animate: true, direction: "next" });
+		const { outgoing } = planes(root);
+		expect(outgoing.style.getPropertyValue("--pip-accent-color")).toBe("#123456");
+
+		host.className = "theme-after";
+		expect(getComputedStyle(host).getPropertyValue("--pip-accent-color")).toBe("#abcdef");
+		expect(outgoing.style.getPropertyValue("--pip-accent-color")).toBe("#123456");
+		controller.cancel();
+		style.remove();
 	});
 });
