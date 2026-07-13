@@ -1,6 +1,8 @@
 import type { TrackTheme } from "../app/TrackThemeService";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import { EventEmitter } from "../shared/EventEmitter";
+import { THEME_CSS_PROPERTIES } from "../shared/themeCssProperties";
+import { PipCoverTransitionController } from "./PipCoverTransitionController";
 
 export type PipSession = {
 	window: Window;
@@ -22,6 +24,7 @@ export type PipControls = {
 export class DocumentPipController {
 	public readonly closed = new EventEmitter<void>();
 	private session?: PipSession;
+	private sessionCleanup?: () => void;
 	private openPromise?: Promise<PipSession>;
 	private generation = 0;
 
@@ -76,8 +79,8 @@ export class DocumentPipController {
 		style.textContent = styles;
 		const root = doc.createElement("div");
 		root.id = "aura-lyrics-root";
-		const cover = doc.createElement("img");
-		cover.className = "pip-cover";
+		const coverLayer = doc.createElement("div");
+		coverLayer.className = "pip-cover-layer";
 		const scrim = doc.createElement("div");
 		scrim.className = "pip-scrim";
 		const vignette = doc.createElement("div");
@@ -88,29 +91,34 @@ export class DocumentPipController {
 		const closeButton = this.createControlButton(doc, "close", this.icon("close"), "Close", () => controls?.onClose());
 		closeButton.classList.add("pip-close");
 		const controlsElement = this.createControls(doc, controls);
-		root.append(cover, scrim, vignette, borderFrame, content, closeButton, controlsElement);
+		root.append(coverLayer, scrim, vignette, borderFrame, content, closeButton, controlsElement);
 		doc.head.append(base, style);
 		doc.body.append(root);
 		this.installControlVisibility(root, pipWindow);
-		let coverUrl: string | undefined;
+		const coverController = new PipCoverTransitionController(coverLayer, (hasCover) => {
+			root.classList.toggle("cover-missing", !hasCover);
+		});
+		let sessionDestroyed = false;
+		const destroySession = () => {
+			if (sessionDestroyed) return;
+			sessionDestroyed = true;
+			coverController.destroy();
+		};
 		let currentSettings = settings;
 		const applySettings = (nextSettings: ExtensionSettings) => {
 			currentSettings = nextSettings;
 			this.applyRootSettings(root, nextSettings);
-			this.applyCoverState(root, coverUrl, nextSettings);
+			root.classList.toggle("background-disabled", !nextSettings.backgroundEnabled);
 		};
 		let currentPlaying: boolean | undefined;
 		const session: PipSession = {
 			window: pipWindow,
 			root: content,
 			setCover: (url) => {
-				coverUrl = url;
-				this.applyCoverState(root, coverUrl, currentSettings);
-				if (url) {
-					cover.src = new URL(url, window.location.href).href;
-				} else {
-					cover.removeAttribute("src");
-				}
+				const resolvedUrl = url ? new URL(url, base.href).href : undefined;
+				coverController.setCover(resolvedUrl, {
+					animate: currentSettings.motionEnabled && !currentSettings.reduceMotion,
+				});
 			},
 			setPlaying: (isPlaying) => {
 				if (currentPlaying === isPlaying) {
@@ -126,9 +134,12 @@ export class DocumentPipController {
 		session.applySettings(settings);
 		session.setPlaying(controls?.isPlaying ?? false);
 		this.session = session;
+		this.sessionCleanup = destroySession;
 		pipWindow.addEventListener("pagehide", () => {
+			destroySession();
 			if (this.session !== session) return;
 			this.session = undefined;
+			if (this.sessionCleanup === destroySession) this.sessionCleanup = undefined;
 			this.generation++;
 			this.closed.emit();
 		});
@@ -137,9 +148,13 @@ export class DocumentPipController {
 
 	public close(): void {
 		this.generation++;
-		this.session?.applyTheme(undefined);
-		this.session?.window.close();
+		const session = this.session;
+		const cleanup = this.sessionCleanup;
 		this.session = undefined;
+		this.sessionCleanup = undefined;
+		session?.applyTheme(undefined);
+		cleanup?.();
+		session?.window.close();
 	}
 
 	private createControls(doc: Document, controls?: PipControls): HTMLElement {
@@ -231,11 +246,6 @@ export class DocumentPipController {
 		root.classList.toggle("interlude-style-wave", settings.interludeStyle === "wave");
 	}
 
-	private applyCoverState(root: HTMLElement, coverUrl: string | undefined, settings: ExtensionSettings): void {
-		root.classList.toggle("cover-missing", !coverUrl);
-		root.classList.toggle("background-disabled", !settings.backgroundEnabled);
-	}
-
 	private applyTheme(root: HTMLElement, theme: TrackTheme | undefined): void {
 		if (!theme) {
 			for (const property of THEME_CSS_PROPERTIES) {
@@ -276,19 +286,3 @@ export class DocumentPipController {
 		return icons[name];
 	}
 }
-
-const THEME_CSS_PROPERTIES = [
-	"--pip-accent-color",
-	"--pip-accent-rgb",
-	"--pip-background-color",
-	"--pip-surface-tone",
-	"--pip-foreground-color",
-	"--pip-foreground-rgb",
-	"--pip-synthetic-wake-color",
-	"--pip-synthetic-wake-rgb",
-	"--pip-muted-foreground-color",
-	"--pip-muted-rgb",
-	"--pip-glow-rgb",
-	"--pip-scrim-rgb",
-	"--pip-scrim-opacity",
-] as const;

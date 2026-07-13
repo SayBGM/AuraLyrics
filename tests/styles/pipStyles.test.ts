@@ -45,6 +45,35 @@ describe("pipStyles", () => {
 		expect(transitionStyles).not.toContain(".pip-border-frame");
 	});
 
+	test("crossfades full-viewport cover planes using only 360ms opacity and disables it for reduced motion", () => {
+		const layerRule = transitionStyles.match(/\.pip-cover-layer \{[^}]+\}/)?.[0] ?? "";
+		const planeRule = transitionStyles.match(/\.pip-cover-layer > \.pip-cover \{[^}]+\}/)?.[0] ?? "";
+		const hiddenRule =
+			transitionStyles.match(/\.pip-cover\[data-cover-state="pending"\],\n\.pip-cover\[data-cover-state="outgoing"\] \{[^}]+\}/)?.[0] ?? "";
+		const visibleRule =
+			transitionStyles.match(/\.pip-cover\[data-cover-state="active"\],\n\.pip-cover\[data-cover-state="incoming"\] \{[^}]+\}/)?.[0] ?? "";
+		const reducedRule = transitionStyles.match(/#aura-lyrics-root\.reduce-motion \.pip-cover-layer > \.pip-cover \{[^}]+\}/)?.[0] ?? "";
+		const basePlaneRule = baseStyles.match(/\.pip-cover \{[^}]+\}/)?.[0] ?? "";
+
+		expect(layerRule).toContain("position: absolute");
+		expect(layerRule).toContain("inset: 0");
+		expect(layerRule).toContain("width: 100%");
+		expect(layerRule).toContain("height: 100%");
+		expect(planeRule).toContain("transition: opacity 360ms ease");
+		expect(planeRule).not.toContain("transform 360ms");
+		expect(planeRule).not.toContain("filter 360ms");
+		expect(hiddenRule).toContain("opacity: 0");
+		expect(visibleRule).toContain("opacity: 0.95");
+		expect(reducedRule).toContain("transition: none");
+		expect(basePlaneRule).toContain("position: absolute");
+		expect(basePlaneRule).toContain("inset: 0");
+		expect(basePlaneRule).toContain("width: 100%");
+		expect(basePlaneRule).toContain("height: 100%");
+		expect(basePlaneRule).toContain("blur(var(--background-blur, 36px))");
+		expect(basePlaneRule).toContain("saturate(var(--background-saturation, 1.15))");
+		expect(basePlaneRule).toContain("transform: scale(1)");
+	});
+
 	test("animates loading progress for three seconds with themed foreground and scrim colors", () => {
 		expect(metadataStyles).toContain("animation: track-metadata-progress 3s");
 		expect(metadataStyles).toContain("var(--pip-foreground-color)");

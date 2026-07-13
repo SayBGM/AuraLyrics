@@ -1,21 +1,30 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { buildTrackTheme } from "../../src/app/TrackThemeService";
 import { DocumentPipController } from "../../src/pip/DocumentPipController";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
+import { THEME_CSS_PROPERTIES } from "../../src/shared/themeCssProperties";
 
 const createPipWindow = ({ height = 600, width = 600 } = {}): Window => {
 	const doc = document.implementation.createHTMLDocument("PiP");
-	return {
+	const pipWindow = {
 		document: doc,
 		closed: false,
 		innerHeight: height,
 		innerWidth: width,
 		addEventListener: vi.fn(),
+		setTimeout: (handler: TimerHandler, timeout?: number) => window.setTimeout(handler, timeout),
+		clearTimeout: (timer?: number) => window.clearTimeout(timer),
 		close: vi.fn(),
 	} as unknown as Window;
+	Object.defineProperty(doc, "defaultView", { configurable: true, value: pipWindow });
+	return pipWindow;
 };
 
 describe("DocumentPipController", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	test("shares concurrent open requests", async () => {
 		const pipWindow = createPipWindow();
 		let resolve!: (value: Window) => void;
@@ -64,6 +73,9 @@ describe("DocumentPipController", () => {
 		const frameSurface = pipWindow.document.querySelector(".pip-frame-surface");
 		const innerShadow = pipWindow.document.querySelector(".pip-frame-inner-shadow");
 		const frameProgress = pipWindow.document.querySelector(".pip-frame-progress");
+		const root = pipWindow.document.querySelector("#aura-lyrics-root");
+		const coverLayer = pipWindow.document.querySelector(".pip-cover-layer");
+		const content = pipWindow.document.querySelector(".pip-content");
 		expect(controls).not.toBeNull();
 		expect(close?.classList.contains("pip-close")).toBe(true);
 		expect(controls?.classList.contains("chrome-pip-controls")).toBe(true);
@@ -77,6 +89,18 @@ describe("DocumentPipController", () => {
 		expect(frameSurface?.tagName.toLowerCase()).toBe("div");
 		expect(innerShadow?.tagName.toLowerCase()).toBe("div");
 		expect(frameProgress?.querySelectorAll(".pip-frame-progress-segment")).toHaveLength(4);
+		expect(coverLayer?.parentElement).toBe(root);
+		expect(content?.parentElement).toBe(root);
+		expect(coverLayer?.contains(content ?? null)).toBe(false);
+		expect(Array.from(root?.children ?? []).map((element) => element.className)).toEqual([
+			"pip-cover-layer",
+			"pip-scrim",
+			"pip-vignette",
+			"pip-border-frame",
+			"pip-content",
+			"pip-close",
+			"pip-controls chrome-pip-controls",
+		]);
 		expect(pipWindow.document.querySelector(".pip-border-progress")).toBeNull();
 		expect(pipWindow.document.querySelector(".pip-border-progress-halo")).toBeNull();
 		expect(pipWindow.document.querySelector(".pip-border-track-fill")).toBeNull();
@@ -187,10 +211,13 @@ describe("DocumentPipController", () => {
 		expect(root?.classList.contains("interlude-style-wave")).toBe(true);
 		expect(root?.classList.contains("interlude-style-frame")).toBe(false);
 		expect(cover?.hidden).toBe(false);
+		expect(root?.classList.contains("cover-missing")).toBe(true);
 		expect(root?.classList.contains("background-disabled")).toBe(true);
+		cover?.dispatchEvent(new Event("load"));
+		expect(root?.classList.contains("cover-missing")).toBe(false);
 	});
 
-	test("shows the album art background when a cover URL is available", async () => {
+	test("shows the album art background only after the requested cover loads", async () => {
 		const pipWindow = createPipWindow();
 		window.documentPictureInPicture = {
 			requestWindow: vi.fn(async () => pipWindow),
@@ -199,9 +226,17 @@ describe("DocumentPipController", () => {
 		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "");
 		session.setCover("https://i.scdn.co/image/ab67616d0000b273cover");
 
+		const root = pipWindow.document.querySelector<HTMLElement>("#aura-lyrics-root");
 		const cover = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover");
+		expect(root?.classList.contains("cover-missing")).toBe(true);
+		expect(cover?.dataset.coverState).toBe("pending");
 		expect(cover?.hidden).toBe(false);
 		expect(cover?.getAttribute("src")).toBe("https://i.scdn.co/image/ab67616d0000b273cover");
+
+		cover?.dispatchEvent(new Event("load"));
+
+		expect(root?.classList.contains("cover-missing")).toBe(false);
+		expect(cover?.dataset.coverState).toBe("active");
 	});
 
 	test("clears a previous cover when the next track has none and shows a later cover", async () => {
@@ -212,17 +247,22 @@ describe("DocumentPipController", () => {
 
 		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "");
 		const root = pipWindow.document.querySelector<HTMLElement>("#aura-lyrics-root");
-		const cover = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover");
 		session.setCover("https://example.com/first.jpg");
+		const first = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover");
+		first?.dispatchEvent(new Event("load"));
 
 		session.setCover(undefined);
 
-		expect(cover?.hasAttribute("src")).toBe(false);
+		expect(pipWindow.document.querySelector(".pip-cover")).toBeNull();
 		expect(root?.classList.contains("cover-missing")).toBe(true);
 
 		session.setCover("https://example.com/second.jpg");
+		const second = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover");
 
-		expect(cover?.getAttribute("src")).toBe("https://example.com/second.jpg");
+		expect(second).not.toBe(first);
+		expect(second?.getAttribute("src")).toBe("https://example.com/second.jpg");
+		expect(root?.classList.contains("cover-missing")).toBe(true);
+		second?.dispatchEvent(new Event("load"));
 		expect(root?.classList.contains("cover-missing")).toBe(false);
 	});
 
@@ -239,6 +279,90 @@ describe("DocumentPipController", () => {
 		const cover = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover");
 		expect(base?.href).toBe(window.location.href);
 		expect(cover?.src).toBe(`${window.location.origin}/image/ab67616d0000b273cover`);
+	});
+
+	test.each([
+		["reduced motion", { reduceMotion: true }],
+		["disabled motion", { motionEnabled: false }],
+	])("replaces a loaded cover immediately for %s", async (_label, setting) => {
+		vi.useFakeTimers();
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+
+		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "");
+		session.setCover("https://example.com/a.jpg");
+		const a = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover") as HTMLImageElement;
+		a.dispatchEvent(new Event("load"));
+		session.applySettings({ ...DEFAULT_SETTINGS, ...setting });
+		session.setCover("https://example.com/b.jpg");
+		const b = pipWindow.document.querySelectorAll<HTMLImageElement>(".pip-cover")[1];
+
+		b.dispatchEvent(new Event("load"));
+
+		expect(Array.from(pipWindow.document.querySelectorAll(".pip-cover"))).toEqual([b]);
+		expect(b.dataset.coverState).toBe("active");
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	test("uses newly applied settings for subsequent cover requests", async () => {
+		vi.useFakeTimers();
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+
+		const session = await new DocumentPipController().open({ ...DEFAULT_SETTINGS, reduceMotion: true }, "");
+		session.setCover("https://example.com/a.jpg");
+		const a = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover") as HTMLImageElement;
+		a.dispatchEvent(new Event("load"));
+		session.applySettings(DEFAULT_SETTINGS);
+		session.setCover("https://example.com/b.jpg");
+		const b = pipWindow.document.querySelectorAll<HTMLImageElement>(".pip-cover")[1];
+
+		b.dispatchEvent(new Event("load"));
+
+		expect(Array.from(pipWindow.document.querySelectorAll(".pip-cover"))).toEqual([a, b]);
+		expect(a.dataset.coverState).toBe("outgoing");
+		expect(b.dataset.coverState).toBe("incoming");
+		expect(vi.getTimerCount()).toBe(1);
+	});
+
+	test("destroys cover state on pagehide and makes the stale session harmless", async () => {
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+		const controller = new DocumentPipController();
+		const session = await controller.open(DEFAULT_SETTINGS, "");
+		session.setCover("https://example.com/a.jpg");
+		const root = pipWindow.document.querySelector<HTMLElement>("#aura-lyrics-root");
+		const pagehide = vi.mocked(pipWindow.addEventListener).mock.calls.find(([eventName]) => eventName === "pagehide")?.[1];
+
+		if (typeof pagehide === "function") pagehide.call(pipWindow, new Event("pagehide"));
+
+		expect(pipWindow.document.querySelector(".pip-cover")).toBeNull();
+		expect(root?.classList.contains("cover-missing")).toBe(true);
+		session.setCover("https://example.com/stale.jpg");
+		expect(pipWindow.document.querySelector(".pip-cover")).toBeNull();
+		expect(controller.isOpen()).toBe(false);
+	});
+
+	test("destroys cover state on close and makes the stale session harmless", async () => {
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+		const controller = new DocumentPipController();
+		const session = await controller.open(DEFAULT_SETTINGS, "");
+		session.setCover("https://example.com/a.jpg");
+
+		controller.close();
+
+		expect(pipWindow.document.querySelector(".pip-cover")).toBeNull();
+		session.setCover("https://example.com/stale.jpg");
+		expect(pipWindow.document.querySelector(".pip-cover")).toBeNull();
 	});
 
 	test("renders a square-corner interlude frame with CSS progress segments instead of SVG paths", async () => {
@@ -296,21 +420,7 @@ describe("DocumentPipController", () => {
 		expect(root?.dataset.surfaceTone).toBe(theme.surfaceTone);
 
 		session.applyTheme(undefined);
-		for (const property of [
-			"--pip-accent-color",
-			"--pip-accent-rgb",
-			"--pip-background-color",
-			"--pip-surface-tone",
-			"--pip-foreground-color",
-			"--pip-foreground-rgb",
-			"--pip-synthetic-wake-color",
-			"--pip-synthetic-wake-rgb",
-			"--pip-muted-foreground-color",
-			"--pip-muted-rgb",
-			"--pip-glow-rgb",
-			"--pip-scrim-rgb",
-			"--pip-scrim-opacity",
-		]) {
+		for (const property of THEME_CSS_PROPERTIES) {
 			expect(root?.style.getPropertyValue(property)).toBe("");
 		}
 		expect(root?.dataset.surfaceTone).toBeUndefined();

@@ -1,4 +1,30 @@
 export const transitionStyles = `
+.pip-cover-layer {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
+
+.pip-cover-layer > .pip-cover {
+	transition: opacity 360ms ease;
+}
+
+.pip-cover[data-cover-state="pending"],
+.pip-cover[data-cover-state="outgoing"] {
+	opacity: 0;
+}
+
+.pip-cover[data-cover-state="active"],
+.pip-cover[data-cover-state="incoming"] {
+	opacity: 0.95;
+}
+
+#aura-lyrics-root.reduce-motion .pip-cover-layer > .pip-cover {
+	transition: none;
+}
+
 .pip-content > [data-scene-plane] {
 	position: absolute;
 	inset: 0;
