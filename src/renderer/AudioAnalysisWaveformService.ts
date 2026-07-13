@@ -32,38 +32,75 @@ export type TrackWaveformProfile = {
 
 type GetAudioData = (uri?: string) => Promise<AudioAnalysisData | undefined>;
 
+type AnalysisCacheEntry =
+	| { kind: "positive"; data: AudioAnalysisData }
+	| { kind: "negative"; data: AudioAnalysisData | undefined; expiresAt: number };
+
+type AnalysisInFlightEntry = {
+	generation: number;
+	promise: Promise<AudioAnalysisData | undefined>;
+};
+
 const MIN_BAR_HEIGHT = 0.14;
 const DEFAULT_BAR_COUNT = 18;
+const ANALYSIS_RETRY_DELAYS_MS = [400, 1_200] as const;
+const ANALYSIS_FAILURE_CACHE_MS = 5_000;
 
 export class AudioAnalysisWaveformService {
-	private readonly analysisCache = new Map<string, AudioAnalysisData | undefined>();
-	private readonly inFlight = new Map<string, Promise<AudioAnalysisData | undefined>>();
+	private readonly analysisCache = new Map<string, AnalysisCacheEntry>();
+	private readonly analysisGenerations = new Map<string, number>();
+	private readonly inFlight = new Map<string, AnalysisInFlightEntry>();
 
 	public constructor(private readonly getAudioData?: GetAudioData) {}
 
 	public async getAnalysis(track: TrackIdentity): Promise<AudioAnalysisData | undefined> {
-		if (this.analysisCache.has(track.uri)) {
-			return this.analysisCache.get(track.uri);
+		const cached = this.analysisCache.get(track.uri);
+		if (cached?.kind === "positive") {
+			return cached.data;
+		}
+		if (cached?.kind === "negative") {
+			if (Date.now() < cached.expiresAt) {
+				return cached.data;
+			}
+			this.analysisCache.delete(track.uri);
 		}
 		const pending = this.inFlight.get(track.uri);
 		if (pending) {
-			return pending;
+			return pending.promise;
 		}
-		const request = (async () => {
+
+		const generation = this.analysisGenerations.get(track.uri) ?? 0;
+		const acquisition = this.acquireAnalysis(track.uri);
+		const entry: AnalysisInFlightEntry = { generation, promise: acquisition };
+		entry.promise = (async () => {
 			try {
-				return await this.getAudioData?.(track.uri);
-			} catch {
-				return undefined;
+				const data = await acquisition;
+				if (this.isCurrentEntry(track.uri, entry)) {
+					if (hasUsableSegments(data)) {
+						this.analysisCache.set(track.uri, { kind: "positive", data });
+					} else {
+						this.analysisCache.set(track.uri, {
+							kind: "negative",
+							data,
+							expiresAt: Date.now() + ANALYSIS_FAILURE_CACHE_MS,
+						});
+					}
+				}
+				return data;
+			} finally {
+				if (this.isCurrentEntry(track.uri, entry)) {
+					this.inFlight.delete(track.uri);
+				}
 			}
 		})();
-		this.inFlight.set(track.uri, request);
-		try {
-			const data = await request;
-			this.analysisCache.set(track.uri, data);
-			return data;
-		} finally {
-			this.inFlight.delete(track.uri);
-		}
+		this.inFlight.set(track.uri, entry);
+		return entry.promise;
+	}
+
+	public invalidateAnalysis(uri: string): void {
+		this.analysisGenerations.set(uri, (this.analysisGenerations.get(uri) ?? 0) + 1);
+		this.analysisCache.delete(uri);
+		this.inFlight.delete(uri);
 	}
 
 	public async loadProfile(track: TrackIdentity): Promise<TrackWaveformProfile> {
@@ -138,6 +175,33 @@ export class AudioAnalysisWaveformService {
 		const filledValues = values.map((value, index) => value ?? fallbackValues[index % fallbackValues.length] ?? -36);
 		return normalizeInterludeWindow(filledValues);
 	}
+
+	private async acquireAnalysis(uri: string): Promise<AudioAnalysisData | undefined> {
+		let latestPartial: AudioAnalysisData | undefined;
+		for (let attempt = 0; attempt <= ANALYSIS_RETRY_DELAYS_MS.length; attempt += 1) {
+			let data: AudioAnalysisData | undefined;
+			try {
+				data = await this.getAudioData?.(uri);
+			} catch {
+				data = undefined;
+			}
+			if (data !== undefined) {
+				latestPartial = data;
+			}
+			if (hasUsableSegments(data)) {
+				return data;
+			}
+			const delayMs = ANALYSIS_RETRY_DELAYS_MS[attempt];
+			if (delayMs !== undefined) {
+				await delay(delayMs);
+			}
+		}
+		return latestPartial;
+	}
+
+	private isCurrentEntry(uri: string, entry: AnalysisInFlightEntry): boolean {
+		return (this.analysisGenerations.get(uri) ?? 0) === entry.generation && this.inFlight.get(uri) === entry;
+	}
 }
 
 const MIN_TEMPO = 40;
@@ -197,6 +261,10 @@ const tempoFromBeats = (beats: AudioAnalysisBeat[] | undefined): RhythmProfile |
 
 const isUsableSegment = (segment: AudioAnalysisSegment): boolean =>
 	Number.isFinite(segment.start) && Number.isFinite(segment.duration) && segment.duration > 0;
+
+const hasUsableSegments = (data: AudioAnalysisData | undefined): data is AudioAnalysisData => (data?.segments ?? []).some(isUsableSegment);
+
+const delay = (durationMs: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 const overlaps = (segment: AudioAnalysisSegment, start: number, end: number): boolean =>
 	segment.start < end && segment.start + segment.duration > start;
