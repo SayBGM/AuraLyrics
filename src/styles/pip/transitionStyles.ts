@@ -11,14 +11,24 @@ export const transitionStyles = `
 	transition: opacity 360ms ease;
 }
 
-.pip-cover[data-cover-state="pending"],
-.pip-cover[data-cover-state="outgoing"] {
+#aura-lyrics-root .pip-cover[data-cover-state="pending"],
+#aura-lyrics-root .pip-cover[data-cover-state="outgoing"] {
 	opacity: 0;
 }
 
-.pip-cover[data-cover-state="active"],
-.pip-cover[data-cover-state="incoming"] {
+#aura-lyrics-root .pip-cover[data-cover-state="active"],
+#aura-lyrics-root .pip-cover[data-cover-state="incoming"] {
 	opacity: 0.95;
+}
+
+#aura-lyrics-root.album-art-mode .pip-cover[data-cover-state="pending"],
+#aura-lyrics-root.album-art-mode .pip-cover[data-cover-state="outgoing"] {
+	opacity: 0;
+}
+
+#aura-lyrics-root.album-art-mode .pip-cover[data-cover-state="active"],
+#aura-lyrics-root.album-art-mode .pip-cover[data-cover-state="incoming"] {
+	opacity: 1;
 }
 
 #aura-lyrics-root.reduce-motion .pip-cover-layer > .pip-cover {

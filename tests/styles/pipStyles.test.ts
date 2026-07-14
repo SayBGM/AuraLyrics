@@ -11,6 +11,32 @@ import {
 	transitionStyles,
 } from "../../src/styles/pipStyles";
 
+const computedCoverOpacities = (albumArtMode: boolean): Record<string, string> => {
+	const style = document.createElement("style");
+	style.textContent = pipStyles;
+	const root = document.createElement("div");
+	root.id = "aura-lyrics-root";
+	root.classList.toggle("album-art-mode", albumArtMode);
+	const layer = document.createElement("div");
+	layer.className = "pip-cover-layer";
+	const covers = ["pending", "outgoing", "active", "incoming"].map((state) => {
+		const cover = document.createElement("img");
+		cover.className = "pip-cover";
+		cover.dataset.coverState = state;
+		layer.append(cover);
+		return cover;
+	});
+	root.append(layer);
+	document.head.append(style);
+	document.body.append(root);
+	try {
+		return Object.fromEntries(covers.map((cover) => [cover.dataset.coverState as string, getComputedStyle(cover).opacity]));
+	} finally {
+		root.remove();
+		style.remove();
+	}
+};
+
 describe("pipStyles", () => {
 	test("assembles the final CSS from focused style modules in display order", () => {
 		expect(pipStyleModules).toEqual([baseStyles, transitionStyles, controlsStyles, lyricsStyles, interludeStyles, metadataStyles, statusStyles]);
@@ -49,9 +75,17 @@ describe("pipStyles", () => {
 		const layerRule = transitionStyles.match(/\.pip-cover-layer \{[^}]+\}/)?.[0] ?? "";
 		const planeRule = transitionStyles.match(/\.pip-cover-layer > \.pip-cover \{[^}]+\}/)?.[0] ?? "";
 		const hiddenRule =
-			transitionStyles.match(/\.pip-cover\[data-cover-state="pending"\],\n\.pip-cover\[data-cover-state="outgoing"\] \{[^}]+\}/)?.[0] ?? "";
+			transitionStyles.match(
+				/#aura-lyrics-root \.pip-cover\[data-cover-state="pending"\],\n#aura-lyrics-root \.pip-cover\[data-cover-state="outgoing"\] \{[^}]+\}/
+			)?.[0] ?? "";
 		const visibleRule =
-			transitionStyles.match(/\.pip-cover\[data-cover-state="active"\],\n\.pip-cover\[data-cover-state="incoming"\] \{[^}]+\}/)?.[0] ?? "";
+			transitionStyles.match(
+				/#aura-lyrics-root \.pip-cover\[data-cover-state="active"\],\n#aura-lyrics-root \.pip-cover\[data-cover-state="incoming"\] \{[^}]+\}/
+			)?.[0] ?? "";
+		const albumVisibleRule =
+			transitionStyles.match(
+				/#aura-lyrics-root\.album-art-mode \.pip-cover\[data-cover-state="active"\],\n#aura-lyrics-root\.album-art-mode \.pip-cover\[data-cover-state="incoming"\] \{[^}]+\}/
+			)?.[0] ?? "";
 		const reducedRule = transitionStyles.match(/#aura-lyrics-root\.reduce-motion \.pip-cover-layer > \.pip-cover \{[^}]+\}/)?.[0] ?? "";
 		const basePlaneRule = baseStyles.match(/\.pip-cover \{[^}]+\}/)?.[0] ?? "";
 
@@ -64,6 +98,7 @@ describe("pipStyles", () => {
 		expect(planeRule).not.toContain("filter 360ms");
 		expect(hiddenRule).toContain("opacity: 0");
 		expect(visibleRule).toContain("opacity: 0.95");
+		expect(albumVisibleRule).toContain("opacity: 1");
 		expect(reducedRule).toContain("transition: none");
 		expect(basePlaneRule).toContain("position: absolute");
 		expect(basePlaneRule).toContain("inset: 0");
@@ -72,6 +107,24 @@ describe("pipStyles", () => {
 		expect(basePlaneRule).toContain("blur(var(--background-blur, 36px))");
 		expect(basePlaneRule).toContain("saturate(var(--background-saturation, 1.15))");
 		expect(basePlaneRule).toContain("transform: scale(1)");
+	});
+
+	test("computes cover transition opacity for every state in normal mode", () => {
+		expect(computedCoverOpacities(false)).toEqual({
+			pending: "0",
+			outgoing: "0",
+			active: "0.95",
+			incoming: "0.95",
+		});
+	});
+
+	test("computes hidden pending and outgoing covers in album art mode while keeping displayed covers opaque", () => {
+		expect(computedCoverOpacities(true)).toEqual({
+			pending: "0",
+			outgoing: "0",
+			active: "1",
+			incoming: "1",
+		});
 	});
 
 	test("animates loading progress for three seconds with themed foreground and scrim colors", () => {
