@@ -26,11 +26,29 @@ type RectSnapshot = {
 
 type ChromeRects = Record<"border" | "close" | "controls", RectSnapshot>;
 
+type CoverHarnessState = {
+	lastAnimate: boolean | null;
+	planes: Array<{
+		duration: string;
+		inlineTransition: string;
+		state: string | null;
+	}>;
+};
+
+type TransitionPolicyState = {
+	durationSec: number;
+	metadataSkipped: boolean;
+	thresholdSec: number | null;
+	updateTimestampSec: number;
+};
+
 declare global {
 	interface Window {
 		auraVisualHarness?: {
 			completeTransition(): Promise<void>;
+			getCoverState(): CoverHarnessState;
 			getTransitionChromeBaseline(): ChromeRects;
+			getTransitionPolicyState(): TransitionPolicyState;
 			renderScenario(name: ScenarioName, timestamp?: number): void;
 			renderTransitionScenario(name: TransitionScenarioName, phase?: TransitionPhase): void;
 		};
@@ -62,6 +80,11 @@ test("visual harness uses the production cover layer structure", async ({ page }
 
 	await expect(cover).toHaveCount(1);
 	await expect(cover).toHaveAttribute("data-cover-state", "active");
+	const state = await coverState(page);
+	expect(state).toEqual({
+		lastAnimate: false,
+		planes: [{ duration: "0s", inlineTransition: "none", state: "active" }],
+	});
 });
 
 test("lyrics outro moves up into persistent metadata at deterministic start, midpoint, and completion", async ({ page }) => {
@@ -73,6 +96,13 @@ test("lyrics outro moves up into persistent metadata at deterministic start, mid
 	expect(metrics.outgoing?.translationY).toBeCloseTo(0, 1);
 	expect(metrics.incoming?.translationY ?? 0).toBeGreaterThan(400);
 	expect(metrics.incoming?.rect.y ?? 0).toBeGreaterThan(metrics.outgoing?.rect.y ?? 0);
+	expect(metrics.outgoingLastLineState).toEqual({ active: false, sung: true });
+	expect(await transitionPolicyState(page)).toEqual({
+		durationSec: 210,
+		metadataSkipped: false,
+		thresholdSec: 10,
+		updateTimestampSec: 10,
+	});
 	await expectChromeToStayFixed(page);
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("outro-up-start.png", transitionScreenshotOptions);
 
@@ -112,6 +142,13 @@ test("next metadata moves left and completes with only the next scene", async ({
 	expect(Math.abs(metrics.incoming?.translationY ?? 0)).toBeLessThan(1);
 	expect(metrics.outgoingTitle).toBe("Current Horizon");
 	expect(metrics.incomingTitle).toBe("Next Light");
+	expect(await coverState(page)).toEqual({
+		lastAnimate: true,
+		planes: [
+			{ duration: "0.36s", inlineTransition: "", state: "outgoing" },
+			{ duration: "0.36s", inlineTransition: "", state: "incoming" },
+		],
+	});
 	await expectChromeToStayFixed(page);
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-next-mid.png", transitionScreenshotOptions);
 
@@ -120,6 +157,7 @@ test("next metadata moves left and completes with only the next scene", async ({
 	expect(metrics.planeCount).toBe(0);
 	expect(metrics.rootChildCount).toBe(1);
 	expect(metrics.visibleTitle).toBe("Next Light");
+	expect((await coverState(page)).planes).toEqual([{ duration: "0.36s", inlineTransition: "", state: "active" }]);
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-next-complete.png", transitionScreenshotOptions);
 });
 
@@ -162,6 +200,14 @@ test("short-tail sequence skips current metadata but keeps the leftward next tra
 	expect(metrics.outgoingTitle).toBeNull();
 	expect(metrics.incomingTitle).toBe("Next Light");
 	expect(metrics.allTitles).not.toContain("Current Horizon");
+	expect(metrics.outgoingHasLyrics).toBe(true);
+	expect(metrics.outgoingLastLineState).toEqual({ active: false, sung: true });
+	expect(await transitionPolicyState(page)).toEqual({
+		durationSec: 5.5,
+		metadataSkipped: true,
+		thresholdSec: null,
+		updateTimestampSec: 5.5,
+	});
 	await expectChromeToStayFixed(page);
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("short-tail-next-mid.png", transitionScreenshotOptions);
 
@@ -182,6 +228,10 @@ test("reduced motion presents the final next scene immediately without duplicate
 	expect(metrics.transitionClass).toBeNull();
 	expect(metrics.visibleTitle).toBe("Next Light");
 	expect(coverTransitionDuration).toBe("0s");
+	expect(await coverState(page)).toEqual({
+		lastAnimate: false,
+		planes: [{ duration: "0s", inlineTransition: "none", state: "active" }],
+	});
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-next-reduced-motion.png", transitionScreenshotOptions);
 });
 
@@ -192,7 +242,7 @@ test("Aurora intro-ready metadata shows only the track identity on the adaptive 
 
 	expect(metrics).toMatchObject({
 		backgroundCoverOpacity: "0.95",
-		backgroundCoverTransitionDuration: "0.36s",
+		backgroundCoverTransitionDuration: "0s",
 		eyebrow: null,
 		title: "Midnight Bloom",
 		byline: "Haneul Park · Afterglow",
@@ -610,6 +660,22 @@ test("background opposite vocals stay secondary and opposite aligned", async ({ 
 	expect(metrics.backgroundLeft).toBeGreaterThanOrEqual(metrics.leadLeft - 1);
 });
 
+const coverState = async (page: Page): Promise<CoverHarnessState> =>
+	page.evaluate(() => {
+		if (!window.auraVisualHarness) {
+			throw new Error("AuraLyrics visual harness API was not installed.");
+		}
+		return window.auraVisualHarness.getCoverState();
+	});
+
+const transitionPolicyState = async (page: Page): Promise<TransitionPolicyState> =>
+	page.evaluate(() => {
+		if (!window.auraVisualHarness) {
+			throw new Error("AuraLyrics visual harness API was not installed.");
+		}
+		return window.auraVisualHarness.getTransitionPolicyState();
+	});
+
 const renderTransitionScenario = async (page: Page, name: TransitionScenarioName, phase: TransitionPhase): Promise<void> => {
 	await page.evaluate(
 		({ scenarioName, transitionPhase }) => {
@@ -662,6 +728,16 @@ const expectChromeToStayFixed = async (page: Page): Promise<void> => {
 			controls: ".pip-controls",
 		} as const;
 		const current = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, rect(selector)])) as ChromeRects;
+		const presentation = Object.fromEntries(
+			Object.entries({ close: selectors.close, controls: selectors.controls }).map(([key, selector]) => {
+				const element = document.querySelector<HTMLElement>(selector);
+				if (!element) {
+					throw new Error(`Missing fixed chrome presentation element: ${selector}`);
+				}
+				const computed = getComputedStyle(element);
+				return [key, { opacity: computed.opacity, pointerEvents: computed.pointerEvents, visibility: computed.visibility }];
+			})
+		);
 		const nestedInScenePlane = Object.values(selectors).some((selector) =>
 			document.querySelector<HTMLElement>(selector)?.closest("[data-scene-plane]")
 		);
@@ -669,11 +745,16 @@ const expectChromeToStayFixed = async (page: Page): Promise<void> => {
 			baseline: window.auraVisualHarness.getTransitionChromeBaseline(),
 			current,
 			nestedInScenePlane,
+			presentation,
 		};
 	});
 
 	expect(result.current).toEqual(result.baseline);
 	expect(result.nestedInScenePlane).toBe(false);
+	expect(result.presentation).toEqual({
+		close: { opacity: "1", pointerEvents: "auto", visibility: "visible" },
+		controls: { opacity: "1", pointerEvents: "auto", visibility: "visible" },
+	});
 };
 
 const transitionMetrics = async (page: Page) =>
@@ -705,6 +786,12 @@ const transitionMetrics = async (page: Page) =>
 			incoming: planeMetrics("incoming"),
 			incomingTitle: content.querySelector<HTMLElement>('[data-scene-plane="incoming"] .track-metadata-title')?.textContent ?? null,
 			outgoing: planeMetrics("outgoing"),
+			outgoingHasLyrics: content.querySelector('[data-scene-plane="outgoing"] .lyrics-track') !== null,
+			outgoingLastLineState: (() => {
+				const lines = content.querySelectorAll<HTMLElement>('[data-scene-plane="outgoing"] .line-group');
+				const line = lines.item(lines.length - 1);
+				return line ? { active: line.classList.contains("active"), sung: line.classList.contains("sung") } : null;
+			})(),
 			outgoingTitle: content.querySelector<HTMLElement>('[data-scene-plane="outgoing"] .track-metadata-title')?.textContent ?? null,
 			planeCount: content.querySelectorAll(":scope > [data-scene-plane]").length,
 			rootChildCount: content.children.length,
