@@ -822,6 +822,6 @@ Use `git status --short` to enumerate the exact remaining feature files. Stage t
 git commit -m "chore: finalize lyrics outro transitions"
 ```
 
-- [ ] **Step 6: Request code review**
+- [x] **Step 6: Request code review**
 
 Use `@superpowers:requesting-code-review` against the design spec and implementation plan. Address blocking findings with `@superpowers:receiving-code-review`, then rerun all affected checks before claiming completion.
