@@ -4,9 +4,12 @@ import type { IntroPresentationGate } from "../../src/app/IntroPresentationGate"
 import type { OutroPresentationController } from "../../src/app/OutroPresentationController";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
+import type { TrackTransitionDirectionController } from "../../src/app/TrackTransitionDirectionController";
 import type { LineLyrics, LyricsDocument, LyricsLoadState, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
+import type { TrackChangedEvent } from "../../src/player/SpicetifyPlayerAdapter";
 import type { TrackWaveformProfile } from "../../src/renderer/AudioAnalysisWaveformService";
+import { SCENE_TRANSITION_DURATION_MS } from "../../src/renderer/SceneTransitionController";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 import type { ExtensionSettings } from "../../src/settings/settingsSchema";
 import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
@@ -78,6 +81,11 @@ const metadataTrack = (uri = "spotify:track:metadata", overrides: Partial<TrackI
 	coverUrl: "https://example.com/aurora.jpg",
 	isLocal: false,
 	...overrides,
+});
+
+const trackChangedEvent = (track: TrackIdentity | undefined, progress: Omit<TrackChangedEvent, "track"> = {}): TrackChangedEvent => ({
+	track,
+	...progress,
 });
 
 const readyLoadState = (track: TrackIdentity, source: "cache" | "network" = "network"): LyricsLoadState => ({
@@ -1197,18 +1205,18 @@ describe("ExtensionApp", () => {
 				endTrackEpoch: () => void;
 				hasActiveEpoch: () => boolean;
 			};
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 		};
 		const beginTrackEpoch = vi.spyOn(internals.introGate, "beginTrackEpoch");
 		const endTrackEpoch = vi.spyOn(internals.introGate, "endTrackEpoch");
 
-		await internals.onTrackChanged(track);
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
+		await internals.onTrackChanged(trackChangedEvent(track));
 
 		expect(beginTrackEpoch).toHaveBeenCalledTimes(2);
 		expect(internals.introGate.hasActiveEpoch()).toBe(true);
 
-		await internals.onTrackChanged(undefined);
+		await internals.onTrackChanged(trackChangedEvent(undefined));
 
 		expect(endTrackEpoch).toHaveBeenCalledOnce();
 		expect(internals.introGate.hasActiveEpoch()).toBe(false);
@@ -1227,22 +1235,24 @@ describe("ExtensionApp", () => {
 			.mockResolvedValueOnce(readyLoadStateAt(track, 1));
 		const internals = app as unknown as {
 			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
+			settings: { update: (patch: Partial<ExtensionSettings>) => void };
 			lyricsService: { load: typeof load; refreshCooldowns: () => void; invalidate: () => void };
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 		};
 		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+		internals.settings.update({ reduceMotion: true });
 		internals.lyricsService = { load, refreshCooldowns: vi.fn(), invalidate: vi.fn() };
 
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		expect(root.querySelector(".lyrics-track")).not.toBeNull();
 
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		expect(root.querySelector(".track-metadata-scene.intro")).not.toBeNull();
 		expect(root.querySelector(".lyrics-track")).toBeNull();
 
-		await internals.onTrackChanged(undefined);
+		await internals.onTrackChanged(trackChangedEvent(undefined));
 		expect(root.querySelector(".status-card")?.textContent).toContain("Waiting for music");
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		expect(root.querySelector(".lyrics-track")).not.toBeNull();
 		expect(root.querySelector(".track-metadata-scene.intro")).toBeNull();
 		app.destroy();
@@ -1867,12 +1877,12 @@ describe("ExtensionApp", () => {
 		const invalidate = vi.fn();
 		const internals = app as unknown as {
 			trackSession: { invalidate: () => void };
-			onTrackChanged: (track: undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			closePip: (closeWindow: boolean) => void;
 		};
 		internals.trackSession = { invalidate };
 
-		await internals.onTrackChanged(undefined);
+		await internals.onTrackChanged(trackChangedEvent(undefined));
 		internals.closePip(false);
 		app.destroy();
 
@@ -2591,11 +2601,11 @@ describe("ExtensionApp", () => {
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
 			mountReadySnapshot: typeof mount;
 			isPlaybackActive: boolean;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.playbackSynchronizer = synchronizer;
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
@@ -2632,10 +2642,10 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
 			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
 			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
 		internals.lyricsService = {
 			load: vi.fn(async () => readyLoadStateAt(track, 4)),
@@ -2742,11 +2752,11 @@ describe("ExtensionApp", () => {
 			playbackSynchronizer: PlaybackSynchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
 			mountReadySnapshot: typeof mount;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), setPlaying: vi.fn() };
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
 		internals.mountReadySnapshot = mount;
@@ -2799,10 +2809,10 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement };
 			isPlaybackActive: boolean;
 			mountReadySnapshot: typeof mount;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.mountReadySnapshot = mount;
 		internals.isPlaybackActive = true;
@@ -2851,10 +2861,10 @@ describe("ExtensionApp", () => {
 			playbackSynchronizer: { timestampSec: number };
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: () => void };
 			mountReadySnapshot: typeof mount;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.playbackSynchronizer = { timestampSec: 100 };
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update: vi.fn() };
@@ -2879,10 +2889,10 @@ describe("ExtensionApp", () => {
 			playbackSynchronizer: { timestampSec: number };
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: () => void };
 			mountReadySnapshot: typeof mount;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.playbackSynchronizer = { timestampSec: 10 };
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update: vi.fn() };
@@ -2917,11 +2927,11 @@ describe("ExtensionApp", () => {
 			playbackSynchronizer: typeof synchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: () => void };
 			mountReadySnapshot: () => void;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), setPlaying: vi.fn() };
 		internals.playbackSynchronizer = synchronizer;
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update: vi.fn() };
@@ -2951,7 +2961,7 @@ describe("ExtensionApp", () => {
 		const app = new ExtensionApp(spicetify);
 		const internals = app as unknown as {
 			outroController?: OutroPresentationController;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			closePip: (closeWindow?: boolean) => void;
 		};
 		expect(internals.outroController).toBeDefined();
@@ -2962,9 +2972,9 @@ describe("ExtensionApp", () => {
 		const endTrackEpoch = vi.spyOn(internals.outroController, "endTrackEpoch");
 		const discardSession = vi.spyOn(internals.outroController, "discardSession");
 
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		expect(internals.outroController.accept(snapshot, internalsSettingsOf(app), 10).kind).toBe("show-metadata");
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 
 		expect(beginTrackEpoch).toHaveBeenCalledTimes(2);
 		expect(internals.outroController.currentKind()).toBe("inactive");
@@ -2975,11 +2985,11 @@ describe("ExtensionApp", () => {
 		expect(internals.outroController.currentKind()).toBe("inactive");
 		expect(internals.outroController.accept(snapshot, internalsSettingsOf(app), 10).kind).toBe("show-metadata");
 
-		await internals.onTrackChanged(undefined);
+		await internals.onTrackChanged(trackChangedEvent(undefined));
 		expect(endTrackEpoch).toHaveBeenCalledOnce();
 		expect(internals.outroController.currentKind()).toBe("inactive");
 
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		app.destroy();
 		expect(endTrackEpoch).toHaveBeenCalledTimes(2);
 	});
@@ -2995,13 +3005,13 @@ describe("ExtensionApp", () => {
 			revealedSnapshot?: ReadyTrackSessionSnapshot;
 			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
 			playbackSynchronizer: PlaybackSynchronizer;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
 		expect(internals.outroController).toBeDefined();
 		if (!internals.outroController) return;
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), setCover: vi.fn(), applyTheme: vi.fn() };
 		internals.playbackSynchronizer.resync();
 		internals.presentReadySnapshot(outroSnapshot(track));
@@ -3047,7 +3057,7 @@ describe("ExtensionApp", () => {
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
 			mountReadySnapshot: typeof mount;
 			isPlaybackActive: boolean;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
@@ -3057,7 +3067,7 @@ describe("ExtensionApp", () => {
 			) => Promise<void>;
 			tick: (deltaTimeSec: number) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = session;
 		internals.currentTrack = track;
 		internals.trackSession = { isCurrent: (snapshot) => snapshot === enriched, invalidate: vi.fn() };
@@ -3112,11 +3122,11 @@ describe("ExtensionApp", () => {
 				update: typeof update;
 			};
 			mountReadySnapshot: typeof mount;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.trackSession = {
 			getSnapshot: () => snapshot,
@@ -3164,12 +3174,12 @@ describe("ExtensionApp", () => {
 			playbackSynchronizer: PlaybackSynchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: () => void; update: (timestampSec: number, deltaTimeSec: number) => void };
 			mountReadySnapshot: () => void;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
 		internals.settings.update({ lyricsDelayMs: delayMs });
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		expect(internals.outroController).toBeDefined();
 		if (!internals.outroController) return;
 		internals.session = { root: document.createElement("main"), setPlaying: vi.fn() };
@@ -3216,13 +3226,13 @@ describe("ExtensionApp", () => {
 				update: typeof update;
 			};
 			mountReadySnapshot: typeof mount;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 		};
 		internals.settings.update({ lyricsDelayMs: 1_000 });
 		internals.appliedSettings = internals.settings.get();
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.currentTrack = track;
 		internals.renderer = { destroy: vi.fn(), applySettings: vi.fn(), showTrackMetadata, update };
@@ -3273,11 +3283,11 @@ describe("ExtensionApp", () => {
 				update: typeof update;
 			};
 			mountReadySnapshot: typeof mount;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.currentTrack = track;
 		internals.renderer = { destroy: vi.fn(), applySettings: vi.fn(), showTrackMetadata, update };
@@ -3317,11 +3327,11 @@ describe("ExtensionApp", () => {
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
 			mountReadySnapshot: typeof mount;
 			isPlaybackActive: boolean;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 		};
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.currentTrack = track;
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
@@ -3373,12 +3383,12 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement };
 			playbackSynchronizer: typeof synchronizer;
 			isPlaybackActive: boolean;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 		};
 		internals.settings.update({ reduceMotion: true });
-		await internals.onTrackChanged(track);
+		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root };
 		internals.playbackSynchronizer = synchronizer;
 		internals.isPlaybackActive = true;
@@ -3545,7 +3555,7 @@ describe("ExtensionApp", () => {
 			currentTrack?: TrackIdentity;
 			lyricsService: { invalidate: () => void; load: (track: TrackIdentity) => Promise<LyricsLoadState> };
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
-			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 		};
 		internals.session = { root, setCover, applyTheme };
 		internals.currentTrack = track;
@@ -3559,7 +3569,7 @@ describe("ExtensionApp", () => {
 		await internals.loadCurrentTrack(false);
 		expect(spicetify.colorExtractor).toHaveBeenCalledTimes(2);
 
-		await internals.onTrackChanged(undefined);
+		await internals.onTrackChanged(trackChangedEvent(undefined));
 
 		expect(setCover).toHaveBeenLastCalledWith(undefined);
 		expect(applyTheme).toHaveBeenLastCalledWith(undefined);
@@ -3967,5 +3977,712 @@ describe("ExtensionApp", () => {
 
 		resolveLyrics?.();
 		await loadPromise;
+	});
+
+	describe("directional track transitions", () => {
+		test("passes the whole TrackChangedEvent from the started player subscription", async () => {
+			const { spicetify } = createSpicetify();
+			const app = new ExtensionApp(spicetify);
+			const event = trackChangedEvent(metadataTrack("spotify:track:whole-event"), {
+				previousTrackUri: "spotify:track:whole-previous",
+				previousProgressSec: 98,
+				previousDurationSec: 100,
+			});
+			const onTrackChanged = vi.fn(async () => undefined);
+			const internals = app as unknown as {
+				player: { trackChanged: { emit: (event: TrackChangedEvent) => void } };
+				onTrackChanged: typeof onTrackChanged;
+			};
+			internals.onTrackChanged = onTrackChanged;
+
+			app.start();
+			internals.player.trackChanged.emit(event);
+
+			expect(onTrackChanged).toHaveBeenCalledWith(event);
+			app.destroy();
+		});
+
+		test("enqueues PiP navigation intent before calling the player", async () => {
+			const { spicetify } = createSpicetify();
+			const calls: string[] = [];
+			spicetify.Player.back = vi.fn(() => calls.push("player:previous"));
+			spicetify.Player.next = vi.fn(() => calls.push("player:next"));
+			const app = new ExtensionApp(spicetify);
+			const internals = app as unknown as {
+				directionController: TrackTransitionDirectionController;
+				pip: {
+					open: (
+						settings: ExtensionSettings,
+						styles: string,
+						controls: { onPrevious: () => void; onNext: () => void }
+					) => Promise<{
+						window: Window;
+						root: HTMLElement;
+						setCover: () => void;
+						setPlaying: () => void;
+						applyTheme: () => void;
+						applySettings: () => void;
+					}>;
+					close: () => void;
+				};
+				openPip: () => Promise<void>;
+				loadCurrentTrack: () => Promise<void>;
+			};
+			vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+			const enqueue = vi.spyOn(internals.directionController, "enqueue").mockImplementation((direction) => calls.push(`intent:${direction}`));
+			internals.pip = {
+				open: vi.fn(async (_settings, _styles, controls) => {
+					controls.onNext();
+					controls.onPrevious();
+					return {
+						window,
+						root: document.createElement("main"),
+						setCover: vi.fn(),
+						setPlaying: vi.fn(),
+						applyTheme: vi.fn(),
+						applySettings: vi.fn(),
+					};
+				}),
+				close: vi.fn(),
+			};
+			internals.loadCurrentTrack = vi.fn(async () => undefined);
+
+			await internals.openPip();
+
+			expect(calls).toEqual(["intent:next", "player:next", "intent:previous", "player:previous"]);
+			expect(enqueue).toHaveBeenCalledTimes(2);
+			app.destroy();
+		});
+
+		test.each([
+			{ name: "explicit next", intent: "next" as const, event: trackChangedEvent(metadataTrack("spotify:track:next")), expected: "next" },
+			{
+				name: "explicit previous",
+				intent: "previous" as const,
+				event: trackChangedEvent(metadataTrack("spotify:track:previous")),
+				expected: "previous",
+			},
+			{
+				name: "natural end",
+				event: trackChangedEvent(metadataTrack("spotify:track:natural"), { previousProgressSec: 98, previousDurationSec: 100 }),
+				expected: "next",
+			},
+			{
+				name: "unknown mid-track",
+				event: trackChangedEvent(metadataTrack("spotify:track:unknown"), { previousProgressSec: 40, previousDurationSec: 100 }),
+				expected: "up",
+			},
+		])("maps $name to the loading metadata scene direction", async ({ intent, event, expected }) => {
+			const { spicetify } = createSpicetify();
+			const app = new ExtensionApp(spicetify);
+			const root = document.createElement("main");
+			const result = deferred<LyricsLoadState>();
+			const internals = app as unknown as {
+				session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+				currentTrack: TrackIdentity;
+				directionController: TrackTransitionDirectionController;
+				lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+				renderer: {
+					showTrackMetadata: (
+						root: HTMLElement,
+						metadata: { mode: "loading" | "persistent"; track: TrackIdentity },
+						settings: ExtensionSettings,
+						presentation?: { direction?: string; animate?: boolean }
+					) => unknown;
+				};
+				onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+			};
+			internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+			internals.currentTrack = metadataTrack("spotify:track:outgoing");
+			internals.lyricsService = { load: vi.fn(() => result.promise), invalidate: vi.fn() };
+			internals.renderer.showTrackMetadata(root, { mode: "persistent", track: internals.currentTrack }, internalsSettingsOf(app));
+			const showTrackMetadata = vi.spyOn(internals.renderer, "showTrackMetadata");
+			if (intent) internals.directionController.enqueue(intent);
+
+			const changing = internals.onTrackChanged(event);
+
+			expect(showTrackMetadata).toHaveBeenLastCalledWith(root, { mode: "loading", track: event.track }, expect.anything(), {
+				direction: expected,
+				animate: true,
+			});
+			expect(root.classList.contains(`scene-transition-${expected}`)).toBe(true);
+			result.resolve({ status: "empty", track: event.track as TrackIdentity, reason: "no-lyrics" });
+			await changing;
+			app.destroy();
+		});
+
+		test("keeps ready lyrics pending until the metadata entrance settles, then resyncs to the latest timestamp", async () => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				let progressMs = 0;
+				spicetify.Player.getProgress = () => progressMs;
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:pending-outgoing");
+				const incoming = metadataTrack("spotify:track:pending-incoming");
+				const result = deferred<LyricsLoadState>();
+				const internals = app as unknown as {
+					session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+						update: (timestampSec: number, deltaTime: number) => void;
+					};
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				};
+				internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+				internals.currentTrack = outgoing;
+				internals.lyricsService = { load: vi.fn(() => result.promise), invalidate: vi.fn() };
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				const update = vi.spyOn(internals.renderer, "update");
+				internals.directionController.enqueue("next");
+
+				const changing = internals.onTrackChanged(trackChangedEvent(incoming));
+				result.resolve(readyLoadStateAt(incoming, 1));
+				await changing;
+
+				expect(root.querySelector(".lyrics-track")).toBeNull();
+				expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-scene.loading')).not.toBeNull();
+				progressMs = 4_000;
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+
+				expect(root.querySelector(".lyrics-track")?.textContent).toContain("First vocal");
+				expect(update).toHaveBeenLastCalledWith(4, 0);
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test.each([
+			{
+				name: "intro",
+				progressMs: 0,
+				track: metadataTrack("spotify:track:settle-intro"),
+				state: (track: TrackIdentity) => readyLoadStateAt(track, 10),
+				selector: ".track-metadata-scene.intro",
+			},
+			{
+				name: "outro",
+				progressMs: 8_000,
+				track: metadataTrack("spotify:track:settle-outro", { durationMs: 12_000 }),
+				state: (track: TrackIdentity) => readyLoadState(track),
+				selector: ".track-metadata-scene.persistent",
+			},
+		])("selects the correct $name presentation from the timestamp sampled at settlement", async ({ progressMs, track, state, selector }) => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				spicetify.Player.getProgress = () => progressMs;
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:settle-outgoing");
+				const internals = app as unknown as {
+					session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+					};
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				};
+				internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+				internals.currentTrack = outgoing;
+				internals.lyricsService = { load: vi.fn(async () => state(track)), invalidate: vi.fn() };
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				internals.directionController.enqueue("next");
+
+				await internals.onTrackChanged(trackChangedEvent(track));
+				expect(root.querySelector(`[data-scene-plane="incoming"] ${selector}`)).toBeNull();
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+
+				expect(root.querySelector(selector)).not.toBeNull();
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test("transitions short-tail lyrics to natural-next loading metadata on the left", async () => {
+			const { spicetify } = createSpicetify();
+			spicetify.Player.getProgress = () => 4_000;
+			const app = new ExtensionApp(spicetify);
+			const root = document.createElement("main");
+			const outgoing = metadataTrack("spotify:track:short-tail-outgoing", { durationMs: 10_000 });
+			const incoming = metadataTrack("spotify:track:short-tail-incoming");
+			const result = deferred<LyricsLoadState>();
+			const internals = app as unknown as {
+				session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+				currentTrack: TrackIdentity;
+				lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+				presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+				onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+			};
+			internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+			internals.currentTrack = outgoing;
+			internals.lyricsService = { load: vi.fn(() => result.promise), invalidate: vi.fn() };
+			beginIntroEpoch(app);
+			internals.presentReadySnapshot(
+				readySnapshotWithLyrics(outgoing, {
+					type: "line",
+					startTime: 0,
+					endTime: 9,
+					content: [{ type: "vocal", text: "Short tail", startTime: 0, endTime: 9, oppositeAligned: false }],
+				})
+			);
+			expect(root.querySelector(".lyrics-track")).not.toBeNull();
+
+			const changing = internals.onTrackChanged(
+				trackChangedEvent(incoming, { previousProgressSec: 8, previousDurationSec: 10, previousTrackUri: outgoing.uri })
+			);
+
+			expect(root.classList.contains("scene-transition-next")).toBe(true);
+			expect(root.querySelector('[data-scene-plane="outgoing"] .lyrics-track')).not.toBeNull();
+			result.resolve({ status: "empty", track: incoming, reason: "no-lyrics" });
+			await changing;
+			app.destroy();
+		});
+
+		test("keeps two rapid navigation intents in FIFO order across two track events", async () => {
+			const { spicetify } = createSpicetify();
+			const app = new ExtensionApp(spicetify);
+			const root = document.createElement("main");
+			const outgoing = metadataTrack("spotify:track:fifo-outgoing");
+			const firstTrack = metadataTrack("spotify:track:fifo-first");
+			const secondTrack = metadataTrack("spotify:track:fifo-second");
+			const first = deferred<LyricsLoadState>();
+			const second = deferred<LyricsLoadState>();
+			const internals = app as unknown as {
+				session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+				currentTrack: TrackIdentity;
+				directionController: TrackTransitionDirectionController;
+				lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+				renderer: {
+					showTrackMetadata: (
+						root: HTMLElement,
+						metadata: { mode: string; track: TrackIdentity },
+						settings: ExtensionSettings,
+						presentation?: { direction?: string; animate?: boolean }
+					) => unknown;
+				};
+				onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+			};
+			internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+			internals.currentTrack = outgoing;
+			internals.lyricsService = { load: vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise), invalidate: vi.fn() };
+			internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+			const showTrackMetadata = vi.spyOn(internals.renderer, "showTrackMetadata");
+			internals.directionController.enqueue("next");
+			internals.directionController.enqueue("previous");
+
+			const firstChange = internals.onTrackChanged(trackChangedEvent(firstTrack));
+			const secondChange = internals.onTrackChanged(trackChangedEvent(secondTrack));
+
+			const loadingDirections = showTrackMetadata.mock.calls.filter(([, metadata]) => metadata.mode === "loading").map((call) => call[3]?.direction);
+			expect(loadingDirections).toEqual(["next", "previous"]);
+			first.resolve(readyLoadState(firstTrack));
+			second.resolve({ status: "empty", track: secondTrack, reason: "no-lyrics" });
+			await Promise.all([firstChange, secondChange]);
+			app.destroy();
+		});
+
+		test("clears every navigation intent for no-track, PiP close, and destroy", async () => {
+			const { spicetify } = createSpicetify();
+			const app = new ExtensionApp(spicetify);
+			const internals = app as unknown as {
+				directionController: TrackTransitionDirectionController;
+				onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				closePip: (closeWindow?: boolean) => void;
+			};
+
+			internals.directionController.enqueue("next");
+			internals.directionController.enqueue("previous");
+			await internals.onTrackChanged(trackChangedEvent(undefined));
+			expect(internals.directionController.consume()).toBe("unknown");
+
+			internals.directionController.enqueue("next");
+			internals.closePip(false);
+			expect(internals.directionController.consume()).toBe("unknown");
+
+			internals.directionController.enqueue("previous");
+			app.destroy();
+			expect(internals.directionController.consume()).toBe("unknown");
+		});
+
+		test.each([
+			{
+				name: "provider error",
+				state: (track: TrackIdentity): LyricsLoadState => ({ status: "error", track, message: "offline" }),
+				selector: ".track-metadata-scene.persistent",
+			},
+			{
+				name: "instrumental",
+				state: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "instrumental" }),
+				selector: ".album-art-scene",
+			},
+			{
+				name: "unsupported local",
+				state: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track: { ...track, isLocal: true }, reason: "unsupported-local" }),
+				selector: ".track-metadata-scene.persistent",
+			},
+		])("keeps loading metadata visible until a $name result settles", async ({ state, selector }) => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:non-ready-outgoing");
+				const incoming = metadataTrack("spotify:track:non-ready-incoming");
+				const internals = app as unknown as {
+					session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+					};
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				};
+				internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+				internals.currentTrack = outgoing;
+				internals.lyricsService = { load: vi.fn(async () => state(incoming)), invalidate: vi.fn() };
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				internals.directionController.enqueue("next");
+
+				await internals.onTrackChanged(trackChangedEvent(incoming));
+
+				expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-scene.loading')).not.toBeNull();
+				expect(root.querySelector(`[data-scene-plane="incoming"] ${selector}`)).toBeNull();
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+				expect(root.querySelector(selector)).not.toBeNull();
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test("lets the latest ready presentation overwrite an earlier pending load snapshot", async () => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:overwrite-outgoing");
+				const incoming = metadataTrack("spotify:track:overwrite-incoming");
+				const initial = readySnapshotWithLyrics(incoming, {
+					type: "static",
+					lines: [{ text: "Initial pending" }],
+				});
+				const latest = readySnapshotWithLyrics(incoming, {
+					type: "static",
+					lines: [{ text: "Latest pending" }],
+				});
+				let current: TrackSessionSnapshot = initial;
+				const internals = app as unknown as {
+					session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					trackSession: { isCurrent: (snapshot: TrackSessionSnapshot) => boolean; invalidate: () => void };
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+					};
+					presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				};
+				internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+				internals.currentTrack = outgoing;
+				internals.lyricsService = { load: vi.fn(async () => initial.loadState), invalidate: vi.fn() };
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				internals.directionController.enqueue("next");
+
+				await internals.onTrackChanged(trackChangedEvent(incoming));
+				expect(root.textContent).not.toContain("Initial pending");
+				current = latest;
+				internals.trackSession = { isCurrent: (snapshot) => snapshot === current, invalidate: vi.fn() };
+				internals.presentReadySnapshot(latest);
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+
+				expect(root.textContent).toContain("Latest pending");
+				expect(root.textContent).not.toContain("Initial pending");
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test("lets structural settings overwrite enrichment as the latest pending ready presentation", async () => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:settings-overwrite-outgoing");
+				const incoming = metadataTrack("spotify:track:settings-overwrite-incoming");
+				const initial = readySnapshotWithLyrics(incoming, { type: "static", lines: [{ text: "Initial" }] });
+				const enriched = readySnapshotWithLyrics(incoming, { type: "static", lines: [{ text: "Enriched pending" }] });
+				const settingsLatest = readySnapshotWithLyrics(incoming, { type: "static", lines: [{ text: "Settings latest" }] });
+				let current: TrackSessionSnapshot = enriched;
+				const session = {
+					root,
+					setCover: vi.fn(),
+					applyTheme: vi.fn(),
+					applySettings: vi.fn(),
+				};
+				const internals = app as unknown as {
+					session: typeof session;
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					settings: { update: (patch: Partial<ExtensionSettings>) => void };
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					trackSession: {
+						getSnapshot: () => TrackSessionSnapshot;
+						updateSettings: () => Promise<TrackSessionSnapshot | undefined>;
+						isCurrent: (snapshot: TrackSessionSnapshot) => boolean;
+						invalidate: () => void;
+					};
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+					};
+					renderEnrichment: (
+						enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
+						initial: ReadyTrackSessionSnapshot,
+						track: TrackIdentity,
+						activeSession: typeof session
+					) => Promise<void>;
+					applySettings: () => Promise<void>;
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				};
+				internals.session = session;
+				internals.currentTrack = outgoing;
+				internals.lyricsService = { load: vi.fn(async () => initial.loadState), invalidate: vi.fn() };
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				internals.directionController.enqueue("next");
+				await internals.onTrackChanged(trackChangedEvent(incoming));
+				internals.trackSession = {
+					getSnapshot: () => current,
+					updateSettings: vi.fn(async () => {
+						current = settingsLatest;
+						return current;
+					}),
+					isCurrent: (snapshot) => snapshot === current,
+					invalidate: vi.fn(),
+				};
+
+				await internals.renderEnrichment(Promise.resolve(enriched), initial, incoming, session);
+				internals.settings.update({ showTranslation: false });
+				await internals.applySettings();
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+
+				expect(root.textContent).toContain("Settings latest");
+				expect(root.textContent).not.toContain("Enriched pending");
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test("keeps the active entrance intact when the same track is manually refreshed", async () => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:refresh-entrance-outgoing");
+				const incoming = metadataTrack("spotify:track:refresh-entrance-incoming");
+				const initial = deferred<LyricsLoadState>();
+				const refreshed = deferred<LyricsLoadState>();
+				const internals = app as unknown as {
+					session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					lyricsService: {
+						load: () => Promise<LyricsLoadState>;
+						refreshCooldowns: () => void;
+						invalidate: () => void;
+					};
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+					};
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+					loadCurrentTrack: (refresh: boolean) => Promise<void>;
+				};
+				internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+				internals.currentTrack = outgoing;
+				internals.lyricsService = {
+					load: vi.fn().mockReturnValueOnce(initial.promise).mockReturnValueOnce(refreshed.promise),
+					refreshCooldowns: vi.fn(),
+					invalidate: vi.fn(),
+				};
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				internals.directionController.enqueue("next");
+				const changing = internals.onTrackChanged(trackChangedEvent(incoming));
+				initial.resolve(readyLoadState(incoming));
+				await changing;
+
+				const refreshing = internals.loadCurrentTrack(true);
+
+				expect(root.classList.contains("scene-transition-next")).toBe(true);
+				expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-scene.loading')).not.toBeNull();
+				refreshed.resolve(readyLoadState(incoming, "cache"));
+				await refreshing;
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+				expect(root.querySelector(".lyrics-track")).not.toBeNull();
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test("does not let an old canceled settlement clear the latest track pending presentation", async () => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:rapid-outgoing");
+				const firstTrack = metadataTrack("spotify:track:rapid-first");
+				const secondTrack = metadataTrack("spotify:track:rapid-second");
+				const first = deferred<LyricsLoadState>();
+				const second = deferred<LyricsLoadState>();
+				const internals = app as unknown as {
+					session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+					};
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				};
+				internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+				internals.currentTrack = outgoing;
+				internals.lyricsService = { load: vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise), invalidate: vi.fn() };
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				internals.directionController.enqueue("next");
+				internals.directionController.enqueue("next");
+
+				const firstChange = internals.onTrackChanged(trackChangedEvent(firstTrack));
+				first.resolve(readyLoadState(firstTrack));
+				await firstChange;
+				const secondChange = internals.onTrackChanged(trackChangedEvent(secondTrack));
+				second.resolve(readyLoadState(secondTrack));
+				await secondChange;
+				await Promise.resolve();
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+
+				expect(root.textContent).toContain("Ready");
+				expect(root.querySelector(".track-metadata-title")?.textContent).not.toBe(firstTrack.title);
+				expect(root.querySelector(".track-metadata-scene.loading")).toBeNull();
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test("uses a fresh epoch and renderer generation for repeated same-URI events with reduced motion", async () => {
+			const { spicetify } = createSpicetify();
+			const app = new ExtensionApp(spicetify);
+			const root = document.createElement("main");
+			const track = metadataTrack("spotify:track:repeat-transition");
+			const first = readySnapshotWithLyrics(track, { type: "static", lines: [{ text: "First epoch" }] }).loadState;
+			const second = readySnapshotWithLyrics(track, { type: "static", lines: [{ text: "Second epoch" }] }).loadState;
+			const internals = app as unknown as {
+				session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+				currentTrack: TrackIdentity;
+				playbackTrackEpoch: number;
+				activeTrackTransition?: unknown;
+				pendingTrackPresentation?: unknown;
+				directionController: TrackTransitionDirectionController;
+				settings: { update: (patch: Partial<ExtensionSettings>) => void };
+				lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+				renderer: {
+					showTrackMetadata: (
+						root: HTMLElement,
+						metadata: { mode: string; track: TrackIdentity },
+						settings: ExtensionSettings,
+						presentation?: { direction?: string; animate?: boolean }
+					) => { generation: number };
+				};
+				onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+			};
+			internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+			internals.currentTrack = track;
+			internals.settings.update({ reduceMotion: true });
+			internals.lyricsService = { load: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second), invalidate: vi.fn() };
+			internals.renderer.showTrackMetadata(root, { mode: "persistent", track }, internalsSettingsOf(app));
+			const showTrackMetadata = vi.spyOn(internals.renderer, "showTrackMetadata");
+			internals.directionController.enqueue("next");
+			internals.directionController.enqueue("previous");
+
+			await internals.onTrackChanged(trackChangedEvent(track));
+			await internals.onTrackChanged(trackChangedEvent(track));
+
+			const loadingCalls = showTrackMetadata.mock.calls
+				.map((call, index) => ({ call, result: showTrackMetadata.mock.results[index]?.value }))
+				.filter(({ call }) => call[1].mode === "loading");
+			expect(loadingCalls.map(({ call }) => call[3]?.direction)).toEqual(["next", "previous"]);
+			expect(loadingCalls[0]?.result.generation).not.toBe(loadingCalls[1]?.result.generation);
+			expect(internals.playbackTrackEpoch).toBe(2);
+			expect(internals.activeTrackTransition).toBeUndefined();
+			expect(internals.pendingTrackPresentation).toBeUndefined();
+			expect(root.children).toHaveLength(1);
+			expect(root.textContent).toContain("Second epoch");
+			app.destroy();
+		});
+
+		test("starts the renderer transition before applying the new cover and theme", async () => {
+			const { spicetify } = createSpicetify();
+			const app = new ExtensionApp(spicetify);
+			const events: string[] = [];
+			const root = document.createElement("main");
+			const outgoing = metadataTrack("spotify:track:order-outgoing");
+			const incoming = metadataTrack("spotify:track:order-incoming");
+			const result = deferred<LyricsLoadState>();
+			const internals = app as unknown as {
+				session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
+				currentTrack: TrackIdentity;
+				directionController: TrackTransitionDirectionController;
+				lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+				trackThemeService: { apply: () => Promise<void> };
+				renderer: {
+					showTrackMetadata: (
+						root: HTMLElement,
+						metadata: { mode: string; track: TrackIdentity },
+						settings: ExtensionSettings,
+						presentation?: { direction?: string; animate?: boolean }
+					) => unknown;
+				};
+				onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+			};
+			root.style.setProperty("--pip-background-color", "rgb(1, 2, 3)");
+			internals.session = { root, setCover: vi.fn(() => events.push("cover")), applyTheme: vi.fn() };
+			internals.currentTrack = outgoing;
+			internals.lyricsService = { load: vi.fn(() => result.promise), invalidate: vi.fn() };
+			internals.trackThemeService = {
+				apply: vi.fn(async () => {
+					events.push("theme");
+				}),
+			};
+			internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+			const originalShowTrackMetadata = internals.renderer.showTrackMetadata.bind(internals.renderer);
+			vi.spyOn(internals.renderer, "showTrackMetadata").mockImplementation((...args) => {
+				events.push("transition");
+				return originalShowTrackMetadata(...args);
+			});
+			internals.directionController.enqueue("next");
+
+			const changing = internals.onTrackChanged(trackChangedEvent(incoming));
+
+			expect(events.slice(0, 3)).toEqual(["transition", "cover", "theme"]);
+			expect(root.querySelector<HTMLElement>('[data-scene-plane="outgoing"]')?.style.getPropertyValue("--pip-background-color")).toBe("rgb(1, 2, 3)");
+			result.resolve({ status: "empty", track: incoming, reason: "no-lyrics" });
+			await changing;
+			app.destroy();
+		});
 	});
 });
