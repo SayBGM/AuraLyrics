@@ -21,6 +21,7 @@ import type { ExtensionSettings } from "../settings/settingsSchema";
 import { pipStyles } from "../styles/pipStyles";
 import { IntroPresentationGate } from "./IntroPresentationGate";
 import { MusicStateMachine } from "./MusicStateMachine";
+import { OutroPresentationController, type OutroPresentationResult } from "./OutroPresentationController";
 import { rendererSettingsChange } from "./SettingsChange";
 import { TopbarController } from "./TopbarController";
 import { presentationStateForSnapshot, type TrackPresentationState } from "./TrackPresentationState";
@@ -43,6 +44,7 @@ export class ExtensionApp {
 	private readonly renderer = new LyricsRenderer();
 	private readonly stateMachine = new MusicStateMachine();
 	private readonly introGate = new IntroPresentationGate();
+	private readonly outroController = new OutroPresentationController();
 	private readonly cache: LyricsCache;
 	private readonly registry = new ProviderRegistry([new SpotifyProvider(), new LrclibProvider(), new MusixmatchProvider()]);
 	private readonly lyricsService: LyricsService;
@@ -63,6 +65,7 @@ export class ExtensionApp {
 	private appliedSettings: ExtensionSettings;
 	private settingsPresentationGeneration = 0;
 	private revealedSnapshot?: ReadyTrackSessionSnapshot;
+	private outroEpochUri?: string;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
@@ -128,6 +131,7 @@ export class ExtensionApp {
 		this.disposers.push(
 			this.player.trackChanged.subscribe((event) => void this.onTrackChanged(event.track)),
 			this.player.playbackChanged.subscribe((isPlaying) => this.onPlaybackChanged(isPlaying)),
+			this.player.progressChanged.subscribe(() => this.onProgressChanged()),
 			this.settings.subscribe(() => void this.applySettings()),
 			this.settings.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
 			this.pip.closed.subscribe(() => this.closePip(false))
@@ -139,6 +143,7 @@ export class ExtensionApp {
 	public destroy(): void {
 		this.trackSession.invalidate();
 		this.introGate.endTrackEpoch();
+		this.endOutroTrackEpoch();
 		this.revealedSnapshot = undefined;
 		this.themeGeneration += 1;
 		this.session = undefined;
@@ -195,8 +200,13 @@ export class ExtensionApp {
 			this.clock.start();
 			this.playbackSynchronizer.resync();
 			this.currentTrack = this.player.getCurrentTrack();
-			if (this.currentTrack && !this.introGate.hasActiveEpoch()) {
-				this.introGate.beginTrackEpoch();
+			if (this.currentTrack) {
+				if (!this.introGate.hasActiveEpoch()) {
+					this.introGate.beginTrackEpoch();
+				}
+				if (this.outroEpochUri !== this.currentTrack.uri) {
+					this.beginOutroTrackEpoch(this.currentTrack.uri);
+				}
 			}
 			const revealedSnapshot = this.revealedSnapshotFor(this.currentTrack);
 			if (revealedSnapshot) {
@@ -213,6 +223,7 @@ export class ExtensionApp {
 	private closePip(closeWindow = true): void {
 		this.trackSession.invalidate();
 		this.introGate.discardPendingSession();
+		this.outroController.discardSession();
 		this.themeGeneration += 1;
 		this.clock?.stop();
 		this.clock = undefined;
@@ -231,8 +242,10 @@ export class ExtensionApp {
 		this.revealedSnapshot = undefined;
 		if (track) {
 			this.introGate.beginTrackEpoch();
+			this.beginOutroTrackEpoch(track.uri);
 		} else {
 			this.introGate.endTrackEpoch();
+			this.endOutroTrackEpoch();
 		}
 		if (!this.session) {
 			return;
@@ -252,6 +265,7 @@ export class ExtensionApp {
 		if (!track) {
 			this.trackSession.invalidate();
 			this.introGate.endTrackEpoch();
+			this.endOutroTrackEpoch();
 			this.revealedSnapshot = undefined;
 			this.session.setCover(undefined);
 			this.session.applyTheme(undefined);
@@ -272,6 +286,7 @@ export class ExtensionApp {
 		if (!isReadyTrackSessionSnapshot(snapshot)) {
 			this.revealedSnapshot = undefined;
 			this.introGate.discardPendingSession();
+			this.outroController.discardSession();
 		}
 		this.renderLoadState(snapshot);
 		const enrichment = this.trackSession.enrichmentFor(snapshot);
@@ -283,13 +298,27 @@ export class ExtensionApp {
 	private onPlaybackChanged(isPlaying: boolean): void {
 		this.isPlaybackActive = isPlaying;
 		this.session?.setPlaying(isPlaying);
-		if (!this.session || !isPlaying) return;
+		if (!this.session) return;
+		this.playbackSynchronizer.resync();
+		const timestampSec = this.playbackSynchronizer.timestampSec;
+		if (isPlaying) {
+			const result = this.introGate.resume(timestampSec);
+			if (result.kind === "reveal") {
+				this.revealReadySnapshot(result.snapshot, timestampSec);
+			}
+		}
+		this.evaluateOutro(timestampSec);
+	}
+
+	private onProgressChanged(): void {
+		if (!this.session || this.isPlaybackActive) return;
 		this.playbackSynchronizer.resync();
 		const timestampSec = this.playbackSynchronizer.timestampSec;
 		const result = this.introGate.resume(timestampSec);
 		if (result.kind === "reveal") {
 			this.revealReadySnapshot(result.snapshot, timestampSec);
 		}
+		this.evaluateOutro(timestampSec);
 	}
 
 	private fetchMusixmatchToken(): Promise<string | undefined> {
@@ -395,12 +424,13 @@ export class ExtensionApp {
 		}
 		this.playbackSynchronizer.update(deltaTime, this.isPlaybackActive);
 		const timestampSec = this.playbackSynchronizer.timestampSec;
+		let updatedPresentation = false;
 		const result = this.introGate.tick(timestampSec);
 		if (result.kind === "reveal") {
-			this.revealReadySnapshot(result.snapshot, timestampSec);
-			return;
+			updatedPresentation = this.revealReadySnapshot(result.snapshot, timestampSec);
 		}
-		if (this.hasMountedLyricsPresentation()) {
+		updatedPresentation = this.evaluateOutro(timestampSec) || updatedPresentation;
+		if (this.hasMountedLyricsPresentation() && !updatedPresentation) {
 			this.renderer.update(timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
 		}
 	}
@@ -453,11 +483,33 @@ export class ExtensionApp {
 		}
 	}
 
-	private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): void {
+	private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): boolean {
+		if (!this.ensureOutroTrackEpoch(snapshot.loadState.track.uri)) {
+			return false;
+		}
 		this.revealedSnapshot = snapshot;
 		this.stateMachine.dispatch({ type: "lyricsReady" });
-		this.mountReadySnapshot(snapshot);
-		this.renderer.update(timestampSec, 0);
+		return this.applyOutroResult(this.outroController.accept(snapshot, this.settings.get(), timestampSec), timestampSec);
+	}
+
+	private evaluateOutro(timestampSec: number): boolean {
+		return this.applyOutroResult(this.outroController.evaluate(timestampSec), timestampSec);
+	}
+
+	private applyOutroResult(result: OutroPresentationResult, timestampSec: number): boolean {
+		if (!this.session) return false;
+		if (result.kind === "show-lyrics") {
+			this.mountReadySnapshot(result.snapshot);
+			this.renderer.update(timestampSec, 0);
+			return true;
+		}
+		if (result.kind === "show-metadata") {
+			this.renderer.showTrackMetadata(this.session.root, { mode: "persistent", track: result.snapshot.loadState.track }, this.settings.get(), {
+				direction: "up",
+				animate: true,
+			});
+		}
+		return false;
 	}
 
 	private mountReadySnapshot(snapshot: ReadyTrackSessionSnapshot): void {
@@ -498,7 +550,29 @@ export class ExtensionApp {
 	}
 
 	private hasMountedLyricsPresentation(): boolean {
-		return this.session !== undefined && this.revealedSnapshot !== undefined && this.revealedSnapshot.loadState.track.uri === this.currentTrack?.uri;
+		return (
+			this.session !== undefined &&
+			this.revealedSnapshot !== undefined &&
+			this.revealedSnapshot.loadState.track.uri === this.currentTrack?.uri &&
+			this.outroController.currentKind() === "lyrics"
+		);
+	}
+
+	private beginOutroTrackEpoch(uri: string): void {
+		this.outroEpochUri = uri;
+		this.outroController.beginTrackEpoch(uri);
+	}
+
+	private endOutroTrackEpoch(): void {
+		this.outroEpochUri = undefined;
+		this.outroController.endTrackEpoch();
+	}
+
+	private ensureOutroTrackEpoch(uri: string): boolean {
+		if (this.outroEpochUri === undefined) {
+			this.beginOutroTrackEpoch(uri);
+		}
+		return this.outroEpochUri === uri;
 	}
 }
 
