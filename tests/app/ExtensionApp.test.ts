@@ -3194,6 +3194,164 @@ describe("ExtensionApp", () => {
 		app.destroy();
 	});
 
+	test("reevaluates a paused lyrics outro immediately when a runtime delay change moves playback past the threshold", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = () => 10_000;
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:runtime-delay-forward", { durationMs: 12_000 });
+		const snapshot = outroSnapshot(track);
+		const showTrackMetadata = vi.fn();
+		const update = vi.fn();
+		const mount = vi.fn();
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: (settings: ExtensionSettings) => void };
+			currentTrack: TrackIdentity;
+			settings: { get: () => ExtensionSettings; update: (patch: Partial<ExtensionSettings>) => void };
+			appliedSettings: ExtensionSettings;
+			playbackSynchronizer: PlaybackSynchronizer;
+			renderer: {
+				destroy: () => void;
+				applySettings: (settings: ExtensionSettings) => void;
+				showTrackMetadata: typeof showTrackMetadata;
+				update: typeof update;
+			};
+			mountReadySnapshot: typeof mount;
+			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			applySettings: () => Promise<void>;
+		};
+		internals.settings.update({ lyricsDelayMs: 1_000 });
+		internals.appliedSettings = internals.settings.get();
+		await internals.onTrackChanged(track);
+		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
+		internals.currentTrack = track;
+		internals.renderer = { destroy: vi.fn(), applySettings: vi.fn(), showTrackMetadata, update };
+		internals.mountReadySnapshot = mount;
+		internals.playbackSynchronizer.resync();
+		internals.presentReadySnapshot(snapshot);
+		expect(outroControllerOf(app).currentKind()).toBe("lyrics");
+		mount.mockClear();
+		update.mockClear();
+
+		internals.settings.update({ lyricsDelayMs: 500 });
+		await internals.applySettings();
+
+		expect(outroControllerOf(app).currentKind()).toBe("lyrics");
+		expect(showTrackMetadata).not.toHaveBeenCalled();
+		expect(mount).not.toHaveBeenCalled();
+		expect(update).toHaveBeenCalledWith(9.5, 0);
+
+		update.mockClear();
+		internals.settings.update({ lyricsDelayMs: 0 });
+		await internals.applySettings();
+
+		expect(outroControllerOf(app).currentKind()).toBe("metadata");
+		expect(showTrackMetadata).toHaveBeenCalledOnce();
+		expect(update).not.toHaveBeenCalled();
+		app.destroy();
+	});
+
+	test("restores the latest lyrics immediately when a paused runtime delay change moves playback before the threshold", async () => {
+		const { spicetify } = createSpicetify();
+		spicetify.Player.getProgress = () => 10_000;
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:runtime-delay-backward", { durationMs: 12_000 });
+		const initial = outroSnapshot(track, 7);
+		const latest = outroSnapshot(track, 8, "cache");
+		const showTrackMetadata = vi.fn();
+		const update = vi.fn();
+		const mount = vi.fn();
+		const internals = app as unknown as {
+			session: { root: HTMLElement; applySettings: (settings: ExtensionSettings) => void };
+			currentTrack: TrackIdentity;
+			settings: { update: (patch: Partial<ExtensionSettings>) => void };
+			playbackSynchronizer: PlaybackSynchronizer;
+			renderer: {
+				destroy: () => void;
+				applySettings: (settings: ExtensionSettings) => void;
+				showTrackMetadata: typeof showTrackMetadata;
+				update: typeof update;
+			};
+			mountReadySnapshot: typeof mount;
+			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			applySettings: () => Promise<void>;
+		};
+		await internals.onTrackChanged(track);
+		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
+		internals.currentTrack = track;
+		internals.renderer = { destroy: vi.fn(), applySettings: vi.fn(), showTrackMetadata, update };
+		internals.mountReadySnapshot = mount;
+		internals.playbackSynchronizer.resync();
+		internals.presentReadySnapshot(initial);
+		internals.presentReadySnapshot(latest);
+		expect(outroControllerOf(app).currentKind()).toBe("metadata");
+		mount.mockClear();
+		update.mockClear();
+
+		internals.settings.update({ lyricsDelayMs: 1_000 });
+		await internals.applySettings();
+
+		expect(outroControllerOf(app).currentKind()).toBe("lyrics");
+		expect(mount).toHaveBeenCalledOnce();
+		expect(mount).toHaveBeenCalledWith(latest);
+		expect(update).toHaveBeenCalledOnce();
+		expect(update).toHaveBeenCalledWith(9, 0);
+		app.destroy();
+	});
+
+	test("restores lyrics once after a playing seek snap below the outro threshold and shows metadata once when playback crosses again", async () => {
+		const { spicetify } = createSpicetify();
+		const getProgress = vi.fn().mockReturnValueOnce(10_000).mockReturnValueOnce(9_000).mockReturnValue(10_000);
+		spicetify.Player.getProgress = getProgress;
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:playing-outro-seek", { durationMs: 12_000 });
+		const snapshot = outroSnapshot(track);
+		const showTrackMetadata = vi.fn();
+		const update = vi.fn();
+		const mount = vi.fn();
+		const internals = app as unknown as {
+			session: { root: HTMLElement };
+			currentTrack: TrackIdentity;
+			playbackSynchronizer: PlaybackSynchronizer;
+			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
+			mountReadySnapshot: typeof mount;
+			isPlaybackActive: boolean;
+			onTrackChanged: (track: TrackIdentity | undefined) => Promise<void>;
+			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			tick: (deltaTimeSec: number) => void;
+		};
+		await internals.onTrackChanged(track);
+		internals.session = { root: document.createElement("main") };
+		internals.currentTrack = track;
+		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
+		internals.mountReadySnapshot = mount;
+		internals.isPlaybackActive = true;
+		internals.playbackSynchronizer.resync();
+		internals.presentReadySnapshot(snapshot);
+		expect(outroControllerOf(app).currentKind()).toBe("metadata");
+		showTrackMetadata.mockClear();
+		mount.mockClear();
+		update.mockClear();
+
+		internals.tick(0.25);
+
+		expect(outroControllerOf(app).currentKind()).toBe("lyrics");
+		expect(mount).toHaveBeenCalledOnce();
+		expect(mount).toHaveBeenCalledWith(snapshot);
+		expect(update).toHaveBeenCalledOnce();
+		expect(update).toHaveBeenCalledWith(9, 0);
+		expect(showTrackMetadata).not.toHaveBeenCalled();
+
+		internals.tick(1);
+
+		expect(outroControllerOf(app).currentKind()).toBe("metadata");
+		expect(showTrackMetadata).toHaveBeenCalledOnce();
+		expect(mount).toHaveBeenCalledOnce();
+		expect(update).toHaveBeenCalledOnce();
+		app.destroy();
+	});
+
 	test("applies reduced motion to a single immediate outro metadata scene", async () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);

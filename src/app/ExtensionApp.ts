@@ -34,6 +34,7 @@ import {
 import { TrackThemeService } from "./TrackThemeService";
 
 const SETTINGS_PERSISTENCE_ERROR = "AuraLyrics settings could not be saved.";
+type OutroRenderOutcome = "none" | "lyrics-rendered";
 
 export class ExtensionApp {
 	private readonly storage: SpicetifyStorageAdapter;
@@ -424,13 +425,13 @@ export class ExtensionApp {
 		}
 		this.playbackSynchronizer.update(deltaTime, this.isPlaybackActive);
 		const timestampSec = this.playbackSynchronizer.timestampSec;
-		let updatedPresentation = false;
+		let didRenderLyrics = false;
 		const result = this.introGate.tick(timestampSec);
 		if (result.kind === "reveal") {
-			updatedPresentation = this.revealReadySnapshot(result.snapshot, timestampSec);
+			didRenderLyrics = this.revealReadySnapshot(result.snapshot, timestampSec) === "lyrics-rendered";
 		}
-		updatedPresentation = this.evaluateOutro(timestampSec) || updatedPresentation;
-		if (this.hasMountedLyricsPresentation() && !updatedPresentation) {
+		didRenderLyrics = this.evaluateOutro(timestampSec) === "lyrics-rendered" || didRenderLyrics;
+		if (this.hasMountedLyricsPresentation() && !didRenderLyrics) {
 			this.renderer.update(timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
 		}
 	}
@@ -444,6 +445,11 @@ export class ExtensionApp {
 		this.renderer.applySettings(settings);
 		if (this.session) {
 			this.playbackSynchronizer.resync();
+			const timestampSec = this.playbackSynchronizer.timestampSec;
+			const outroOutcome = this.evaluateOutro(timestampSec);
+			if (outroOutcome === "none" && this.hasMountedLyricsPresentation()) {
+				this.renderer.update(timestampSec, 0);
+			}
 		}
 		if (!session || change !== "structural") {
 			return;
@@ -483,25 +489,25 @@ export class ExtensionApp {
 		}
 	}
 
-	private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): boolean {
+	private revealReadySnapshot(snapshot: ReadyTrackSessionSnapshot, timestampSec: number): OutroRenderOutcome {
 		if (!this.ensureOutroTrackEpoch(snapshot.loadState.track.uri)) {
-			return false;
+			return "none";
 		}
 		this.revealedSnapshot = snapshot;
 		this.stateMachine.dispatch({ type: "lyricsReady" });
-		return this.applyOutroResult(this.outroController.accept(snapshot, this.settings.get(), timestampSec), timestampSec);
+		return this.renderOutroResult(this.outroController.accept(snapshot, this.settings.get(), timestampSec), timestampSec);
 	}
 
-	private evaluateOutro(timestampSec: number): boolean {
-		return this.applyOutroResult(this.outroController.evaluate(timestampSec), timestampSec);
+	private evaluateOutro(timestampSec: number): OutroRenderOutcome {
+		return this.renderOutroResult(this.outroController.evaluate(timestampSec), timestampSec);
 	}
 
-	private applyOutroResult(result: OutroPresentationResult, timestampSec: number): boolean {
-		if (!this.session) return false;
+	private renderOutroResult(result: OutroPresentationResult, timestampSec: number): OutroRenderOutcome {
+		if (!this.session) return "none";
 		if (result.kind === "show-lyrics") {
 			this.mountReadySnapshot(result.snapshot);
 			this.renderer.update(timestampSec, 0);
-			return true;
+			return "lyrics-rendered";
 		}
 		if (result.kind === "show-metadata") {
 			this.renderer.showTrackMetadata(this.session.root, { mode: "persistent", track: result.snapshot.loadState.track }, this.settings.get(), {
@@ -509,7 +515,7 @@ export class ExtensionApp {
 				animate: true,
 			});
 		}
-		return false;
+		return "none";
 	}
 
 	private mountReadySnapshot(snapshot: ReadyTrackSessionSnapshot): void {
