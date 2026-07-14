@@ -99,6 +99,27 @@ describe("PipCoverTransitionController", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
+	test("keeps the active cover until a pre-load pending cover finishes without animation", () => {
+		vi.useFakeTimers();
+		const { controller, covers } = createHarness();
+		controller.setCover("https://example.com/a.jpg");
+		const a = covers()[0];
+		a.dispatchEvent(new Event("load"));
+		controller.setCover("https://example.com/b.jpg", { animate: true });
+		const b = covers()[1];
+		expect(b.dataset.coverState).toBe("pending");
+
+		controller.finish();
+
+		expect(covers()).toEqual([a, b]);
+		expect(a.dataset.coverState).toBe("active");
+		b.dispatchEvent(new Event("load"));
+		expect(covers()).toEqual([b]);
+		expect(b.dataset.coverState).toBe("active");
+		expect(b.style.transition).toBe("none");
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	test("removes active and pending covers when the next track has no URL", () => {
 		const { availability, controller, covers } = createHarness();
 		controller.setCover("https://example.com/a.jpg");

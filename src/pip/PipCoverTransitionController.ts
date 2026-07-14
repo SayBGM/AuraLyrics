@@ -4,6 +4,7 @@ type CoverPlane = {
 	element: HTMLImageElement;
 	url: string;
 	generation: number;
+	animate: boolean;
 	onLoad: () => void;
 	onError: () => void;
 	listenersAttached: boolean;
@@ -60,7 +61,8 @@ export class PipCoverTransitionController {
 			element,
 			url,
 			generation,
-			onLoad: () => this.handleLoad(plane, options.animate !== false),
+			animate: options.animate !== false,
+			onLoad: () => this.handleLoad(plane),
 			onError: () => this.handleError(plane),
 			listenersAttached: true,
 		};
@@ -73,6 +75,9 @@ export class PipCoverTransitionController {
 
 	public finish(): void {
 		if (this.destroyed) return;
+		if (this.pending?.element.dataset.coverState === "pending") {
+			this.pending.animate = false;
+		}
 		this.promoteLoadedIncoming();
 	}
 
@@ -84,7 +89,7 @@ export class PipCoverTransitionController {
 		this.setAvailability(false);
 	}
 
-	private handleLoad(plane: CoverPlane, animate: boolean): void {
+	private handleLoad(plane: CoverPlane): void {
 		if (!this.isCurrent(plane)) return;
 		this.detachListeners(plane);
 		if (!this.active) {
@@ -97,7 +102,7 @@ export class PipCoverTransitionController {
 		}
 
 		const outgoing = this.active;
-		if (!animate) {
+		if (!plane.animate) {
 			this.removePlane(outgoing);
 			plane.element.dataset.coverState = "active";
 			plane.element.style.transition = "none";
