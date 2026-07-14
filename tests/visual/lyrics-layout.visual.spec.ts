@@ -14,10 +14,25 @@ type ScenarioName =
 	| "multiline-active-row"
 	| "settings-general";
 
+type TransitionScenarioName = "metadata-next" | "metadata-previous" | "outro-up" | "reduced-motion-next" | "short-tail-next";
+type TransitionPhase = "start" | "mid";
+
+type RectSnapshot = {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+};
+
+type ChromeRects = Record<"border" | "close" | "controls", RectSnapshot>;
+
 declare global {
 	interface Window {
 		auraVisualHarness?: {
+			completeTransition(): Promise<void>;
+			getTransitionChromeBaseline(): ChromeRects;
 			renderScenario(name: ScenarioName, timestamp?: number): void;
+			renderTransitionScenario(name: TransitionScenarioName, phase?: TransitionPhase): void;
 		};
 	}
 }
@@ -27,6 +42,10 @@ const centerTolerancePx = 18;
 const syllableCenterTolerancePx = 36;
 const screenshotTolerance = {
 	maxDiffPixelRatio: 0.04,
+};
+const transitionScreenshotOptions = {
+	...screenshotTolerance,
+	animations: "allow" as const,
 };
 
 test.use({
@@ -38,12 +57,142 @@ test.beforeEach(async ({ page }) => {
 	await expect(page.locator("#aura-lyrics-root")).toBeVisible();
 });
 
+test("visual harness uses the production cover layer structure", async ({ page }) => {
+	const cover = page.locator("#aura-lyrics-root > .pip-cover-layer > .pip-cover");
+
+	await expect(cover).toHaveCount(1);
+	await expect(cover).toHaveAttribute("data-cover-state", "active");
+});
+
+test("lyrics outro moves up into persistent metadata at deterministic start, midpoint, and completion", async ({ page }) => {
+	await renderTransitionScenario(page, "outro-up", "start");
+	let metrics = await transitionMetrics(page);
+
+	expect(metrics.transitionClass).toBe("scene-transition-up");
+	expect(metrics.planeCount).toBe(2);
+	expect(metrics.outgoing?.translationY).toBeCloseTo(0, 1);
+	expect(metrics.incoming?.translationY ?? 0).toBeGreaterThan(400);
+	expect(metrics.incoming?.rect.y ?? 0).toBeGreaterThan(metrics.outgoing?.rect.y ?? 0);
+	await expectChromeToStayFixed(page);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("outro-up-start.png", transitionScreenshotOptions);
+
+	await renderTransitionScenario(page, "outro-up", "mid");
+	metrics = await transitionMetrics(page);
+	expect(metrics.outgoing?.translationY ?? 0).toBeLessThan(0);
+	expect(metrics.incoming?.translationY ?? 0).toBeGreaterThan(0);
+	expect(Math.abs(metrics.outgoing?.translationX ?? 0)).toBeLessThan(1);
+	expect(Math.abs(metrics.incoming?.translationX ?? 0)).toBeLessThan(1);
+	await expectChromeToStayFixed(page);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("outro-up-mid.png", transitionScreenshotOptions);
+
+	await completeTransition(page);
+	metrics = await transitionMetrics(page);
+	expect(metrics.planeCount).toBe(0);
+	expect(metrics.rootChildCount).toBe(1);
+	expect(metrics.transitionClass).toBeNull();
+	expect(metrics.visibleTitle).toBe("Current Horizon");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("outro-up-complete.png", transitionScreenshotOptions);
+});
+
+test("next metadata moves left and completes with only the next scene", async ({ page }) => {
+	await renderTransitionScenario(page, "metadata-next", "start");
+	let metrics = await transitionMetrics(page);
+	expect(metrics.outgoing?.translationX).toBeCloseTo(0, 1);
+	expect(metrics.incoming?.translationX ?? 0).toBeGreaterThan(800);
+	expect(metrics.incoming?.rect.x ?? 0).toBeGreaterThan(metrics.outgoing?.rect.x ?? 0);
+	await expectChromeToStayFixed(page);
+
+	await renderTransitionScenario(page, "metadata-next", "mid");
+	metrics = await transitionMetrics(page);
+
+	expect(metrics.transitionClass).toBe("scene-transition-next");
+	expect(metrics.outgoing?.translationX ?? 0).toBeLessThan(0);
+	expect(metrics.incoming?.translationX ?? 0).toBeGreaterThan(0);
+	expect(Math.abs(metrics.outgoing?.translationY ?? 0)).toBeLessThan(1);
+	expect(Math.abs(metrics.incoming?.translationY ?? 0)).toBeLessThan(1);
+	expect(metrics.outgoingTitle).toBe("Current Horizon");
+	expect(metrics.incomingTitle).toBe("Next Light");
+	await expectChromeToStayFixed(page);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-next-mid.png", transitionScreenshotOptions);
+
+	await completeTransition(page);
+	metrics = await transitionMetrics(page);
+	expect(metrics.planeCount).toBe(0);
+	expect(metrics.rootChildCount).toBe(1);
+	expect(metrics.visibleTitle).toBe("Next Light");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-next-complete.png", transitionScreenshotOptions);
+});
+
+test("previous metadata moves right and completes with only the previous scene", async ({ page }) => {
+	await renderTransitionScenario(page, "metadata-previous", "start");
+	let metrics = await transitionMetrics(page);
+	expect(metrics.outgoing?.translationX).toBeCloseTo(0, 1);
+	expect(metrics.incoming?.translationX ?? 0).toBeLessThan(-800);
+	expect(metrics.incoming?.rect.x ?? 0).toBeLessThan(metrics.outgoing?.rect.x ?? 0);
+	await expectChromeToStayFixed(page);
+
+	await renderTransitionScenario(page, "metadata-previous", "mid");
+	metrics = await transitionMetrics(page);
+
+	expect(metrics.transitionClass).toBe("scene-transition-previous");
+	expect(metrics.outgoing?.translationX ?? 0).toBeGreaterThan(0);
+	expect(metrics.incoming?.translationX ?? 0).toBeLessThan(0);
+	expect(Math.abs(metrics.outgoing?.translationY ?? 0)).toBeLessThan(1);
+	expect(Math.abs(metrics.incoming?.translationY ?? 0)).toBeLessThan(1);
+	expect(metrics.outgoingTitle).toBe("Current Horizon");
+	expect(metrics.incomingTitle).toBe("Before Dawn");
+	await expectChromeToStayFixed(page);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-previous-mid.png", transitionScreenshotOptions);
+
+	await completeTransition(page);
+	metrics = await transitionMetrics(page);
+	expect(metrics.planeCount).toBe(0);
+	expect(metrics.rootChildCount).toBe(1);
+	expect(metrics.visibleTitle).toBe("Before Dawn");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-previous-complete.png", transitionScreenshotOptions);
+});
+
+test("short-tail sequence skips current metadata but keeps the leftward next transition", async ({ page }) => {
+	await renderTransitionScenario(page, "short-tail-next", "mid");
+	let metrics = await transitionMetrics(page);
+
+	expect(metrics.transitionClass).toBe("scene-transition-next");
+	expect(metrics.outgoing?.translationX ?? 0).toBeLessThan(0);
+	expect(metrics.incoming?.translationX ?? 0).toBeGreaterThan(0);
+	expect(metrics.outgoingTitle).toBeNull();
+	expect(metrics.incomingTitle).toBe("Next Light");
+	expect(metrics.allTitles).not.toContain("Current Horizon");
+	await expectChromeToStayFixed(page);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("short-tail-next-mid.png", transitionScreenshotOptions);
+
+	await completeTransition(page);
+	metrics = await transitionMetrics(page);
+	expect(metrics.planeCount).toBe(0);
+	expect(metrics.rootChildCount).toBe(1);
+	expect(metrics.visibleTitle).toBe("Next Light");
+});
+
+test("reduced motion presents the final next scene immediately without duplicate planes", async ({ page }) => {
+	await renderTransitionScenario(page, "reduced-motion-next", "mid");
+	const metrics = await transitionMetrics(page);
+	const coverTransitionDuration = await page.locator(".pip-cover").evaluate((cover) => getComputedStyle(cover).transitionDuration);
+
+	expect(metrics.planeCount).toBe(0);
+	expect(metrics.rootChildCount).toBe(1);
+	expect(metrics.transitionClass).toBeNull();
+	expect(metrics.visibleTitle).toBe("Next Light");
+	expect(coverTransitionDuration).toBe("0s");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("metadata-next-reduced-motion.png", transitionScreenshotOptions);
+});
+
 test("Aurora intro-ready metadata shows only the track identity on the adaptive dark surface", async ({ page }) => {
 	await renderScenario(page, "aurora-intro-ready");
 
 	const metrics = await metadataMetrics(page);
 
 	expect(metrics).toMatchObject({
+		backgroundCoverOpacity: "0.95",
+		backgroundCoverTransitionDuration: "0.36s",
 		eyebrow: null,
 		title: "Midnight Bloom",
 		byline: "Haneul Park · Afterglow",
@@ -283,6 +432,7 @@ test("word and syllable sync keeps readable tracking and visible glow", async ({
 		wakeSyllableSelectorMatches: false,
 		wakeHaloSelectorMatches: false,
 	});
+	await expect(page.locator(".pip-cover")).toHaveCSS("opacity", "0.95");
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("word-sync-active.png", screenshotTolerance);
 });
 
@@ -412,16 +562,20 @@ test("instrumental album art mode hides lyrics and shows the cover cleanly", asy
 		return {
 			albumArtMode: pipRoot.classList.contains("album-art-mode"),
 			contentChildren: content.children.length,
+			albumArtSentinelCount: content.querySelectorAll(":scope > .album-art-scene[aria-hidden='true']").length,
 			coverWidth: Math.round(coverRect.width),
 			coverHeight: Math.round(coverRect.height),
+			coverOpacity: getComputedStyle(cover).opacity,
 			objectFit: getComputedStyle(cover).objectFit,
 		};
 	});
 
 	expect(metrics.albumArtMode).toBe(true);
-	expect(metrics.contentChildren).toBe(0);
+	expect(metrics.contentChildren).toBe(1);
+	expect(metrics.albumArtSentinelCount).toBe(1);
 	expect(metrics.coverWidth).toBe(600);
 	expect(metrics.coverHeight).toBe(600);
+	expect(metrics.coverOpacity).toBe("1");
 	expect(metrics.objectFit).toBe("contain");
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("album-art-instrumental.png", screenshotTolerance);
 });
@@ -456,6 +610,111 @@ test("background opposite vocals stay secondary and opposite aligned", async ({ 
 	expect(metrics.backgroundLeft).toBeGreaterThanOrEqual(metrics.leadLeft - 1);
 });
 
+const renderTransitionScenario = async (page: Page, name: TransitionScenarioName, phase: TransitionPhase): Promise<void> => {
+	await page.evaluate(
+		({ scenarioName, transitionPhase }) => {
+			if (!window.auraVisualHarness) {
+				throw new Error("AuraLyrics visual harness API was not installed.");
+			}
+			window.auraVisualHarness.renderTransitionScenario(scenarioName, transitionPhase);
+		},
+		{ scenarioName: name, transitionPhase: phase }
+	);
+	if (name === "reduced-motion-next") {
+		await expect(page.locator("#aura-visual-root > .track-metadata-scene")).toHaveCount(1);
+		return;
+	}
+	await expect(page.locator('#aura-visual-root > [data-scene-plane="incoming"]')).toHaveCount(1);
+	await expect(page.locator('#aura-visual-root > [data-scene-plane="outgoing"]')).toHaveCount(1);
+};
+
+const completeTransition = async (page: Page): Promise<void> => {
+	await page.evaluate(async () => {
+		if (!window.auraVisualHarness) {
+			throw new Error("AuraLyrics visual harness API was not installed.");
+		}
+		await window.auraVisualHarness.completeTransition();
+	});
+	await expect(page.locator("#aura-visual-root > [data-scene-plane]")).toHaveCount(0);
+};
+
+const expectChromeToStayFixed = async (page: Page): Promise<void> => {
+	const result = await page.evaluate(() => {
+		if (!window.auraVisualHarness) {
+			throw new Error("AuraLyrics visual harness API was not installed.");
+		}
+		const rect = (selector: string): RectSnapshot => {
+			const element = document.querySelector<HTMLElement>(selector);
+			if (!element) {
+				throw new Error(`Missing fixed chrome element: ${selector}`);
+			}
+			const bounds = element.getBoundingClientRect();
+			return {
+				x: Number(bounds.x.toFixed(3)),
+				y: Number(bounds.y.toFixed(3)),
+				width: Number(bounds.width.toFixed(3)),
+				height: Number(bounds.height.toFixed(3)),
+			};
+		};
+		const selectors = {
+			border: ".pip-border-frame",
+			close: ".pip-close",
+			controls: ".pip-controls",
+		} as const;
+		const current = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, rect(selector)])) as ChromeRects;
+		const nestedInScenePlane = Object.values(selectors).some((selector) =>
+			document.querySelector<HTMLElement>(selector)?.closest("[data-scene-plane]")
+		);
+		return {
+			baseline: window.auraVisualHarness.getTransitionChromeBaseline(),
+			current,
+			nestedInScenePlane,
+		};
+	});
+
+	expect(result.current).toEqual(result.baseline);
+	expect(result.nestedInScenePlane).toBe(false);
+};
+
+const transitionMetrics = async (page: Page) =>
+	page.evaluate(() => {
+		const planeMetrics = (kind: "incoming" | "outgoing") => {
+			const plane = document.querySelector<HTMLElement>(`#aura-visual-root > [data-scene-plane="${kind}"]`);
+			if (!plane) {
+				return null;
+			}
+			const transform = new DOMMatrixReadOnly(getComputedStyle(plane).transform);
+			const rect = plane.getBoundingClientRect();
+			return {
+				rect: {
+					x: rect.x,
+					y: rect.y,
+					width: rect.width,
+					height: rect.height,
+				},
+				translationX: transform.m41,
+				translationY: transform.m42,
+			};
+		};
+		const content = document.querySelector<HTMLElement>("#aura-visual-root");
+		if (!content) {
+			throw new Error("Missing visual content root.");
+		}
+		return {
+			allTitles: Array.from(content.querySelectorAll<HTMLElement>(".track-metadata-title"), (title) => title.textContent ?? ""),
+			incoming: planeMetrics("incoming"),
+			incomingTitle: content.querySelector<HTMLElement>('[data-scene-plane="incoming"] .track-metadata-title')?.textContent ?? null,
+			outgoing: planeMetrics("outgoing"),
+			outgoingTitle: content.querySelector<HTMLElement>('[data-scene-plane="outgoing"] .track-metadata-title')?.textContent ?? null,
+			planeCount: content.querySelectorAll(":scope > [data-scene-plane]").length,
+			rootChildCount: content.children.length,
+			transitionClass:
+				["scene-transition-next", "scene-transition-previous", "scene-transition-up"].find((className) => content.classList.contains(className)) ??
+				null,
+			visibleTitle: content.querySelector<HTMLElement>(":scope > .track-metadata-scene .track-metadata-title")?.textContent ?? null,
+		};
+	});
+
 const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => {
 	await page.evaluate((scenarioName) => {
 		if (!window.auraVisualHarness) {
@@ -485,7 +744,10 @@ const metadataMetrics = async (page: Page) =>
 		}
 		const progress = document.querySelector<HTMLElement>(".track-metadata-progress");
 		const cover = document.querySelector<HTMLImageElement>(".track-metadata-cover");
+		const backgroundCover = document.querySelector<HTMLImageElement>("#aura-lyrics-root > .pip-cover-layer > .pip-cover");
 		return {
+			backgroundCoverOpacity: backgroundCover ? getComputedStyle(backgroundCover).opacity : null,
+			backgroundCoverTransitionDuration: backgroundCover ? getComputedStyle(backgroundCover).transitionDuration : null,
 			eyebrow: document.querySelector(".track-metadata-eyebrow")?.textContent ?? null,
 			title: title.textContent,
 			byline: document.querySelector(".track-metadata-byline")?.textContent ?? null,

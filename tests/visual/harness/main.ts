@@ -2,6 +2,11 @@ import { buildTrackTheme, type TrackTheme } from "../../../src/app/TrackThemeSer
 import type { TrackIdentity } from "../../../src/domain/types";
 import type { LineLyrics, LyricsDocument, SyllableLyrics } from "../../../src/lyrics/types";
 import { LyricsRenderer } from "../../../src/renderer/LyricsRenderer";
+import {
+	SCENE_TRANSITION_DURATION_MS,
+	type SceneTransitionDirection,
+	type SceneTransitionHandle,
+} from "../../../src/renderer/SceneTransitionController";
 import { DEFAULT_SETTINGS, type ExtensionSettings, SettingsStore } from "../../../src/settings/SettingsStore";
 import { SettingsView } from "../../../src/settings/SettingsView";
 import { pipStyles } from "../../../src/styles/pipStyles";
@@ -33,10 +38,25 @@ type Scenario = {
 	theme?: TrackTheme;
 };
 
+type TransitionScenarioName = "metadata-next" | "metadata-previous" | "outro-up" | "reduced-motion-next" | "short-tail-next";
+type TransitionPhase = "start" | "mid";
+
+type RectSnapshot = {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+};
+
+type ChromeRects = Record<"border" | "close" | "controls", RectSnapshot>;
+
 declare global {
 	interface Window {
 		auraVisualHarness?: {
+			completeTransition(): Promise<void>;
+			getTransitionChromeBaseline(): ChromeRects;
 			renderScenario(name: ScenarioName, timestamp?: number): void;
+			renderTransitionScenario(name: TransitionScenarioName, phase?: TransitionPhase): void;
 		};
 	}
 }
@@ -48,6 +68,9 @@ const pipRoot = document.querySelector<HTMLElement>("#aura-lyrics-root");
 if (!mountRoot || !pipRoot) {
 	throw new Error("AuraLyrics visual harness root was not found.");
 }
+
+const visualMountRoot = mountRoot;
+const visualPipRoot = pipRoot;
 
 const style = document.createElement("style");
 style.textContent = `${pipStyles}
@@ -84,8 +107,28 @@ body {
 	transition-duration: 0s !important;
 	transition-delay: 0s !important;
 }
+
+.aura-visual-cover-motion .pip-cover-layer > .pip-cover {
+	transition-duration: 360ms !important;
+}
+
+#aura-lyrics-root.reduce-motion .pip-cover-layer > .pip-cover {
+	transition-duration: 0s !important;
+}
+
+.pip-content > [data-scene-plane] {
+	animation-duration: ${SCENE_TRANSITION_DURATION_MS}ms !important;
+	animation-delay: var(--aura-visual-transition-delay, 0ms) !important;
+	animation-play-state: paused !important;
+}
 `;
 document.head.append(style);
+const initialCover = pipRoot.querySelector<HTMLElement>(":scope > .pip-cover-layer > .pip-cover");
+if (!initialCover) {
+	throw new Error("AuraLyrics visual harness initial cover was not found.");
+}
+getComputedStyle(initialCover).opacity;
+document.documentElement.classList.add("aura-visual-cover-motion");
 
 const settingsForVisuals: Partial<ExtensionSettings> = {
 	fontFamily: "Arial",
@@ -108,6 +151,20 @@ const lightAuroraCover = svgCover({
 	secondary: "#f8ecd8",
 	flare: "#e7a86f",
 });
+
+const transitionTracks = {
+	current: visualTrack("visual-current", "Current Horizon", "Haneul Park", "Afterglow", darkAuroraCover),
+	next: visualTrack("visual-next", "Next Light", "Mira Lee", "Paper Skies", lightAuroraCover),
+	previous: visualTrack("visual-previous", "Before Dawn", "Haneul Park", "Night Letters", darkAuroraCover),
+};
+
+let transitionChromeBaseline: ChromeRects | undefined;
+let controlledTransition:
+	| {
+			complete: () => void;
+			handle: SceneTransitionHandle;
+	  }
+	| undefined;
 
 const scenarios: Record<ScenarioName, Scenario> = {
 	"album-art-instrumental": {
@@ -339,6 +396,21 @@ const scenarios: Record<ScenarioName, Scenario> = {
 };
 
 window.auraVisualHarness = {
+	async completeTransition() {
+		const transition = controlledTransition;
+		if (!transition) {
+			throw new Error("No controlled visual transition is pending.");
+		}
+		controlledTransition = undefined;
+		transition.complete();
+		await transition.handle.settled;
+	},
+	getTransitionChromeBaseline() {
+		if (!transitionChromeBaseline) {
+			throw new Error("No visual transition chrome baseline was captured.");
+		}
+		return structuredClone(transitionChromeBaseline);
+	},
 	renderScenario(name, timestamp) {
 		const scenario = scenarios[name];
 		if (!scenario) {
@@ -353,7 +425,7 @@ window.auraVisualHarness = {
 			if (!scenario.metadata || !scenario.theme) {
 				throw new Error(`Metadata scenario is incomplete: ${name}`);
 			}
-			const cover = pipRoot.querySelector<HTMLImageElement>(":scope > .pip-cover");
+			const cover = pipRoot.querySelector<HTMLImageElement>(":scope > .pip-cover-layer > .pip-cover[data-cover-state='active']");
 			if (!cover) {
 				throw new Error("Visual harness background cover was not found.");
 			}
@@ -367,6 +439,7 @@ window.auraVisualHarness = {
 		}
 		if (scenario.mode === "album-art") {
 			renderer.showAlbumArt(mountRoot);
+			finishCoverTransition();
 			return;
 		}
 		if (!scenario.lyrics) {
@@ -388,7 +461,139 @@ window.auraVisualHarness = {
 			renderer.update(timestamp ?? scenario.timestamp, 1 / 60);
 		}
 	},
+	renderTransitionScenario(name, phase = "start") {
+		renderControlledTransition(name, phase);
+	},
 };
+
+function renderControlledTransition(name: TransitionScenarioName, phase: TransitionPhase): void {
+	controlledTransition = undefined;
+	renderer.destroy();
+	visualPipRoot.className = `is-playing controls-visible${name === "reduced-motion-next" ? " reduce-motion" : ""}`;
+	visualMountRoot.style.setProperty("--aura-visual-transition-delay", phase === "mid" ? `-${SCENE_TRANSITION_DURATION_MS / 2}ms` : "0ms");
+	applyTheme(
+		visualPipRoot,
+		buildTrackTheme({
+			DARK_VIBRANT: "#102d3a",
+			DESATURATED: "#3c6870",
+			LIGHT_VIBRANT: "#8ce6e3",
+			PROMINENT: "#102d3a",
+			VIBRANT: "#63d2d5",
+			VIBRANT_NON_ALARMING: "#63d2d5",
+		})
+	);
+	const backgroundCover = visualPipRoot.querySelector<HTMLImageElement>(":scope > .pip-cover-layer > .pip-cover[data-cover-state='active']");
+	if (!backgroundCover) {
+		throw new Error("Visual harness active background cover was not found.");
+	}
+	backgroundCover.src = transitionTracks.current.coverUrl ?? "";
+
+	const settings = transitionSettings(false);
+	if (name === "outro-up" || name === "short-tail-next") {
+		renderer.mount(visualMountRoot, {
+			lyrics: lineLyrics(
+				name === "short-tail-next"
+					? [
+							["The final lyric ends near the track boundary", 0, 4.6],
+							["No room for current metadata", 4.6, 5],
+						]
+					: [
+							["Hold on through the final line", 0, 4],
+							["Let the last word settle", 4, 8],
+						]
+			),
+			settings,
+			provider: "visual",
+		});
+		renderer.update(name === "short-tail-next" ? 4.9 : 6, 1 / 60);
+	} else {
+		renderer.showTrackMetadata(visualMountRoot, { mode: "persistent", track: transitionTracks.current }, settings);
+	}
+
+	transitionChromeBaseline = measureChromeRects();
+	const targetTrack =
+		name === "metadata-previous" ? transitionTracks.previous : name === "outro-up" ? transitionTracks.current : transitionTracks.next;
+	const direction: SceneTransitionDirection = name === "metadata-previous" ? "previous" : name === "outro-up" ? "up" : "next";
+	const targetSettings = transitionSettings(name === "reduced-motion-next");
+	const presentTarget = () =>
+		renderer.showTrackMetadata(visualMountRoot, { mode: "persistent", track: targetTrack }, targetSettings, {
+			animate: true,
+			direction,
+		});
+
+	if (name === "reduced-motion-next") {
+		presentTarget();
+		return;
+	}
+	captureTransitionCompletion(presentTarget);
+}
+
+function captureTransitionCompletion(present: () => SceneTransitionHandle): void {
+	let complete: (() => void) | undefined;
+	const originalSetTimeout = window.setTimeout;
+	window.setTimeout = ((handler: TimerHandler, timeout?: number) => {
+		if (timeout === SCENE_TRANSITION_DURATION_MS && typeof handler === "function") {
+			complete = () => handler();
+			return 2_147_483_647;
+		}
+		return originalSetTimeout(handler, timeout);
+	}) as typeof window.setTimeout;
+	let handle: SceneTransitionHandle;
+	try {
+		handle = present();
+	} finally {
+		window.setTimeout = originalSetTimeout;
+	}
+	if (!complete) {
+		throw new Error("Scene transition completion timer was not captured.");
+	}
+	controlledTransition = { complete, handle };
+}
+
+function transitionSettings(reduceMotion: boolean): ExtensionSettings {
+	return {
+		...structuredClone(DEFAULT_SETTINGS),
+		fontFamily: "Arial",
+		fontScale: 1,
+		inactiveBlurPx: 0,
+		motionEnabled: true,
+		motionIntensity: 1,
+		reduceMotion,
+		visibleContextLines: 2,
+	};
+}
+
+function measureChromeRects(): ChromeRects {
+	const measure = (selector: string): RectSnapshot => {
+		const element = document.querySelector<HTMLElement>(selector);
+		if (!element) {
+			throw new Error(`Missing visual harness chrome element: ${selector}`);
+		}
+		const rect = element.getBoundingClientRect();
+		return {
+			x: Number(rect.x.toFixed(3)),
+			y: Number(rect.y.toFixed(3)),
+			width: Number(rect.width.toFixed(3)),
+			height: Number(rect.height.toFixed(3)),
+		};
+	};
+	return {
+		border: measure(".pip-border-frame"),
+		close: measure(".pip-close"),
+		controls: measure(".pip-controls"),
+	};
+}
+
+function finishCoverTransition(): void {
+	const cover = visualPipRoot.querySelector<HTMLElement>(":scope > .pip-cover-layer > .pip-cover");
+	if (!cover) {
+		throw new Error("Visual harness cover was not found.");
+	}
+	getComputedStyle(cover).opacity;
+	for (const animation of cover.getAnimations()) {
+		animation.finish();
+	}
+}
 
 function renderSettingsScenario(): void {
 	const values = new Map<string, string>();
@@ -484,6 +689,18 @@ function applyTheme(root: HTMLElement, theme: TrackTheme): void {
 		root.style.setProperty(property, value);
 	}
 	root.dataset.surfaceTone = theme.surfaceTone;
+}
+
+function visualTrack(uriSuffix: string, title: string, artist: string, album: string, coverUrl: string): TrackIdentity {
+	return {
+		uri: `spotify:track:${uriSuffix}`,
+		title,
+		artist,
+		album,
+		durationMs: 210_000,
+		coverUrl,
+		isLocal: false,
+	};
 }
 
 function svgCover(colors: { background: string; accent: string; secondary: string; flare: string }): string {
