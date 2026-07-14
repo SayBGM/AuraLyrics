@@ -107,6 +107,9 @@ export class DocumentPipController {
 		let currentSettings = settings;
 		const applySettings = (nextSettings: ExtensionSettings) => {
 			currentSettings = nextSettings;
+			if (nextSettings.reduceMotion || !nextSettings.motionEnabled) {
+				coverController.finish();
+			}
 			this.applyRootSettings(root, nextSettings);
 			root.classList.toggle("background-disabled", !nextSettings.backgroundEnabled);
 		};

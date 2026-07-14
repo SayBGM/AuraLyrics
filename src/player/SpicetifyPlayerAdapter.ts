@@ -53,8 +53,8 @@ export class SpicetifyPlayerAdapter {
 		});
 	};
 	private readonly onPlayPause = () => this.playbackChanged.emit(this.isPlaying());
-	private readonly onProgress = (event: { data: number }) => {
-		const progressSec = event.data / 1000;
+	private readonly onProgress = (event?: { data?: unknown }) => {
+		const progressSec = typeof event?.data === "number" ? event.data / 1000 : Number.NaN;
 		if (!Number.isFinite(progressSec) || progressSec < 0) {
 			return;
 		}

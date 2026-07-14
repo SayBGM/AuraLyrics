@@ -233,6 +233,26 @@ describe("SceneTransitionController", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
+	test("finish settles the pending transition true and promotes its incoming scene immediately", async () => {
+		const root = document.createElement("main");
+		const controller = new SceneTransitionController(root);
+		const first = scene("first");
+		const second = scene("second");
+		controller.present(first, { animate: false });
+		const handle = controller.present(second, { animate: true, direction: "next" });
+
+		controller.finish();
+
+		expect(await handle.settled).toEqual({ generation: 2, completed: true });
+		expect(Array.from(root.children)).toEqual([second]);
+		expect(root.querySelector("[data-scene-plane]")).toBeNull();
+		expect(root.className).toBe("");
+		expect(vi.getTimerCount()).toBe(0);
+
+		controller.finish();
+		expect(Array.from(root.children)).toEqual([second]);
+	});
+
 	test("destroy settles the pending transition false, clears timers, and removes all scene DOM", async () => {
 		const root = document.createElement("main");
 		const controller = new SceneTransitionController(root);

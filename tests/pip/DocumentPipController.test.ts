@@ -306,6 +306,33 @@ describe("DocumentPipController", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
+	test.each([
+		["reduced motion", { reduceMotion: true }],
+		["disabled motion", { motionEnabled: false }],
+	])("finishes an active cover crossfade immediately when applying %s", async (_label, setting) => {
+		vi.useFakeTimers();
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+
+		const session = await new DocumentPipController().open(DEFAULT_SETTINGS, "");
+		session.setCover("https://example.com/a.jpg");
+		const a = pipWindow.document.querySelector<HTMLImageElement>(".pip-cover") as HTMLImageElement;
+		a.dispatchEvent(new Event("load"));
+		session.setCover("https://example.com/b.jpg");
+		const b = pipWindow.document.querySelectorAll<HTMLImageElement>(".pip-cover")[1];
+		b.dispatchEvent(new Event("load"));
+		expect(Array.from(pipWindow.document.querySelectorAll(".pip-cover"))).toEqual([a, b]);
+
+		session.applySettings({ ...DEFAULT_SETTINGS, ...setting });
+
+		expect(Array.from(pipWindow.document.querySelectorAll(".pip-cover"))).toEqual([b]);
+		expect(b.dataset.coverState).toBe("active");
+		expect(b.style.transition).toBe("none");
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	test("uses newly applied settings for subsequent cover requests", async () => {
 		vi.useFakeTimers();
 		const pipWindow = createPipWindow();

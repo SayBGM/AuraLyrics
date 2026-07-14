@@ -171,6 +171,9 @@ export class LyricsRenderer {
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
+		if (settings.reduceMotion || !settings.motionEnabled) {
+			this.sceneTransitionController?.finish();
+		}
 		const scene = this.currentScene;
 		if (!scene || scene.cleaned) {
 			return;

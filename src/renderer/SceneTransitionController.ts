@@ -66,6 +66,10 @@ export class SceneTransitionController {
 		this.clearTransitionClasses();
 	}
 
+	public finish(): void {
+		this.finishPending(true, true);
+	}
+
 	public destroy(): void {
 		this.finishPending(false, false);
 		this.clearTransitionClasses();

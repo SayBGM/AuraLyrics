@@ -324,6 +324,29 @@ describe("LyricsRenderer", () => {
 		});
 
 		test.each([
+			["reduced motion", { reduceMotion: true }],
+			["disabled motion", { motionEnabled: false }],
+		] as const)("finishes an active transition and cleans retired resources when applying %s", async (_label, setting) => {
+			const root = document.createElement("main");
+			document.body.append(root);
+			const renderer = new LyricsRenderer();
+			renderer.mount(root, { lyrics: transitionLyrics("Outgoing"), settings: DEFAULT_SETTINGS });
+			const retired = root.querySelector<HTMLElement>(".aura-lyrics");
+			const handle = renderer.mount(root, { lyrics: transitionLyrics("Incoming"), settings: DEFAULT_SETTINGS }, { direction: "next", animate: true });
+			const incoming = root.querySelector<HTMLElement>('[data-scene-plane="incoming"] .aura-lyrics');
+
+			renderer.applySettings({ ...DEFAULT_SETTINGS, ...setting });
+
+			expect(await handle.settled).toEqual({ generation: 2, completed: true });
+			expect(Array.from(root.children)).toEqual([incoming]);
+			expect(root.querySelector("[data-scene-plane]")).toBeNull();
+			expect(root.className).not.toContain("scene-transition-");
+			expect(retired?.isConnected).toBe(false);
+			expect(incoming?.isConnected).toBe(true);
+			expect(vi.getTimerCount()).toBe(0);
+		});
+
+		test.each([
 			"metadata",
 			"status",
 		] as const)("clears outgoing frame side effects immediately when starting an animated %s transition", (sceneKind) => {

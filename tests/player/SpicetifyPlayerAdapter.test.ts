@@ -2,12 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 import { SpicetifyPlayerAdapter } from "../../src/player/SpicetifyPlayerAdapter";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 
-type ProgressEvent = { data: number };
+type ProgressEvent = { data?: number };
 
 type PlayerEventListeners = {
 	songchange?: () => void;
 	onplaypause?: () => void;
-	onprogress?: (event: ProgressEvent) => void;
+	onprogress?: (event?: ProgressEvent) => void;
 };
 
 const createSpicetify = (overrides: Partial<SpicetifyGlobal["Player"]>): SpicetifyGlobal =>
@@ -35,7 +35,7 @@ const capturePlayerListeners = () => {
 	const addEventListener = vi.fn((event: string, listener: unknown) => {
 		if (event === "songchange") listeners.songchange = listener as () => void;
 		if (event === "onplaypause") listeners.onplaypause = listener as () => void;
-		if (event === "onprogress") listeners.onprogress = listener as (event: ProgressEvent) => void;
+		if (event === "onprogress") listeners.onprogress = listener as (event?: ProgressEvent) => void;
 	});
 	return { addEventListener, listeners };
 };
@@ -102,6 +102,35 @@ describe("SpicetifyPlayerAdapter", () => {
 		listeners.onprogress?.({ data: Number.NaN });
 		listeners.onprogress?.({ data: Number.POSITIVE_INFINITY });
 		listeners.onprogress?.({ data: -1 });
+		spicetify.Player.data = { item: playerItem(nextUri, 240_000) };
+		listeners.songchange?.();
+
+		expect(progressListener).not.toHaveBeenCalled();
+		expect(trackListener).toHaveBeenCalledWith({
+			track: expect.objectContaining({ uri: nextUri }),
+			previousTrackUri: previousUri,
+			previousProgressSec: undefined,
+			previousDurationSec: undefined,
+		});
+	});
+
+	test("ignores missing progress events and payload data without changing emitted or remembered progress", () => {
+		const previousUri = "spotify:track:missing-progress";
+		const nextUri = "spotify:track:missing-progress-next";
+		const { addEventListener, listeners } = capturePlayerListeners();
+		const spicetify = createSpicetify({
+			addEventListener,
+			data: { item: playerItem(previousUri, 180_000) },
+		});
+		const player = new SpicetifyPlayerAdapter(spicetify);
+		const progressListener = vi.fn();
+		const trackListener = vi.fn();
+		player.progressChanged.subscribe(progressListener);
+		player.trackChanged.subscribe(trackListener);
+		player.attach();
+
+		expect(() => listeners.onprogress?.()).not.toThrow();
+		expect(() => listeners.onprogress?.({})).not.toThrow();
 		spicetify.Player.data = { item: playerItem(nextUri, 240_000) };
 		listeners.songchange?.();
 

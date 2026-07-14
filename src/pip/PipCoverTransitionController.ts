@@ -71,6 +71,11 @@ export class PipCoverTransitionController {
 		element.src = url;
 	}
 
+	public finish(): void {
+		if (this.destroyed) return;
+		this.promoteLoadedIncoming();
+	}
+
 	public destroy(): void {
 		if (this.destroyed) return;
 		this.destroyed = true;

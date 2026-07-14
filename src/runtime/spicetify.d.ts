@@ -33,9 +33,9 @@ export type SpicetifyGlobal = {
 		togglePlay?(): void;
 		next?(): void;
 		addEventListener(event: "songchange" | "onplaypause", listener: () => void): void;
-		addEventListener(event: "onprogress", listener: (event: { data: number }) => void): void;
+		addEventListener(event: "onprogress", listener: (event?: Event & { data: number }) => void): void;
 		removeEventListener?(event: "songchange" | "onplaypause", listener: () => void): void;
-		removeEventListener?(event: "onprogress", listener: (event: { data: number }) => void): void;
+		removeEventListener?(event: "onprogress", listener: (event?: Event & { data: number }) => void): void;
 	};
 	CosmosAsync?: {
 		get<T = unknown>(url: string, body?: unknown, headers?: Record<string, string>): Promise<T>;

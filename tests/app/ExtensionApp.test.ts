@@ -2734,11 +2734,11 @@ describe("ExtensionApp", () => {
 	test("resyncs paused progress seeks across the outro threshold and restores the latest lyrics immediately", async () => {
 		const { spicetify } = createSpicetify();
 		let progressMs = 9_000;
-		let progressListener: ((event: { data: number }) => void) | undefined;
+		let progressListener: ((event?: { data?: number }) => void) | undefined;
 		spicetify.Player.getProgress = () => progressMs;
-		spicetify.Player.addEventListener = vi.fn((event: string, listener: (event: { data: number }) => void) => {
-			if (event === "onprogress") progressListener = listener;
-		});
+		spicetify.Player.addEventListener = vi.fn((event: string, listener: unknown) => {
+			if (event === "onprogress") progressListener = listener as (event?: { data?: number }) => void;
+		}) as unknown as SpicetifyGlobal["Player"]["addEventListener"];
 		const app = new ExtensionApp(spicetify);
 		app.start();
 		const track = metadataTrack("spotify:track:paused-outro-seek", { durationMs: 12_000 });
@@ -2794,11 +2794,11 @@ describe("ExtensionApp", () => {
 	test("keeps a held intro unchanged for regular playing progress events", async () => {
 		const { spicetify } = createSpicetify();
 		let progressMs = 0;
-		let progressListener: ((event: { data: number }) => void) | undefined;
+		let progressListener: ((event?: { data?: number }) => void) | undefined;
 		spicetify.Player.getProgress = () => progressMs;
-		spicetify.Player.addEventListener = vi.fn((event: string, listener: (event: { data: number }) => void) => {
-			if (event === "onprogress") progressListener = listener;
-		});
+		spicetify.Player.addEventListener = vi.fn((event: string, listener: unknown) => {
+			if (event === "onprogress") progressListener = listener as (event?: { data?: number }) => void;
+		}) as unknown as SpicetifyGlobal["Player"]["addEventListener"];
 		const app = new ExtensionApp(spicetify);
 		app.start();
 		const track = metadataTrack("spotify:track:playing-progress-intro", { durationMs: 20_000 });
@@ -4151,6 +4151,75 @@ describe("ExtensionApp", () => {
 
 				expect(root.querySelector(".lyrics-track")?.textContent).toContain("First vocal");
 				expect(update).toHaveBeenLastCalledWith(4, 0);
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		test.each([
+			["reduced motion", { reduceMotion: true }],
+			["disabled motion", { motionEnabled: false }],
+		] as const)("applies the latest pending ready presentation immediately when enabling %s mid-transition", async (_label, setting) => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				spicetify.Player.getProgress = () => 4_000;
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:motion-setting-outgoing");
+				const incoming = metadataTrack(`spotify:track:motion-setting-${_label.replaceAll(" ", "-")}`);
+				const session = {
+					root,
+					setCover: vi.fn(),
+					setPlaying: vi.fn(),
+					applyTheme: vi.fn(),
+					applySettings: vi.fn(),
+				};
+				const internals = app as unknown as {
+					session: typeof session;
+					currentTrack: TrackIdentity;
+					activeTrackTransition?: unknown;
+					pendingTrackPresentation?: unknown;
+					directionController: TrackTransitionDirectionController;
+					settings: { update: (patch: Partial<ExtensionSettings>) => void };
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					renderer: {
+						showTrackMetadata: (
+							root: HTMLElement,
+							metadata: { mode: "loading" | "persistent"; track: TrackIdentity },
+							settings: ExtensionSettings
+						) => { generation: number; settled: Promise<{ generation: number; completed: boolean }> };
+					};
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+					applySettings: () => Promise<void>;
+				};
+				internals.session = session;
+				internals.currentTrack = outgoing;
+				internals.lyricsService = { load: vi.fn(async () => readyLoadStateAt(incoming, 1)), invalidate: vi.fn() };
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				const showTrackMetadata = vi.spyOn(internals.renderer, "showTrackMetadata");
+				internals.directionController.enqueue("next");
+
+				await internals.onTrackChanged(trackChangedEvent(incoming));
+				const transitionHandle = showTrackMetadata.mock.results[0]?.value;
+				expect(transitionHandle).toBeDefined();
+				expect(internals.activeTrackTransition).toBeDefined();
+				expect(internals.pendingTrackPresentation).toBeDefined();
+				expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-scene.loading')).not.toBeNull();
+
+				internals.settings.update(setting);
+				await internals.applySettings();
+				await Promise.resolve();
+
+				expect(await transitionHandle?.settled).toEqual({ generation: transitionHandle?.generation, completed: true });
+				expect(internals.activeTrackTransition).toBeUndefined();
+				expect(internals.pendingTrackPresentation).toBeUndefined();
+				expect(root.children).toHaveLength(1);
+				expect(root.querySelector("[data-scene-plane]")).toBeNull();
+				expect(root.className).not.toContain("scene-transition-");
+				expect(root.querySelector(".track-metadata-scene.loading")).toBeNull();
+				expect(root.querySelector(".lyrics-track")?.textContent).toContain("First vocal");
 				app.destroy();
 			} finally {
 				vi.useRealTimers();

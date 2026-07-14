@@ -80,6 +80,25 @@ describe("PipCoverTransitionController", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
+	test("finishes an in-flight crossfade by immediately promoting only the incoming cover", () => {
+		vi.useFakeTimers();
+		const { controller, covers } = createHarness();
+		controller.setCover("https://example.com/a.jpg");
+		const a = covers()[0];
+		a.dispatchEvent(new Event("load"));
+		controller.setCover("https://example.com/b.jpg");
+		const b = covers()[1];
+		b.dispatchEvent(new Event("load"));
+		expect(covers()).toEqual([a, b]);
+
+		controller.finish();
+
+		expect(covers()).toEqual([b]);
+		expect(b.dataset.coverState).toBe("active");
+		expect(b.style.transition).toBe("none");
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	test("removes active and pending covers when the next track has no URL", () => {
 		const { availability, controller, covers } = createHarness();
 		controller.setCover("https://example.com/a.jpg");
