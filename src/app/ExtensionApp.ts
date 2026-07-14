@@ -440,6 +440,7 @@ export class ExtensionApp {
 			return;
 		}
 		if (!hasRenderableEnrichmentChanges(initialSnapshot, snapshot, this.settings.get())) {
+			this.replacePendingTrackPresentation(initialSnapshot, snapshot);
 			return;
 		}
 		this.presentReadySnapshot(snapshot);
@@ -703,6 +704,13 @@ export class ExtensionApp {
 		}
 		this.pendingTrackPresentation = presentation;
 		return true;
+	}
+
+	private replacePendingTrackPresentation(initialSnapshot: ReadyTrackSessionSnapshot, snapshot: ReadyTrackSessionSnapshot): void {
+		if (this.pendingTrackPresentation?.snapshot !== initialSnapshot) {
+			return;
+		}
+		this.deferTrackPresentation({ kind: "ready", snapshot });
 	}
 
 	private hasActiveTrackTransitionFor(track: TrackIdentity, session: PipSession, playbackTrackEpoch: number): boolean {

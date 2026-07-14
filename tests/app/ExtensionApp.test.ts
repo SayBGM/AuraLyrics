@@ -4486,6 +4486,77 @@ describe("ExtensionApp", () => {
 			}
 		});
 
+		test("replaces an initial pending snapshot when no-op enrichment becomes current", async () => {
+			vi.useFakeTimers();
+			try {
+				const { spicetify } = createSpicetify();
+				const app = new ExtensionApp(spicetify);
+				const root = document.createElement("main");
+				const outgoing = metadataTrack("spotify:track:no-op-enrichment-outgoing");
+				const incoming = metadataTrack("spotify:track:no-op-enrichment-current");
+				const stableLyrics: LyricsDocument = { type: "static", lines: [{ text: "Stable current lyrics" }] };
+				const session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
+				const internals = app as unknown as {
+					session: typeof session;
+					currentTrack: TrackIdentity;
+					directionController: TrackTransitionDirectionController;
+					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
+					trackSession: {
+						getSnapshot: () => TrackSessionSnapshot;
+						isCurrent: (snapshot: TrackSessionSnapshot) => boolean;
+						invalidate: () => void;
+					};
+					renderer: {
+						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
+						mount: (root: HTMLElement, options: { rhythm?: TrackWaveformProfile }) => unknown;
+					};
+					renderEnrichment: (
+						enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
+						initial: ReadyTrackSessionSnapshot,
+						track: TrackIdentity,
+						activeSession: typeof session
+					) => Promise<void>;
+					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+				};
+				internals.session = session;
+				internals.currentTrack = outgoing;
+				internals.lyricsService = {
+					load: vi.fn(async () => readySnapshotWithLyrics(incoming, stableLyrics).loadState),
+					invalidate: vi.fn(),
+				};
+				internals.renderer.showTrackMetadata(root, { mode: "persistent", track: outgoing }, internalsSettingsOf(app));
+				const mount = vi.spyOn(internals.renderer, "mount");
+				internals.directionController.enqueue("next");
+				await internals.onTrackChanged(trackChangedEvent(incoming));
+				const initialSnapshot = internals.trackSession.getSnapshot();
+				if (initialSnapshot.loadState.status !== "ready") throw new Error("Expected initial ready snapshot.");
+				const initial = initialSnapshot as ReadyTrackSessionSnapshot;
+				const rhythm: TrackWaveformProfile = {
+					trackUri: incoming.uri,
+					seed: 47,
+					segments: [],
+					source: "seeded",
+				};
+				const enriched: ReadyTrackSessionSnapshot = { ...initial, waveformProfile: rhythm };
+				internals.trackSession = {
+					getSnapshot: () => enriched,
+					isCurrent: (snapshot) => snapshot === enriched,
+					invalidate: vi.fn(),
+				};
+
+				await internals.renderEnrichment(Promise.resolve(enriched), initial, incoming, session);
+				expect(mount).not.toHaveBeenCalled();
+				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
+
+				expect(root.querySelector(".track-metadata-scene.loading")).toBeNull();
+				expect(root.querySelector(".lyrics-track")?.textContent).toContain("Stable current lyrics");
+				expect(mount.mock.calls.at(-1)?.[1]).toMatchObject({ rhythm });
+				app.destroy();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
 		test("keeps the active entrance intact when the same track is manually refreshed", async () => {
 			vi.useFakeTimers();
 			try {
