@@ -31,7 +31,7 @@ export const parseWordLevelParentheticals = (text: string, isInsideParenthetical
 		buffer += char;
 	}
 	appendSegment(segments, buffer, isParenthetical, isParenthetical);
-	const normalizedSegments = attachLeadingPunctuationToPreviousMain(segments);
+	const normalizedSegments = normalizeLeadingPunctuationAfterParenthetical(segments);
 	return normalizedSegments.length > 0 ? normalizedSegments : [{ text, isParenthetical: false, continues: false }];
 };
 
@@ -53,7 +53,7 @@ const appendSegment = (segments: ParentheticalSegment[], text: string, isParenth
 	segments.push({ text: normalizedText, isParenthetical, continues });
 };
 
-const attachLeadingPunctuationToPreviousMain = (segments: ParentheticalSegment[]): ParentheticalSegment[] => {
+const normalizeLeadingPunctuationAfterParenthetical = (segments: ParentheticalSegment[]): ParentheticalSegment[] => {
 	const normalizedSegments = segments.map((segment) => ({ ...segment }));
 	for (let index = 1; index < normalizedSegments.length; index += 1) {
 		const segment = normalizedSegments[index];
@@ -65,12 +65,14 @@ const attachLeadingPunctuationToPreviousMain = (segments: ParentheticalSegment[]
 		if (!match) {
 			continue;
 		}
+		const punctuation = match[1].startsWith(",") ? match[1].slice(1) : match[1];
 		const previousMain = findPreviousMainSegment(normalizedSegments, index - 1);
-		if (!previousMain) {
+		if (previousMain) {
+			previousMain.text = `${previousMain.text}${punctuation}`;
+			segment.text = match[2].trim();
 			continue;
 		}
-		previousMain.text = `${previousMain.text}${match[1]}`;
-		segment.text = match[2].trim();
+		segment.text = `${punctuation}${match[2]}`.trim();
 	}
 	return normalizedSegments.filter((segment) => segment.text.length > 0);
 };

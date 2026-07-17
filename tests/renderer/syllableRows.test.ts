@@ -142,6 +142,30 @@ describe("buildSyllableRows", () => {
 		expect(model.rows.map(echoText)).toEqual(["", "hey", "", "hey", ""]);
 	});
 
+	test("removes a comma supplied as a separate token after a parenthetical", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 4,
+			syllables: [
+				{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+				{ text: "(애드리브)", startTime: 1, endTime: 2, isPartOfWord: false },
+				{ text: ",", startTime: 2, endTime: 2.2, isPartOfWord: false },
+				{ text: "다음 가사", startTime: 2.2, endTime: 4, isPartOfWord: false },
+			],
+		});
+
+		expect(model.rows.map(mainText)).toEqual(["본문", "다음 가사"]);
+		expect(model.rows.map(echoText)).toEqual(["애드리브", ""]);
+	});
+
+	test("keeps ordinary commas, other punctuation, and unsplit parentheticals unchanged", () => {
+		expect(buildSyllableRows(vocal("본문, 다음 가사")).rows.map(mainText)).toEqual(["본문, 다음 가사"]);
+		expect(buildSyllableRows(vocal("본문 (애드리브)! 다음 가사")).rows.map(mainText)).toEqual(["본문!", "다음 가사"]);
+
+		const unsplit = buildSyllableRows(vocal("본문 (애드리브), 다음 가사"), undefined, { splitParentheticals: false });
+		expect(unsplit.rows.map(mainText)).toEqual(["본문 (애드리브), 다음 가사"]);
+	});
+
 	test("stacks hyphenated English ad-libs before a trailing lyric", () => {
 		const model = buildSyllableRows(vocal("But friends know la-la-la (la-la), huh", 0, 5));
 

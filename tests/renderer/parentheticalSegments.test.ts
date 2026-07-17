@@ -11,12 +11,27 @@ describe("parentheticalSegments", () => {
 		]);
 	});
 
-	test("keeps punctuation after a parenthetical with the preceding main lyric", () => {
+	test("removes an ASCII comma immediately after a parenthetical", () => {
 		expect(parseWordLevelParentheticals("피땀으로 (hey), 눈물로 (hey)", false)).toEqual([
-			{ text: "피땀으로,", isParenthetical: false, continues: false },
+			{ text: "피땀으로", isParenthetical: false, continues: false },
 			{ text: "hey", isParenthetical: true, continues: false },
 			{ text: "눈물로", isParenthetical: false, continues: false },
 			{ text: "hey", isParenthetical: true, continues: false },
+		]);
+		expect(parseWordLevelParentheticals("(hey),", false)).toEqual([{ text: "hey", isParenthetical: true, continues: false }]);
+	});
+
+	test("keeps ordinary commas and other punctuation after a parenthetical", () => {
+		expect(parseWordLevelParentheticals("피땀으로, 눈물로", false)).toEqual([{ text: "피땀으로, 눈물로", isParenthetical: false, continues: false }]);
+		expect(parseWordLevelParentheticals("피땀으로 (hey)! 눈물로", false)).toEqual([
+			{ text: "피땀으로!", isParenthetical: false, continues: false },
+			{ text: "hey", isParenthetical: true, continues: false },
+			{ text: "눈물로", isParenthetical: false, continues: false },
+		]);
+		expect(parseWordLevelParentheticals("피땀으로 (hey)， 눈물로", false)).toEqual([
+			{ text: "피땀으로，", isParenthetical: false, continues: false },
+			{ text: "hey", isParenthetical: true, continues: false },
+			{ text: "눈물로", isParenthetical: false, continues: false },
 		]);
 	});
 

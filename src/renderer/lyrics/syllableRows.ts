@@ -156,7 +156,21 @@ const parseTimedSegments = (vocal: SyllableVocal, splitParentheticals: boolean):
 			parsed.push({ syllable, segment });
 		}
 	}
-	return parsed;
+	return splitParentheticals ? removeAsciiCommaAfterClosedParenthetical(parsed) : parsed;
+};
+
+const removeAsciiCommaAfterClosedParenthetical = (segments: ParsedTimedSegment[]): ParsedTimedSegment[] => {
+	const normalizedSegments: ParsedTimedSegment[] = [];
+	let previousWasClosedParenthetical = false;
+	for (const item of segments) {
+		const shouldRemoveComma = previousWasClosedParenthetical && !item.segment.isParenthetical && item.segment.text.startsWith(",");
+		const text = shouldRemoveComma ? item.segment.text.slice(1).trimStart() : item.segment.text;
+		if (text.length > 0) {
+			normalizedSegments.push(text === item.segment.text ? item : { ...item, segment: { ...item.segment, text } });
+		}
+		previousWasClosedParenthetical = item.segment.isParenthetical && !item.segment.continues;
+	}
+	return normalizedSegments;
 };
 
 const normalizeMainSegment = (segment: TimedParentheticalSegment, stripPrefix: boolean): TimedParentheticalSegment | undefined => {
