@@ -25,7 +25,8 @@ type ScenarioName =
 	| "synthetic-word-sync"
 	| "korean-tail"
 	| "multiline-active-row"
-	| "settings-general";
+	| "settings-general"
+	| "settings-lyrics";
 
 type Scenario = {
 	lyrics?: LyricsDocument;
@@ -421,6 +422,10 @@ const scenarios: Record<ScenarioName, Scenario> = {
 		timestamp: 0,
 		mode: "settings",
 	},
+	"settings-lyrics": {
+		timestamp: 0,
+		mode: "settings",
+	},
 };
 
 window.auraVisualHarness = {
@@ -464,7 +469,7 @@ window.auraVisualHarness = {
 			throw new Error(`Unknown visual scenario: ${name}`);
 		}
 		if (scenario.mode === "settings") {
-			renderSettingsScenario();
+			renderSettingsScenario(name === "settings-lyrics" ? "lyrics" : "general");
 			return;
 		}
 		pipRoot.className = scenario.mode === "metadata" ? "is-playing controls-visible" : "is-playing";
@@ -661,7 +666,7 @@ function measureChromeRects(): ChromeRects {
 	};
 }
 
-function renderSettingsScenario(): void {
+function renderSettingsScenario(section: "general" | "lyrics"): void {
 	const values = new Map<string, string>();
 	const store = new SettingsStore({
 		get: (key) => values.get(key),
@@ -690,12 +695,25 @@ function renderSettingsScenario(): void {
 		},
 	} as NonNullable<typeof window.Spicetify>;
 	const settingsView = new SettingsView(store, [], {
+		getCurrentTrackLyricsDelay: () => ({
+			artist: "Haneul Park",
+			delayMs: 150,
+			defaultDelayMs: 0,
+			hasOverride: true,
+			title: "Midnight Bloom",
+			uri: "spotify:track:visual-settings",
+		}),
+		onAdjustCurrentTrackLyricsDelay: () => undefined,
 		onRefreshLyrics: () => undefined,
 		onClearCache: () => undefined,
 		onMusixmatchTokenAccepted: () => undefined,
 		onRefreshMusixmatchToken: async () => undefined,
+		onResetCurrentTrackLyricsDelay: () => undefined,
 	});
 	settingsView.open();
+	if (section === "lyrics") {
+		document.querySelector<HTMLButtonElement>('[role="tab"][data-section="lyrics"]')?.click();
+	}
 }
 
 function lineLyrics(lines: Array<[text: string, startTime: number, endTime: number]>): LineLyrics {

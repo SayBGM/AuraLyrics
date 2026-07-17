@@ -19,6 +19,8 @@ import type { SpicetifyGlobal } from "../runtime/spicetify";
 import { SettingsStore } from "../settings/SettingsStore";
 import { SettingsView } from "../settings/SettingsView";
 import type { ExtensionSettings } from "../settings/settingsSchema";
+import type { CurrentTrackLyricsDelayState } from "../settings/settingsViewTypes";
+import { TrackLyricsDelayStore } from "../settings/TrackLyricsDelayStore";
 import { pipStyles } from "../styles/pipStyles";
 import { IntroPresentationGate } from "./IntroPresentationGate";
 import { MusicStateMachine } from "./MusicStateMachine";
@@ -55,6 +57,7 @@ type TrackChangeLoadOptions = {
 export class ExtensionApp {
 	private readonly storage: SpicetifyStorageAdapter;
 	private readonly settings: SettingsStore;
+	private readonly trackLyricsDelays: TrackLyricsDelayStore;
 	private readonly player: SpicetifyPlayerAdapter;
 	private readonly playbackSynchronizer: PlaybackSynchronizer;
 	private readonly pip = new DocumentPipController();
@@ -91,10 +94,11 @@ export class ExtensionApp {
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
 		this.settings = new SettingsStore(this.storage);
+		this.trackLyricsDelays = new TrackLyricsDelayStore(this.storage);
 		this.appliedSettings = this.settings.get();
 		this.cache = new LyricsCache(this.storage);
 		this.player = new SpicetifyPlayerAdapter(spicetify);
-		this.playbackSynchronizer = new PlaybackSynchronizer(() => this.player.getTimestamp(this.settings.get().lyricsDelayMs));
+		this.playbackSynchronizer = new PlaybackSynchronizer(() => this.player.getTimestamp(this.resolvedLyricsDelayMs()));
 		this.waveformService = new AudioAnalysisWaveformService(async (uri) => this.spicetify.getAudioData?.(uri));
 		this.trackThemeService = new TrackThemeService(spicetify.colorExtractor);
 		this.musixmatchTokenService = new MusixmatchTokenService((url, body, headers) => {
@@ -128,6 +132,8 @@ export class ExtensionApp {
 			}
 		);
 		this.settingsView = new SettingsView(this.settings, this.registry.all(), {
+			getCurrentTrackLyricsDelay: () => this.currentTrackLyricsDelayState(),
+			onAdjustCurrentTrackLyricsDelay: (uri, deltaMs) => this.adjustCurrentTrackLyricsDelay(uri, deltaMs),
 			onRefreshLyrics: () => void this.loadCurrentTrack(true),
 			onClearCache: () => {
 				this.cache.clear();
@@ -135,6 +141,7 @@ export class ExtensionApp {
 			},
 			onMusixmatchTokenAccepted: () => this.spicetify.showNotification?.("Musixmatch token updated."),
 			onRefreshMusixmatchToken: () => this.fetchMusixmatchToken(),
+			onResetCurrentTrackLyricsDelay: (uri) => this.resetCurrentTrackLyricsDelay(uri),
 		});
 		this.topbar = new TopbarController(
 			spicetify,
@@ -155,6 +162,7 @@ export class ExtensionApp {
 			this.player.progressChanged.subscribe(() => this.onProgressChanged()),
 			this.settings.subscribe(() => void this.applySettings()),
 			this.settings.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
+			this.trackLyricsDelays.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
 			this.pip.closed.subscribe(() => this.closePip(false))
 		);
 		this.showSettingsPersistenceFailure();
@@ -274,6 +282,7 @@ export class ExtensionApp {
 		this.discardTrackTransitionPresentation();
 		this.trackSession.invalidate();
 		this.currentTrack = track;
+		this.settingsView.refreshCurrentTrack();
 		this.revealedSnapshot = undefined;
 		if (track) {
 			this.introGate.beginTrackEpoch();
@@ -380,8 +389,67 @@ export class ExtensionApp {
 	}
 
 	private showSettingsPersistenceFailure(): void {
-		if (this.settings.consumePersistenceFailure()) {
+		const settingsFailure = this.settings.consumePersistenceFailure();
+		const trackDelayFailure = this.trackLyricsDelays.consumePersistenceFailure();
+		if (settingsFailure || trackDelayFailure) {
 			this.spicetify.showNotification?.(SETTINGS_PERSISTENCE_ERROR, true);
+		}
+	}
+
+	private currentTrackLyricsDelayState(): CurrentTrackLyricsDelayState | undefined {
+		const track = this.player.getCurrentTrack();
+		if (!track) {
+			return undefined;
+		}
+		const defaultDelayMs = this.settings.get().lyricsDelayMs;
+		const override = this.trackLyricsDelays.get(track.uri);
+		return {
+			artist: track.artist,
+			delayMs: override ?? defaultDelayMs,
+			defaultDelayMs,
+			hasOverride: override !== undefined,
+			title: track.title,
+			uri: track.uri,
+		};
+	}
+
+	private resolvedLyricsDelayMs(): number {
+		return this.trackLyricsDelays.resolve(this.player.getCurrentTrack()?.uri, this.settings.get().lyricsDelayMs);
+	}
+
+	private adjustCurrentTrackLyricsDelay(uri: string, deltaMs: number): void {
+		const state = this.currentTrackLyricsDelayState();
+		if (!state || state.uri !== uri) {
+			this.settingsView.refreshCurrentTrack();
+			return;
+		}
+		this.trackLyricsDelays.set(uri, state.delayMs + deltaMs);
+		this.refreshLyricsTiming();
+	}
+
+	private resetCurrentTrackLyricsDelay(uri: string): void {
+		if (this.player.getCurrentTrack()?.uri !== uri) {
+			this.settingsView.refreshCurrentTrack();
+			return;
+		}
+		this.trackLyricsDelays.delete(uri);
+		this.refreshLyricsTiming();
+	}
+
+	private refreshLyricsTiming(): void {
+		if (!this.session) {
+			return;
+		}
+		this.playbackSynchronizer.resync();
+		const timestampSec = this.playbackSynchronizer.timestampSec;
+		const introResult = this.introGate.resume(timestampSec);
+		let didRenderLyrics = false;
+		if (introResult.kind === "reveal") {
+			didRenderLyrics = this.revealReadySnapshot(introResult.snapshot, timestampSec) === "lyrics-rendered";
+		}
+		const outroOutcome = this.evaluateOutro(timestampSec);
+		if (!didRenderLyrics && outroOutcome === "none" && this.hasMountedLyricsPresentation()) {
+			this.renderer.update(timestampSec, 0);
 		}
 	}
 

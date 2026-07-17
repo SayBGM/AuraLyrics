@@ -2,7 +2,7 @@ import type { LyricsProvider } from "../lyrics/types";
 import { SettingsControlFactory } from "./SettingsControlFactory";
 import { SettingsProviderPanel } from "./SettingsProviderPanel";
 import { type ExtensionSettings, PRESETS, type SettingsStore, type SettingsUpdateResult, type UiLanguage } from "./SettingsStore";
-import { translate, translatedOptionLabel } from "./settingsTranslations";
+import { formatTranslation, translate, translatedOptionLabel } from "./settingsTranslations";
 import { SETTINGS_SECTIONS, type SettingsCallbacks, type SettingsSection, settingsPanelId, settingsTabId } from "./settingsViewTypes";
 
 export type SettingsPanelRendererCallbacks = SettingsCallbacks & {
@@ -82,8 +82,10 @@ export class SettingsPanelRenderer {
 				];
 			case "lyrics":
 				return [
-					this.controls.number("lyrics-delay", translate("lyricsDelay", language), settings.lyricsDelayMs, (value) => {
+					this.currentTrackDelayCard(settings),
+					this.controls.number("lyrics-delay", translate("defaultLyricsDelay", language), settings.lyricsDelayMs, (value) => {
 						const result = this.update({ lyricsDelayMs: value });
+						this.callbacks.onScheduleRefresh();
 						return { persisted: result.persisted, value: result.settings.lyricsDelayMs };
 					}),
 					this.controls.range("font-scale", translate("fontScale", language), settings.fontScale, 0.72, 1.5, 0.01, (value) =>
@@ -197,6 +199,75 @@ export class SettingsPanelRenderer {
 		}
 	}
 
+	private currentTrackDelayCard(settings: ExtensionSettings): HTMLElement {
+		const language = settings.language;
+		const state = this.callbacks.getCurrentTrackLyricsDelay();
+		const card = this.ownerDocument.createElement("section");
+		card.className = "track-delay-card";
+		card.dataset.controlId = "current-track-delay";
+		const heading = this.ownerDocument.createElement("h4");
+		heading.textContent = translate("currentTrackDelay", language);
+		card.append(heading);
+		if (!state) {
+			card.setAttribute("aria-disabled", "true");
+			const message = this.ownerDocument.createElement("p");
+			message.className = "track-delay-empty";
+			message.textContent = translate("noCurrentTrackDelay", language);
+			card.append(message);
+			return card;
+		}
+
+		const header = this.ownerDocument.createElement("div");
+		header.className = "track-delay-header";
+		const metadata = this.ownerDocument.createElement("div");
+		metadata.className = "track-delay-metadata";
+		const title = this.ownerDocument.createElement("strong");
+		title.textContent = state.title;
+		metadata.append(title);
+		if (state.artist) {
+			const artist = this.ownerDocument.createElement("span");
+			artist.textContent = state.artist;
+			metadata.append(artist);
+		}
+		const valueGroup = this.ownerDocument.createElement("div");
+		valueGroup.className = "track-delay-value-group";
+		const value = this.ownerDocument.createElement("output");
+		value.className = "track-delay-value";
+		value.setAttribute("aria-live", "polite");
+		value.textContent = `${formatDelayMs(state.delayMs)} ms`;
+		const source = this.ownerDocument.createElement("span");
+		source.className = "track-delay-source";
+		source.textContent = translate(state.hasOverride ? "currentTrackDelayOverrideSource" : "currentTrackDelayDefaultSource", language);
+		valueGroup.append(value, source);
+		header.append(metadata, valueGroup);
+
+		const hint = this.ownerDocument.createElement("p");
+		hint.className = "track-delay-hint";
+		hint.textContent = translate("currentTrackDelayHint", language);
+
+		const actions = this.ownerDocument.createElement("div");
+		actions.className = "track-delay-actions";
+		for (const step of [-100, -50, 50, 100]) {
+			const stepLabel = formatDelayMs(step);
+			const button = this.controls.button(`track-delay-${step < 0 ? "minus" : "plus"}-${Math.abs(step)}`, `${stepLabel} ms`, () => {
+				this.callbacks.onAdjustCurrentTrackLyricsDelay(state.uri, step);
+				this.callbacks.onScheduleRefresh();
+			});
+			button.classList.add("track-delay-step");
+			button.setAttribute("aria-label", formatTranslation("currentTrackDelayAdjust", { amount: stepLabel }, language));
+			actions.append(button);
+		}
+		const reset = this.controls.button("reset-track-delay", translate("resetTrackDelay", language), () => {
+			this.callbacks.onResetCurrentTrackLyricsDelay(state.uri);
+			this.callbacks.onScheduleRefresh();
+		});
+		reset.classList.add("track-delay-reset");
+		reset.disabled = !state.hasOverride;
+		actions.append(reset);
+		card.append(header, hint, actions);
+		return card;
+	}
+
 	private update(patch: Partial<ExtensionSettings>): SettingsUpdateResult {
 		return this.store.updateWithResult(patch);
 	}
@@ -209,3 +280,5 @@ export class SettingsPanelRenderer {
 		return translatedOptionLabel(group, value, language);
 	}
 }
+
+const formatDelayMs = (value: number): string => (value > 0 ? `+${value}` : String(value));

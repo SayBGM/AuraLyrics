@@ -83,6 +83,22 @@ const metadataTrack = (uri = "spotify:track:metadata", overrides: Partial<TrackI
 	...overrides,
 });
 
+const setCurrentPlayerTrack = (spicetify: SpicetifyGlobal, track: TrackIdentity | undefined): void => {
+	spicetify.Player.data = track
+		? {
+				item: {
+					uri: track.uri,
+					metadata: {
+						album_title: track.album,
+						artist_name: track.artist,
+						duration: String(track.durationMs),
+						title: track.title,
+					},
+				},
+			}
+		: undefined;
+};
+
 const trackChangedEvent = (track: TrackIdentity | undefined, progress: Omit<TrackChangedEvent, "track"> = {}): TrackChangedEvent => ({
 	track,
 	...progress,
@@ -484,6 +500,95 @@ describe("ExtensionApp", () => {
 
 		expect(root.querySelector(".lyrics-track")).toBeNull();
 		expect(internals.introGate.isHolding()).toBe(false);
+		app.destroy();
+	});
+
+	test("resolves a song override ahead of the global delay, preserves it across settings reset, and restores the default after song reset", () => {
+		const { spicetify } = createSpicetify();
+		const track = metadataTrack("spotify:track:override-resolution");
+		setCurrentPlayerTrack(spicetify, track);
+		spicetify.Player.getProgress = vi.fn(() => 10_000);
+		const app = new ExtensionApp(spicetify);
+		const internals = app as unknown as {
+			settings: { reset: () => ExtensionSettings; update: (patch: Partial<ExtensionSettings>) => void };
+			trackLyricsDelays: { delete: (uri: string) => boolean; set: (uri: string, delayMs: number) => unknown };
+			currentTrackLyricsDelayState: () => { delayMs: number; defaultDelayMs: number; hasOverride: boolean } | undefined;
+			playbackSynchronizer: PlaybackSynchronizer;
+		};
+		internals.settings.update({ lyricsDelayMs: 250 });
+
+		internals.playbackSynchronizer.resync();
+		expect(internals.playbackSynchronizer.timestampSec).toBe(9.75);
+		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 250, defaultDelayMs: 250, hasOverride: false });
+
+		internals.trackLyricsDelays.set(track.uri, 400);
+		internals.playbackSynchronizer.resync();
+		expect(internals.playbackSynchronizer.timestampSec).toBe(9.6);
+		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 400, defaultDelayMs: 250, hasOverride: true });
+
+		internals.settings.reset();
+		internals.playbackSynchronizer.resync();
+		expect(internals.playbackSynchronizer.timestampSec).toBe(9.6);
+		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 400, defaultDelayMs: 0, hasOverride: true });
+
+		internals.trackLyricsDelays.delete(track.uri);
+		internals.playbackSynchronizer.resync();
+		expect(internals.playbackSynchronizer.timestampSec).toBe(10);
+		app.destroy();
+	});
+
+	test("applies current-song delay controls immediately without reloading lyrics and rejects a stale track URI", async () => {
+		const { spicetify } = createSpicetify();
+		const track = metadataTrack("spotify:track:live-delay", { durationMs: 30_000 });
+		setCurrentPlayerTrack(spicetify, track);
+		spicetify.Player.getProgress = vi.fn(() => 10_000);
+		const app = new ExtensionApp(spicetify);
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 20,
+			content: [{ type: "vocal", text: "Live", startTime: 0, endTime: 20, oppositeAligned: false }],
+		};
+		const snapshot = readySnapshotWithLyrics(track, lyrics);
+		const mount = vi.fn();
+		const internals = app as unknown as {
+			adjustCurrentTrackLyricsDelay: (uri: string, deltaMs: number) => void;
+			currentTrackLyricsDelayState: () => { delayMs: number; hasOverride: boolean } | undefined;
+			lyricsService: { load: (...args: unknown[]) => Promise<unknown> };
+			mountReadySnapshot: typeof mount;
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+			playbackSynchronizer: PlaybackSynchronizer;
+			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+			renderer: { update: (timestampSec: number, deltaTimeSec: number) => void };
+			resetCurrentTrackLyricsDelay: (uri: string) => void;
+			session: { root: HTMLElement };
+		};
+		const load = vi.spyOn(internals.lyricsService, "load");
+		await internals.onTrackChanged(trackChangedEvent(track));
+		internals.session = { root: document.createElement("main") };
+		internals.mountReadySnapshot = mount;
+		const update = vi.spyOn(internals.renderer, "update");
+		internals.playbackSynchronizer.resync();
+		internals.presentReadySnapshot(snapshot);
+		mount.mockClear();
+		update.mockClear();
+
+		internals.adjustCurrentTrackLyricsDelay(track.uri, 50);
+
+		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 50, hasOverride: true });
+		expect(internals.playbackSynchronizer.timestampSec).toBe(9.95);
+		expect(update).toHaveBeenCalledWith(9.95, 0);
+		expect(load).not.toHaveBeenCalled();
+
+		internals.adjustCurrentTrackLyricsDelay("spotify:track:stale", 100);
+		expect(internals.currentTrackLyricsDelayState()?.delayMs).toBe(50);
+
+		update.mockClear();
+		internals.resetCurrentTrackLyricsDelay(track.uri);
+		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 0, hasOverride: false });
+		expect(internals.playbackSynchronizer.timestampSec).toBe(10);
+		expect(update).toHaveBeenCalledWith(10, 0);
+		expect(load).not.toHaveBeenCalled();
 		app.destroy();
 	});
 
@@ -1900,7 +2005,23 @@ describe("ExtensionApp", () => {
 		expect(spicetify.Player.addEventListener).toHaveBeenCalledWith("songchange", expect.any(Function));
 		expect(spicetify.Player.addEventListener).toHaveBeenCalledWith("onplaypause", expect.any(Function));
 		expect(spicetify.Player.addEventListener).toHaveBeenCalledWith("onprogress", expect.any(Function));
-		expect(spicetify.Topbar?.Button).toHaveBeenCalledTimes(1);
+		expect(spicetify.Topbar?.Button).toHaveBeenCalledTimes(2);
+		app.destroy();
+	});
+
+	test("refreshes the open settings track context on song changes even when PiP is closed", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const track = metadataTrack("spotify:track:settings-refresh");
+		const internals = app as unknown as {
+			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
+			settingsView: { refreshCurrentTrack: () => void };
+		};
+		const refresh = vi.spyOn(internals.settingsView, "refreshCurrentTrack");
+
+		await internals.onTrackChanged(trackChangedEvent(track));
+
+		expect(refresh).toHaveBeenCalledOnce();
 		app.destroy();
 	});
 
@@ -2092,6 +2213,29 @@ describe("ExtensionApp", () => {
 		internals.settings.update({ lyricsDelayMs: 100 });
 
 		expect(showNotification).not.toHaveBeenCalled();
+	});
+
+	test("reports current-song delay persistence failures through the existing settings error", () => {
+		const { showNotification, spicetify } = createSpicetify();
+		const track = metadataTrack("spotify:track:delay-persistence");
+		setCurrentPlayerTrack(spicetify, track);
+		const app = new ExtensionApp(spicetify);
+		const internals = app as unknown as {
+			adjustCurrentTrackLyricsDelay: (uri: string, deltaMs: number) => void;
+		};
+		app.start();
+		if (!spicetify.LocalStorage) {
+			throw new Error("LocalStorage fixture is missing.");
+		}
+		spicetify.LocalStorage.set = vi.fn(() => {
+			throw new Error("quota exceeded");
+		});
+
+		internals.adjustCurrentTrackLyricsDelay(track.uri, 50);
+
+		expect(showNotification).toHaveBeenCalledOnce();
+		expect(showNotification).toHaveBeenCalledWith("AuraLyrics settings could not be saved.", true);
+		app.destroy();
 	});
 
 	test("updates PiP play state from playback callbacks instead of the lyric frame tick", () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { LyricsProvider } from "../../src/lyrics/types";
 import { SettingsStore } from "../../src/settings/SettingsStore";
 import { SettingsView } from "../../src/settings/SettingsView";
+import type { SettingsCallbacks } from "../../src/settings/settingsViewTypes";
 
 class MemoryStorage {
 	private readonly values = new Map<string, string>();
@@ -82,14 +83,22 @@ const providers: LyricsProvider[] = [
 ];
 
 const callbacks = (onRefreshMusixmatchToken: () => Promise<string | undefined> = vi.fn()) => ({
+	getCurrentTrackLyricsDelay: vi.fn(),
+	onAdjustCurrentTrackLyricsDelay: vi.fn(),
 	onRefreshLyrics: vi.fn(),
 	onClearCache: vi.fn(),
 	onMusixmatchTokenAccepted: vi.fn(),
 	onRefreshMusixmatchToken,
+	onResetCurrentTrackLyricsDelay: vi.fn(),
 });
 
 const openView = (
-	options: { media?: FakeMediaQueryList; onRefreshMusixmatchToken?: () => Promise<string | undefined>; withTrigger?: boolean } = {}
+	options: {
+		callbacks?: Partial<SettingsCallbacks>;
+		media?: FakeMediaQueryList;
+		onRefreshMusixmatchToken?: () => Promise<string | undefined>;
+		withTrigger?: boolean;
+	} = {}
 ) => {
 	const storage = new MemoryStorage();
 	const store = new SettingsStore(storage);
@@ -131,7 +140,10 @@ const openView = (
 			hide,
 		},
 	} as unknown as typeof window.Spicetify;
-	const view = new SettingsView(store, providers, callbacks(options.onRefreshMusixmatchToken));
+	const view = new SettingsView(store, providers, {
+		...callbacks(options.onRefreshMusixmatchToken),
+		...options.callbacks,
+	});
 	view.open();
 	if (!content) {
 		throw new Error("Settings content was not displayed.");
@@ -226,7 +238,7 @@ describe("SettingsView", () => {
 		tab(content, "lyrics").click();
 
 		expect(content.querySelectorAll('[role="tabpanel"]')).toHaveLength(1);
-		expect(content.querySelector('[role="tabpanel"]')?.textContent).toContain("Lyrics delay");
+		expect(content.querySelector('[role="tabpanel"]')?.textContent).toContain("Default lyrics delay");
 		expect(content.querySelector('[role="tabpanel"]')?.textContent).not.toContain("Language");
 		expect(tab(content, "lyrics").getAttribute("aria-selected")).toBe("true");
 		expect(tab(content, "general").hasAttribute("aria-controls")).toBe(false);
@@ -234,7 +246,7 @@ describe("SettingsView", () => {
 
 		view.open();
 		const reopened = document.querySelector<HTMLElement>(".aura-lyrics-settings");
-		expect(reopened?.querySelector('[role="tabpanel"]')?.textContent).toContain("Lyrics delay");
+		expect(reopened?.querySelector('[role="tabpanel"]')?.textContent).toContain("Default lyrics delay");
 		expect(reopened?.querySelector('[data-section="lyrics"]')?.getAttribute("aria-selected")).toBe("true");
 	});
 
@@ -340,6 +352,83 @@ describe("SettingsView", () => {
 		expect(store.get().lyricsDelayMs).toBe(5000);
 		expect(delay.value).toBe("5000");
 		expect(document.activeElement).toBe(delay);
+	});
+
+	test("adjusts and resets the current song delay with accessible 50ms and 100ms controls", async () => {
+		let current = {
+			artist: "Aura",
+			delayMs: 250,
+			defaultDelayMs: 250,
+			hasOverride: false,
+			title: "Northern Lights",
+			uri: "spotify:track:northern-lights",
+		};
+		const onAdjust = vi.fn((_uri: string, deltaMs: number) => {
+			current = { ...current, delayMs: current.delayMs + deltaMs, hasOverride: true };
+		});
+		const onReset = vi.fn(() => {
+			current = { ...current, delayMs: current.defaultDelayMs, hasOverride: false };
+		});
+		const { content } = openView({
+			callbacks: {
+				getCurrentTrackLyricsDelay: () => current,
+				onAdjustCurrentTrackLyricsDelay: onAdjust,
+				onResetCurrentTrackLyricsDelay: onReset,
+			},
+		});
+		tab(content, "lyrics").click();
+
+		const card = control<HTMLElement>(content, "current-track-delay");
+		expect(card.textContent).toContain("Northern Lights");
+		expect(card.textContent).toContain("Aura");
+		expect(card.textContent).toContain("+250 ms");
+		expect(card.textContent).toContain("Global default");
+		expect(control<HTMLButtonElement>(content, "reset-track-delay").disabled).toBe(true);
+		expect(control(content, "track-delay-minus-100").getAttribute("aria-label")).toBe("Adjust current song lyrics by -100 ms");
+		expect(control(content, "track-delay-minus-50").textContent).toBe("-50 ms");
+		expect(control(content, "track-delay-plus-50").textContent).toBe("+50 ms");
+		expect(control(content, "track-delay-plus-100").getAttribute("aria-label")).toBe("Adjust current song lyrics by +100 ms");
+
+		const plus = control<HTMLButtonElement>(content, "track-delay-plus-50");
+		plus.focus();
+		plus.click();
+		await flushTimers();
+
+		expect(onAdjust).toHaveBeenCalledWith("spotify:track:northern-lights", 50);
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("+300 ms");
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("Song-specific setting");
+		expect(document.activeElement).toBe(control(content, "track-delay-plus-50"));
+		expect(control<HTMLButtonElement>(content, "reset-track-delay").disabled).toBe(false);
+
+		control<HTMLButtonElement>(content, "reset-track-delay").click();
+		await flushTimers();
+
+		expect(onReset).toHaveBeenCalledWith("spotify:track:northern-lights");
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("+250 ms");
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("Global default");
+	});
+
+	test("refreshes an open lyrics panel when the current track changes", async () => {
+		let current = {
+			artist: "First Artist",
+			delayMs: 0,
+			defaultDelayMs: 0,
+			hasOverride: false,
+			title: "First Song",
+			uri: "spotify:track:first",
+		};
+		const { content, view } = openView({ callbacks: { getCurrentTrackLyricsDelay: () => current } });
+		tab(content, "lyrics").click();
+		const minus = control<HTMLButtonElement>(content, "track-delay-minus-50");
+		minus.focus();
+		current = { ...current, artist: "Second Artist", title: "Second Song", uri: "spotify:track:second" };
+
+		view.refreshCurrentTrack();
+		await flushTimers();
+
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("Second Song");
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).not.toContain("First Song");
+		expect(document.activeElement).toBe(control(content, "track-delay-minus-50"));
 	});
 
 	test("keeps the current section through language and preset refreshes", async () => {

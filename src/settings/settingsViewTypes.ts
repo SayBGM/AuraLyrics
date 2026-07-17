@@ -1,11 +1,23 @@
 import type { SettingsIconName } from "./settingsIcons";
 import type { TranslationKey } from "./settingsTranslations";
 
+export type CurrentTrackLyricsDelayState = {
+	artist: string;
+	delayMs: number;
+	defaultDelayMs: number;
+	hasOverride: boolean;
+	title: string;
+	uri: string;
+};
+
 export type SettingsCallbacks = {
+	getCurrentTrackLyricsDelay(): CurrentTrackLyricsDelayState | undefined;
+	onAdjustCurrentTrackLyricsDelay(uri: string, deltaMs: number): void;
 	onRefreshLyrics(): void;
 	onClearCache(): void;
 	onMusixmatchTokenAccepted(token: string): void;
 	onRefreshMusixmatchToken(): Promise<string | undefined>;
+	onResetCurrentTrackLyricsDelay(uri: string): void;
 };
 
 export type SettingsSection = "advanced" | "appearance" | "general" | "lyrics" | "motion" | "providers";

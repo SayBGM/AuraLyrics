@@ -55,6 +55,12 @@ export class SettingsView {
 		this.lifecycle.destroy(() => window.Spicetify?.PopupModal?.hide?.());
 	}
 
+	public refreshCurrentTrack(): void {
+		if (this.container && this.activeSection === "lyrics") {
+			this.schedulePanelRefresh();
+		}
+	}
+
 	private activateSection(section: SettingsSection, focusTab: boolean): void {
 		const changed = section !== this.activeSection;
 		this.activeSection = section;

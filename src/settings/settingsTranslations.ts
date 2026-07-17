@@ -9,7 +9,13 @@ export type TranslationKey =
 	| "blur"
 	| "clearCache"
 	| "contextLines"
+	| "currentTrackDelay"
+	| "currentTrackDelayAdjust"
+	| "currentTrackDelayDefaultSource"
+	| "currentTrackDelayHint"
+	| "currentTrackDelayOverrideSource"
 	| "debugMode"
+	| "defaultLyricsDelay"
 	| "dim"
 	| "fontScale"
 	| "general"
@@ -20,7 +26,6 @@ export type TranslationKey =
 	| "interludeStyle"
 	| "language"
 	| "lyrics"
-	| "lyricsDelay"
 	| "motion"
 	| "moveDown"
 	| "moveUp"
@@ -29,6 +34,7 @@ export type TranslationKey =
 	| "musixmatchProxyModeCustomDescription"
 	| "musixmatchProxyModeDefaultDescription"
 	| "musixmatchToken"
+	| "noCurrentTrackDelay"
 	| "preset"
 	| "providerEnabled"
 	| "providerOrder"
@@ -38,6 +44,7 @@ export type TranslationKey =
 	| "refreshCurrentLyrics"
 	| "requestingToken"
 	| "resetSettings"
+	| "resetTrackDelay"
 	| "saturation"
 	| "showInterludes"
 	| "showTranslation"
@@ -60,7 +67,13 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		blur: "Blur",
 		clearCache: "Clear cache",
 		contextLines: "Context lines",
+		currentTrackDelay: "Current song delay",
+		currentTrackDelayAdjust: "Adjust current song lyrics by {amount} ms",
+		currentTrackDelayDefaultSource: "Global default",
+		currentTrackDelayHint: "− makes lyrics earlier; + makes them later.",
+		currentTrackDelayOverrideSource: "Song-specific setting",
 		debugMode: "Debug mode",
+		defaultLyricsDelay: "Default lyrics delay (ms)",
 		dim: "Dim",
 		fontScale: "Font scale",
 		general: "General",
@@ -71,7 +84,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		interludeStyle: "Interlude style",
 		language: "Language",
 		lyrics: "Lyrics",
-		lyricsDelay: "Lyrics delay (ms)",
 		motion: "Motion",
 		moveDown: "Move {provider} down",
 		moveUp: "Move {provider} up",
@@ -81,6 +93,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 			"Route Musixmatch desktop and LRCLIB requests through a proxy that takes the target URL as a query parameter, e.g. https://your-proxy.example.com/?url=",
 		musixmatchProxyModeDefaultDescription: "Request directly from the official Musixmatch and LRCLIB servers.",
 		musixmatchToken: "Musixmatch token",
+		noCurrentTrackDelay: "Play a Spotify song to adjust its lyrics delay.",
 		preset: "Preset",
 		providerEnabled: "{provider} enabled",
 		providerOrder: "Provider order: {order}",
@@ -90,6 +103,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		refreshCurrentLyrics: "Refresh current lyrics",
 		requestingToken: "Requesting Musixmatch token...",
 		resetSettings: "Reset settings",
+		resetTrackDelay: "Use global default",
 		saturation: "Saturation",
 		showInterludes: "Show interludes",
 		showTranslation: "Show translation",
@@ -109,7 +123,13 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		blur: "블러",
 		clearCache: "캐시 지우기",
 		contextLines: "문맥 줄 수",
+		currentTrackDelay: "현재 곡 지연",
+		currentTrackDelayAdjust: "현재 곡 가사를 {amount}ms 조정",
+		currentTrackDelayDefaultSource: "전역 기본값",
+		currentTrackDelayHint: "−는 가사를 빠르게, +는 늦게 표시합니다.",
+		currentTrackDelayOverrideSource: "곡별 설정",
 		debugMode: "디버그 모드",
+		defaultLyricsDelay: "기본 가사 지연 (ms)",
 		dim: "어둡게",
 		fontScale: "글자 크기",
 		general: "일반",
@@ -120,7 +140,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		interludeStyle: "인터루드 스타일",
 		language: "언어",
 		lyrics: "가사",
-		lyricsDelay: "가사 지연 (ms)",
 		motion: "모션",
 		moveDown: "{provider} 아래로 이동",
 		moveUp: "{provider} 위로 이동",
@@ -130,6 +149,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 			"타겟 URL을 쿼리 파라미터로 받는 프록시를 통해 Musixmatch desktop 및 LRCLIB 요청을 전송합니다. 예: https://your-proxy.example.com/?url=",
 		musixmatchProxyModeDefaultDescription: "Musixmatch 및 LRCLIB 공식 서버로 직접 요청합니다.",
 		musixmatchToken: "Musixmatch 토큰",
+		noCurrentTrackDelay: "Spotify 곡을 재생하면 곡별 가사 지연을 조정할 수 있습니다.",
 		preset: "프리셋",
 		providerEnabled: "{provider} 사용",
 		providerOrder: "제공자 순서: {order}",
@@ -139,6 +159,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		refreshCurrentLyrics: "현재 가사 새로고침",
 		requestingToken: "Musixmatch 토큰 요청 중...",
 		resetSettings: "설정 초기화",
+		resetTrackDelay: "전역값으로 초기화",
 		saturation: "채도",
 		showInterludes: "인터루드 표시",
 		showTranslation: "번역 표시",
@@ -158,7 +179,13 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		blur: "ぼかし",
 		clearCache: "キャッシュを削除",
 		contextLines: "前後の行数",
+		currentTrackDelay: "現在の曲の遅延",
+		currentTrackDelayAdjust: "現在の曲の歌詞を {amount}ms 調整",
+		currentTrackDelayDefaultSource: "全体のデフォルト",
+		currentTrackDelayHint: "−で歌詞を早く、+で遅く表示します。",
+		currentTrackDelayOverrideSource: "曲別設定",
 		debugMode: "デバッグモード",
+		defaultLyricsDelay: "デフォルトの歌詞遅延 (ms)",
 		dim: "暗さ",
 		fontScale: "文字サイズ",
 		general: "一般",
@@ -169,7 +196,6 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		interludeStyle: "インタールードスタイル",
 		language: "言語",
 		lyrics: "歌詞",
-		lyricsDelay: "歌詞の遅延 (ms)",
 		motion: "モーション",
 		moveDown: "{provider} を下へ移動",
 		moveUp: "{provider} を上へ移動",
@@ -179,6 +205,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 			"ターゲットURLをクエリパラメータで受け取るプロキシ経由でMusixmatch desktopとLRCLIBのリクエストを送信します。例: https://your-proxy.example.com/?url=",
 		musixmatchProxyModeDefaultDescription: "MusixmatchとLRCLIBの公式サーバーに直接リクエストします。",
 		musixmatchToken: "Musixmatch トークン",
+		noCurrentTrackDelay: "Spotifyの曲を再生すると、曲別の歌詞遅延を調整できます。",
 		preset: "プリセット",
 		providerEnabled: "{provider} を有効化",
 		providerOrder: "プロバイダー順: {order}",
@@ -188,6 +215,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		refreshCurrentLyrics: "現在の歌詞を更新",
 		requestingToken: "Musixmatch トークンをリクエスト中...",
 		resetSettings: "設定をリセット",
+		resetTrackDelay: "全体のデフォルトに戻す",
 		saturation: "彩度",
 		showInterludes: "インタールード表示",
 		showTranslation: "翻訳を表示",

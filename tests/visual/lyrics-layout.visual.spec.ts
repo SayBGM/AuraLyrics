@@ -12,7 +12,8 @@ type ScenarioName =
 	| "synthetic-word-sync"
 	| "korean-tail"
 	| "multiline-active-row"
-	| "settings-general";
+	| "settings-general"
+	| "settings-lyrics";
 
 type TransitionScenarioName = "metadata-next" | "metadata-previous" | "outro-up" | "reduced-motion-next" | "short-tail-next";
 type TransitionPhase = "start" | "mid";
@@ -336,6 +337,21 @@ test("settings modal keeps its dark desktop sidebar layout within the viewport",
 	expect(metrics.orientation).toBe("vertical");
 	expect(metrics.background).toBe("rgb(13, 13, 15)");
 	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-dark-sidebar.png", screenshotTolerance);
+});
+
+test("settings lyrics panel keeps the current-song delay card readable and reachable", async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 760 });
+	await renderScenario(page, "settings-lyrics");
+
+	const card = page.locator('[data-control-id="current-track-delay"]');
+	await expect(card).toBeVisible();
+	await expect(card).toContainText("Midnight Bloom");
+	await expect(card).toContainText("+150 ms");
+	await expect(card).toContainText("Song-specific setting");
+	await expect(card.locator("button")).toHaveCount(5);
+	await expect(page.locator('[data-control-id="track-delay-minus-100"]')).toHaveAttribute("aria-label", "Adjust current song lyrics by -100 ms");
+	await expect(page.locator('[data-control-id="track-delay-plus-100"]')).toHaveAttribute("aria-label", "Adjust current song lyrics by +100 ms");
+	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-track-delay.png", screenshotTolerance);
 });
 
 test("synthetic karaoke uses the themed syllable wake without a visible timing marker", async ({ page }) => {
@@ -809,7 +825,7 @@ const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => 
 		}
 		window.auraVisualHarness.renderScenario(scenarioName);
 	}, name);
-	if (name === "settings-general") {
+	if (name === "settings-general" || name === "settings-lyrics") {
 		await expect(page.locator(".aura-lyrics-settings")).toBeVisible();
 		return;
 	}

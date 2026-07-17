@@ -24,11 +24,14 @@ describe("SettingsPanelRenderer", () => {
 	test("renders each section with the stable panel ids and complete control groups", () => {
 		const store = new SettingsStore(new MemoryStorage());
 		const renderer = new SettingsPanelRenderer(document, store, providers, {
+			getCurrentTrackLyricsDelay: vi.fn(),
+			onAdjustCurrentTrackLyricsDelay: vi.fn(),
 			onClearCache: vi.fn(),
 			onMusixmatchTokenAccepted: vi.fn(),
 			onRefreshLyrics: vi.fn(),
 			onRefreshMusixmatchToken: vi.fn(),
 			onScheduleRefresh: vi.fn(),
+			onResetCurrentTrackLyricsDelay: vi.fn(),
 		});
 
 		const general = renderer.render("general");
@@ -41,6 +44,7 @@ describe("SettingsPanelRenderer", () => {
 		expect(general.querySelector('[data-control-id="language"]')).not.toBeNull();
 		expect(general.querySelector('[data-control-id="preset"]')).not.toBeNull();
 		expect(lyrics.querySelector('[data-control-id="lyrics-delay"]')).not.toBeNull();
+		expect(lyrics.querySelector('[data-control-id="current-track-delay"]')?.getAttribute("aria-disabled")).toBe("true");
 		expect(lyrics.querySelector('[data-control-id="interlude-style"]')).not.toBeNull();
 		expect(appearance.querySelector('[data-control-id="background-dim"]')).not.toBeNull();
 		expect(motion.querySelector('[data-control-id="reduce-motion"]')).not.toBeNull();
