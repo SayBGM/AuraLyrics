@@ -192,6 +192,35 @@ export class SettingsPanelRenderer {
 							this.preview({ vignetteStrength: value })
 						),
 					]),
+					this.group("appearance-highlight", "highlighting", "highlightingDescription", language, [
+						this.controls.select(
+							"highlight-effect",
+							translate("highlightEffect", language),
+							settings.highlightEffect,
+							["fill", "glow-sweep", "underline", "marker", "outline-fill", "spotlight"],
+							(value) => {
+								const result = this.update({ highlightEffect: value as ExtensionSettings["highlightEffect"] });
+								this.callbacks.onScheduleRefresh();
+								return result.persisted;
+							},
+							(value) => this.optionLabel("highlightEffect", value, language),
+							{ description: translate("highlightingDescription", language) }
+						),
+						this.controls.select(
+							"highlight-motion",
+							translate("highlightMotion", language),
+							settings.highlightMotion,
+							["spring", "pulse", "bounce", "elastic", "wave", "ripple"],
+							(value) => {
+								const result = this.update({ highlightMotion: value as ExtensionSettings["highlightMotion"] });
+								this.callbacks.onScheduleRefresh();
+								return result.persisted;
+							},
+							(value) => this.optionLabel("highlightMotion", value, language),
+							{ description: translate("highlightingDescription", language) }
+						),
+						this.highlightPreview(settings),
+					]),
 					this.group("appearance-readability", "readability", "readabilityDescription", language, [
 						this.numericRange("font-scale", "fontScale", "fontScale", settings.fontScale, language, (value) => this.preview({ fontScale: value })),
 						this.numericRange("inactive-blur", "inactiveBlur", "inactiveBlurPx", settings.inactiveBlurPx, language, (value) =>
@@ -321,6 +350,32 @@ export class SettingsPanelRenderer {
 			return `${Math.round(value)}${language === "ko" ? "줄" : language === "ja" ? "行" : " lines"}`;
 		}
 		return `${Number(value.toFixed(2))} px`;
+	}
+
+	private highlightPreview(settings: ExtensionSettings): HTMLElement {
+		const preview = this.ownerDocument.createElement("div");
+		preview.className = "highlight-preview";
+		preview.dataset.effect = settings.highlightEffect;
+		preview.dataset.motion = settings.highlightMotion;
+		preview.classList.toggle("is-reduced", settings.reduceMotion || !settings.motionEnabled);
+		preview.setAttribute("role", "img");
+		preview.setAttribute("aria-label", translate("highlightPreview", settings.language));
+		const words = settings.language === "ko" ? ["빛나는", "가사"] : settings.language === "ja" ? ["輝く", "歌詞"] : ["Shining", "lyrics"];
+		for (const [index, word] of words.entries()) {
+			const motion = this.ownerDocument.createElement("span");
+			motion.className = "highlight-preview-motion";
+			motion.style.setProperty("--preview-delay", `${index * 0.18}s`);
+			const token = this.ownerDocument.createElement("span");
+			token.className = "highlight-preview-token";
+			token.textContent = word;
+			motion.append(token);
+			preview.append(motion);
+		}
+		const hidden = this.ownerDocument.createElement("span");
+		hidden.className = "visually-hidden";
+		hidden.textContent = translate("highlightPreviewText", settings.language);
+		preview.append(hidden);
+		return preview;
 	}
 
 	private maintenanceActions(language: UiLanguage): HTMLElement[] {

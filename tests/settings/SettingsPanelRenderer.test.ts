@@ -48,6 +48,10 @@ describe("SettingsPanelRenderer", () => {
 		expect(lyrics.querySelector('[data-control-id="current-track-delay"]')?.getAttribute("aria-disabled")).toBe("true");
 		expect(lyrics.querySelector('[data-control-id="interlude-style"]')).not.toBeNull();
 		expect(appearance.querySelector('[data-control-id="background-dim"]')).not.toBeNull();
+		expect(appearance.querySelector('[data-control-id="highlight-effect"]')).not.toBeNull();
+		expect(appearance.querySelector('[data-control-id="highlight-motion"]')).not.toBeNull();
+		expect(appearance.querySelector(".highlight-preview")?.getAttribute("data-effect")).toBe("fill");
+		expect(appearance.querySelector(".highlight-preview")?.getAttribute("data-motion")).toBe("spring");
 		expect(motion.querySelector('[data-control-id="reduce-motion"]')).not.toBeNull();
 		expect(advanced.querySelector('[data-control-id="refresh-current-lyrics"]')).not.toBeNull();
 		expect(advanced.querySelector('[data-control-id="reset-settings"]')).not.toBeNull();
@@ -113,5 +117,35 @@ describe("SettingsPanelRenderer", () => {
 		expect(interlude?.value).toBe("dots");
 		expect(intensity?.disabled).toBe(true);
 		expect(glow?.disabled).toBe(false);
+	});
+
+	test("persists independent highlight choices and refreshes the live preview", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const onScheduleRefresh = vi.fn();
+		const renderer = new SettingsPanelRenderer(document, store, providers, {
+			getCurrentTrackLyricsDelay: vi.fn(),
+			onAdjustCurrentTrackLyricsDelay: vi.fn(() => true),
+			onClearCache: vi.fn(),
+			onMusixmatchTokenAccepted: vi.fn(),
+			onRefreshLyrics: vi.fn(async () => undefined),
+			onRefreshMusixmatchToken: vi.fn(),
+			onScheduleRefresh,
+			onResetCurrentTrackLyricsDelay: vi.fn(() => true),
+		});
+		const appearance = renderer.render("appearance");
+		const effect = appearance.querySelector<HTMLSelectElement>('[data-control-id="highlight-effect"]');
+		const motion = appearance.querySelector<HTMLSelectElement>('[data-control-id="highlight-motion"]');
+		if (!effect || !motion) throw new Error("Missing highlight controls.");
+
+		effect.value = "marker";
+		effect.dispatchEvent(new Event("change"));
+		motion.value = "wave";
+		motion.dispatchEvent(new Event("change"));
+
+		expect(store.get()).toMatchObject({ highlightEffect: "marker", highlightMotion: "wave", preset: "immersive" });
+		expect(onScheduleRefresh).toHaveBeenCalledTimes(2);
+		const refreshed = renderer.render("appearance");
+		expect(refreshed.querySelector(".highlight-preview")?.getAttribute("data-effect")).toBe("marker");
+		expect(refreshed.querySelector(".highlight-preview")?.getAttribute("data-motion")).toBe("wave");
 	});
 });

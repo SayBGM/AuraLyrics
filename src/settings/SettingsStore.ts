@@ -7,6 +7,8 @@ export {
 	type AlignmentMode,
 	DEFAULT_SETTINGS,
 	type ExtensionSettings,
+	type HighlightEffect,
+	type HighlightMotion,
 	type InterludeStyle,
 	type LyricsVisualPreset,
 	normalizeLoadedSettings,

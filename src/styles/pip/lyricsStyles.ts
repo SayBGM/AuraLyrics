@@ -67,10 +67,10 @@ export const lyricsStyles = `
 .vocals-group {
 	--lyric-letter-spacing: -0.018em;
 	--lyric-word-spacing: 0.08em;
-	--lyric-glow-bleed: calc(var(--lyrics-size) * 0.46);
+	--lyric-layout-bleed: calc(var(--lyrics-size) * 0.58);
 	max-width: 80vw;
-	padding-block: var(--lyric-glow-bleed);
-	margin-block: calc(-1 * var(--lyric-glow-bleed));
+	padding-block: var(--lyric-layout-bleed);
+	margin-block: calc(-1 * var(--lyric-layout-bleed));
 	margin-inline: 0;
 	color: inherit;
 	font: inherit;
@@ -107,25 +107,26 @@ export const lyricsStyles = `
 }
 
 .lyrics-track.align-natural .vocals-group.opposite-aligned .vocals,
-.lyrics-track.align-natural .vocals-group.opposite-aligned .syllable-main,
-.lyrics-track.align-natural .vocals-group.opposite-aligned .syllable-echo {
+.lyrics-track.align-natural .vocals-group.opposite-aligned .syllable-main {
 	justify-content: flex-end;
 }
 
 .lyrics-track.align-left .vocals-group .vocals,
-.lyrics-track.align-left .vocals-group .syllable-main,
-.lyrics-track.align-left .vocals-group .syllable-echo {
+.lyrics-track.align-left .vocals-group .syllable-main {
 	justify-content: flex-start;
 }
 
 .lyrics-track.align-center .vocals-group .vocals,
-.lyrics-track.align-center .vocals-group .syllable-main,
-.lyrics-track.align-center .vocals-group .syllable-echo {
+.lyrics-track.align-center .vocals-group .syllable-main {
 	justify-content: center;
 }
 
+.lyrics-track .vocals-group .syllable-echo {
+	justify-content: flex-end;
+	text-align: right;
+}
+
 .vocals-group.active {
-	--lyric-glow-bleed: calc(var(--lyrics-size) * 0.58);
 	opacity: 1;
 	filter: blur(0);
 	transform: translate3d(0, 0, 0) scale(1.04);
@@ -271,22 +272,31 @@ export const lyricsStyles = `
 }
 
 .syllable-row {
-	--parenthetical-echo-offset: calc(var(--lyrics-size) * 0.82);
-	--parenthetical-echo-clearance: calc(var(--lyrics-size) * 0.38);
 	display: grid;
 	flex-basis: 100%;
 	grid-template-columns: minmax(0, 1fr);
-	align-items: baseline;
+	grid-template-rows: auto auto;
+	align-items: start;
 	max-width: 100%;
 	width: 100%;
-	padding-bottom: 0;
+	padding: 0;
 	opacity: 1;
 	filter: blur(0);
 	transition: opacity 420ms ease, filter 420ms ease;
 }
 
 .syllable-row.has-parenthetical-echo {
-	padding-bottom: calc(var(--parenthetical-echo-offset) + var(--parenthetical-echo-clearance));
+	row-gap: calc(var(--lyrics-size) * 0.04);
+}
+
+.syllable-row.parenthetical-only {
+	grid-template-rows: auto;
+	row-gap: 0;
+}
+
+.syllable-row.parenthetical-only .syllable-main:empty,
+.syllable-echo:empty {
+	display: none;
 }
 
 .syllable-row.context-previous {
@@ -329,13 +339,17 @@ export const lyricsStyles = `
 }
 
 .syllable-echo {
-	grid-area: 1 / 1;
+	grid-area: 2 / 1;
 	justify-content: end;
 	justify-self: stretch;
-	align-self: end;
-	transform: translateY(var(--parenthetical-echo-offset));
+	align-self: start;
+	text-align: right;
 	z-index: 1;
 	pointer-events: none;
+}
+
+.syllable-row.parenthetical-only .syllable-echo {
+	grid-area: 1 / 1;
 }
 
 .word {
@@ -408,18 +422,33 @@ export const lyricsStyles = `
 }
 
 .syllable {
+	--highlight-angle: 90deg;
 	display: inline-block;
+	position: relative;
+	isolation: isolate;
 	letter-spacing: var(--lyric-letter-spacing);
 	word-spacing: var(--lyric-word-spacing);
 	background: linear-gradient(
-		90deg,
-		var(--pip-foreground-color) var(--gradient-progress, 0%),
-		var(--pip-muted-foreground-color) var(--gradient-progress, 0%)
+		var(--highlight-angle),
+		var(--pip-foreground-color) var(--highlight-progress, 0%),
+		var(--pip-muted-foreground-color) var(--highlight-progress, 0%)
 	);
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
 	will-change: transform, scale;
+}
+
+.line.highlight-target {
+	--highlight-angle: 90deg;
+	position: relative;
+	isolation: isolate;
+	transform-origin: center;
+	will-change: transform, scale;
+}
+
+.highlight-target:dir(rtl) {
+	--highlight-angle: 270deg;
 }
 
 .syllable-group.sung .syllable,
@@ -429,16 +458,152 @@ export const lyricsStyles = `
 	color: var(--pip-muted-foreground-color);
 }
 
-.aura-lyrics.synthetic-timing .syllable.active {
+.aura-lyrics.synthetic-timing[data-highlight-effect="fill"] .syllable.active {
 	background: linear-gradient(
-		90deg,
+		var(--highlight-angle),
 		var(--pip-foreground-color) 0%,
-		var(--pip-foreground-color) max(0%, calc(var(--gradient-progress, 0%) - 8%)),
-		var(--pip-synthetic-wake-color) var(--gradient-progress, 0%),
-		var(--pip-muted-foreground-color) var(--gradient-progress, 0%)
+		var(--pip-foreground-color) max(0%, calc(var(--highlight-progress, 0%) - 8%)),
+		var(--pip-synthetic-wake-color) var(--highlight-progress, 0%),
+		var(--pip-muted-foreground-color) var(--highlight-progress, 0%)
 	);
 	-webkit-background-clip: text;
 	background-clip: text;
+}
+
+.aura-lyrics[data-highlight-effect="fill"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="fill"] .syllable.highlight-target {
+	background: linear-gradient(
+		var(--highlight-angle),
+		var(--pip-foreground-color) 0 var(--highlight-progress, 0%),
+		var(--pip-muted-foreground-color) var(--highlight-progress, 0%) 100%
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+.aura-lyrics[data-highlight-effect="glow-sweep"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="glow-sweep"] .syllable.highlight-target {
+	background: linear-gradient(
+		var(--highlight-angle),
+		var(--pip-foreground-color) 0 max(0%, calc(var(--highlight-progress, 0%) - 12%)),
+		var(--pip-synthetic-wake-color) var(--highlight-progress, 0%),
+		var(--pip-muted-foreground-color) min(100%, calc(var(--highlight-progress, 0%) + 12%)) 100%
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	text-shadow:
+		0 0 calc(var(--text-shadow-blur-radius, 6px) * 1.25) rgba(var(--pip-glow-rgb), var(--text-shadow-opacity, 0%)),
+		0 0 calc(var(--lyrics-size) * 0.28) rgba(var(--pip-glow-rgb), calc(var(--highlight-progress-ratio, 0) * 0.2));
+}
+
+.aura-lyrics[data-highlight-effect="underline"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="underline"] .syllable.highlight-target,
+.aura-lyrics[data-highlight-effect="marker"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="marker"] .syllable.highlight-target {
+	background: linear-gradient(
+		var(--highlight-angle),
+		var(--pip-foreground-color) 0 var(--highlight-progress, 0%),
+		var(--pip-muted-foreground-color) var(--highlight-progress, 0%) 100%
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+.aura-lyrics[data-highlight-effect="underline"] .highlight-target::after,
+.aura-lyrics[data-highlight-effect="marker"] .highlight-target::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	z-index: -1;
+	pointer-events: none;
+	transform: scaleX(var(--highlight-progress-ratio, 0));
+	transform-origin: left center;
+}
+
+.aura-lyrics[data-highlight-effect="underline"] .highlight-target:dir(rtl)::after,
+.aura-lyrics[data-highlight-effect="marker"] .highlight-target:dir(rtl)::before {
+	transform-origin: right center;
+}
+
+.aura-lyrics[data-highlight-effect="underline"] .highlight-target::after {
+	bottom: -0.08em;
+	height: max(2px, 0.07em);
+	border-radius: 999px;
+	background: var(--pip-synthetic-wake-color);
+	box-shadow: 0 0 0.24em rgba(var(--pip-glow-rgb), 0.32);
+}
+
+.aura-lyrics[data-highlight-effect="marker"] .highlight-target::before {
+	top: 48%;
+	bottom: 0.02em;
+	border-radius: 0.14em 0.24em 0.18em 0.1em;
+	background: rgba(var(--pip-accent-rgb), 0.34);
+	box-shadow: 0 0 0.18em rgba(var(--pip-glow-rgb), 0.14);
+}
+
+.aura-lyrics[data-highlight-effect="outline-fill"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="outline-fill"] .syllable.highlight-target {
+	background: linear-gradient(
+		var(--highlight-angle),
+		var(--pip-synthetic-wake-color) 0 var(--highlight-progress, 0%),
+		transparent var(--highlight-progress, 0%) 100%
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	-webkit-text-stroke: max(1px, 0.025em) rgba(var(--pip-muted-rgb), 0.92);
+}
+
+.aura-lyrics[data-highlight-effect="spotlight"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="spotlight"] .syllable.highlight-target {
+	background: linear-gradient(
+		var(--highlight-angle),
+		var(--pip-muted-foreground-color) 0 max(0%, calc(var(--highlight-progress, 0%) - 18%)),
+		var(--pip-foreground-color) max(0%, calc(var(--highlight-progress, 0%) - 7%)),
+		var(--pip-synthetic-wake-color) var(--highlight-progress, 0%),
+		var(--pip-muted-foreground-color) min(100%, calc(var(--highlight-progress, 0%) + 10%)) 100%
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+.aura-lyrics[data-highlight-motion="ripple"] .highlight-target.active {
+	box-shadow:
+		0 0 0 calc(var(--lyrics-size) * var(--highlight-ripple, 0) * 0.08) rgba(var(--pip-glow-rgb), calc(var(--highlight-ripple, 0) * 0.18)),
+		0 0 calc(var(--lyrics-size) * var(--highlight-ripple, 0) * 0.32) rgba(var(--pip-glow-rgb), calc(var(--highlight-ripple, 0) * 0.2));
+	border-radius: 0.18em;
+}
+
+.syllable-group.sung .highlight-target,
+.syllable-row.context-previous .highlight-target,
+.syllable-row.context-next .highlight-target,
+.line-group.sung .highlight-target,
+.line-group.context-previous .highlight-target,
+.line-group.context-next .highlight-target {
+	background: none;
+	box-shadow: none;
+	color: var(--pip-muted-foreground-color);
+	-webkit-text-stroke: 0;
+}
+
+.syllable-group.sung .highlight-target::before,
+.syllable-group.sung .highlight-target::after,
+.syllable-row.context-previous .highlight-target::before,
+.syllable-row.context-previous .highlight-target::after,
+.syllable-row.context-next .highlight-target::before,
+.syllable-row.context-next .highlight-target::after,
+.line-group.sung .highlight-target::before,
+.line-group.sung .highlight-target::after,
+.line-group.context-previous .highlight-target::before,
+.line-group.context-previous .highlight-target::after,
+.line-group.context-next .highlight-target::before,
+.line-group.context-next .highlight-target::after {
+	display: none;
 }
 
 .aura-lyrics.synthetic-timing .vocals-group.syllable-group.active {
@@ -540,6 +705,13 @@ export const lyricsStyles = `
 
 .aura-lyrics.reduce-motion .vocals-group {
 	transform: none;
+}
+
+.aura-lyrics.reduce-motion .highlight-target,
+.aura-lyrics.motion-disabled .highlight-target {
+	transform: none !important;
+	scale: 1 !important;
+	box-shadow: none !important;
 }
 
 .aura-lyrics.motion-disabled .lyrics-track,

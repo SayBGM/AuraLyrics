@@ -31,6 +31,8 @@ describe("rendererSettingsChange", () => {
 		["inactiveBlurPx", 1.2],
 		["alignmentMode", "left"],
 		["visibleContextLines", 2],
+		["highlightEffect", "marker"],
+		["highlightMotion", "wave"],
 		["motionEnabled", false],
 		["motionIntensity", 0.4],
 		["springSoftness", 0.9],

@@ -1,7 +1,7 @@
 import type { Syllable, SyllableVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
 import type { RhythmProfile } from "../AudioAnalysisWaveformService";
-import { glowCurve, scaleCurve, yOffsetCurve } from "../animation/curves";
+import { sampleHighlightMotion } from "../animation/highlightMotion";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
 import { SPRING_PROFILES, springTuningForSoftness } from "../animation/springTuning";
@@ -14,6 +14,7 @@ type LiveSyllable = {
 	scale: Spring;
 	yOffset: Spring;
 	glow: Spring;
+	index: number;
 };
 
 type LiveRow = {
@@ -36,10 +37,11 @@ export class SyllableVocals {
 	private readonly liveRows: LiveRow[] = [];
 	private motionIntensity = 1;
 	private glowStrength = 0.8;
+	private highlightMotion: ExtensionSettings["highlightMotion"] = "spring";
 
 	public constructor(
 		private readonly vocal: SyllableVocal,
-		isBackground: boolean,
+		private readonly isBackground: boolean,
 		settings: ExtensionSettings,
 		private readonly rhythm?: RhythmProfile,
 		private readonly rowsOptions?: SyllableRowsOptions,
@@ -67,9 +69,10 @@ export class SyllableVocals {
 
 		for (const live of this.liveSyllables) {
 			const progress = clamp((timestamp - live.metadata.startTime) / Math.max(live.metadata.endTime - live.metadata.startTime, 0.001), 0, 1);
-			const scale = immediate ? 1 : 1 + (scaleCurve.at(progress) - 1) * this.motionIntensity;
-			const yOffset = immediate ? 0 : yOffsetCurve.at(progress) * this.motionIntensity;
-			const glow = glowCurve.at(progress);
+			const motion = sampleHighlightMotion(this.highlightMotion, progress, live.index, this.motionIntensity, immediate);
+			const scale = motion.scale;
+			const yOffset = motion.yOffset;
+			const glow = motion.glow;
 			if (immediate) {
 				live.scale.set(scale);
 				live.yOffset.set(yOffset);
@@ -91,18 +94,24 @@ export class SyllableVocals {
 			}
 			live.element.classList.toggle("active", progress > 0 && progress < 1);
 			live.element.classList.toggle("sung", timestamp > live.metadata.endTime);
+			live.element.classList.toggle("idle", timestamp <= live.metadata.startTime);
 			live.element.style.scale = nextScale.toString();
-			live.element.style.transform = `translateY(calc(var(--lyrics-size) * ${nextYOffset}))`;
+			live.element.style.transform = `translateY(calc(var(--lyrics-size) * ${nextYOffset})) rotate(${motion.rotationDeg}deg) scaleX(${motion.scaleX}) scaleY(${motion.scaleY})`;
 			const effectiveGlow = nextGlow * (this.glowStrength / 0.8);
 			live.element.style.setProperty("--text-shadow-opacity", `${effectiveGlow * 100}%`);
 			live.element.style.setProperty("--text-shadow-blur-radius", `${4 + effectiveGlow * 8}px`);
+			live.element.style.setProperty("--highlight-progress", `${progress * 100}%`);
+			live.element.style.setProperty("--highlight-progress-ratio", String(progress));
 			live.element.style.setProperty("--gradient-progress", `${progress * 100}%`);
+			live.element.style.setProperty("--highlight-ripple", String(motion.ripple));
 		}
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
-		this.motionIntensity = Math.max(0, settings.motionIntensity);
-		this.glowStrength = Math.max(0, settings.glowStrength);
+		const backgroundScale = this.isBackground ? 0.72 : 1;
+		this.motionIntensity = Math.max(0, settings.motionIntensity) * backgroundScale;
+		this.glowStrength = Math.max(0, settings.glowStrength) * backgroundScale;
+		this.highlightMotion = settings.highlightMotion;
 		const scaleTuning = springTuningForSoftness(SPRING_PROFILES.scale, settings.springSoftness);
 		const yOffsetTuning = springTuningForSoftness(SPRING_PROFILES.yOffset, settings.springSoftness);
 		const glowTuning = springTuningForSoftness(SPRING_PROFILES.glow, settings.springSoftness);
@@ -154,8 +163,9 @@ export class SyllableVocals {
 
 	private appendLiveSyllable(word: HTMLSpanElement, text: string, metadata: Syllable, isParenthetical: boolean, extraClasses: string[] = []): void {
 		const span = this.ownerDocument.createElement("span");
-		span.className = "lyric syllable synced";
+		span.className = "lyric syllable synced highlight-target";
 		span.textContent = text;
+		span.dir = "auto";
 		span.classList.toggle("parenthetical-syllable", isParenthetical);
 		for (const className of extraClasses) {
 			span.classList.add(className);
@@ -167,6 +177,7 @@ export class SyllableVocals {
 			scale: new Spring(1, SPRING_PROFILES.scale.dampingRatio, SPRING_PROFILES.scale.frequency),
 			yOffset: new Spring(0, SPRING_PROFILES.yOffset.dampingRatio, SPRING_PROFILES.yOffset.frequency),
 			glow: new Spring(0, SPRING_PROFILES.glow.dampingRatio, SPRING_PROFILES.glow.frequency),
+			index: this.liveSyllables.length,
 		});
 	}
 }

@@ -34,6 +34,12 @@ const EN_TRANSLATIONS = {
 	general: "General",
 	generateMusixmatchToken: "Generate Musixmatch token",
 	glow: "Glow",
+	highlightEffect: "Highlight effect",
+	highlighting: "Lyrics highlighting",
+	highlightingDescription: "Combine a visual treatment and motion without changing lyric timing.",
+	highlightMotion: "Highlight motion",
+	highlightPreview: "Highlight preview",
+	highlightPreviewText: "Shining lyrics",
 	hide: "Hide",
 	inactiveBlur: "Inactive blur",
 	intensity: "Motion intensity",
@@ -106,7 +112,7 @@ const EN_TRANSLATIONS = {
 } as const;
 
 export type TranslationKey = keyof typeof EN_TRANSLATIONS;
-export type OptionGroup = "alignment" | "interlude" | "language" | "musixmatchProxyMode" | "preset" | "sync";
+export type OptionGroup = "alignment" | "highlightEffect" | "highlightMotion" | "interlude" | "language" | "musixmatchProxyMode" | "preset" | "sync";
 
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 	en: EN_TRANSLATIONS,
@@ -144,6 +150,12 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		general: "일반",
 		generateMusixmatchToken: "Musixmatch 토큰 생성",
 		glow: "글로우",
+		highlightEffect: "하이라이트 효과",
+		highlighting: "가사 하이라이트",
+		highlightingDescription: "가사 타이밍은 유지하면서 시각 효과와 움직임을 조합합니다.",
+		highlightMotion: "하이라이트 모션",
+		highlightPreview: "하이라이트 미리보기",
+		highlightPreviewText: "빛나는 가사",
 		hide: "숨기기",
 		inactiveBlur: "비활성 블러",
 		intensity: "모션 강도",
@@ -247,6 +259,12 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		general: "一般",
 		generateMusixmatchToken: "Musixmatch トークンを生成",
 		glow: "グロー",
+		highlightEffect: "ハイライト効果",
+		highlighting: "歌詞ハイライト",
+		highlightingDescription: "歌詞タイミングを変えずに視覚効果とモーションを組み合わせます。",
+		highlightMotion: "ハイライトモーション",
+		highlightPreview: "ハイライトプレビュー",
+		highlightPreviewText: "輝く歌詞",
 		hide: "隠す",
 		inactiveBlur: "非アクティブぼかし",
 		intensity: "モーション強度",
@@ -323,6 +341,37 @@ const OPTION_LABELS: Record<OptionGroup, Record<UiLanguage, Record<string, strin
 		en: { center: "Center", left: "Left", natural: "Natural" },
 		ko: { center: "가운데", left: "왼쪽", natural: "자연" },
 		ja: { center: "中央", left: "左", natural: "自然" },
+	},
+	highlightEffect: {
+		en: {
+			fill: "Clean fill",
+			"glow-sweep": "Glow sweep",
+			marker: "Marker band",
+			"outline-fill": "Outline to fill",
+			spotlight: "Spotlight",
+			underline: "Underline",
+		},
+		ko: {
+			fill: "클린 채움",
+			"glow-sweep": "글로우 스윕",
+			marker: "마커 밴드",
+			"outline-fill": "아웃라인에서 채움",
+			spotlight: "스포트라이트",
+			underline: "언더라인",
+		},
+		ja: {
+			fill: "クリーン塗り",
+			"glow-sweep": "グロースイープ",
+			marker: "マーカーバンド",
+			"outline-fill": "アウトラインから塗り",
+			spotlight: "スポットライト",
+			underline: "アンダーライン",
+		},
+	},
+	highlightMotion: {
+		en: { bounce: "Bounce", elastic: "Elastic", pulse: "Pulse", ripple: "Ripple", spring: "Spring", wave: "Wave" },
+		ko: { bounce: "바운스", elastic: "탄성", pulse: "펄스", ripple: "리플", spring: "스프링", wave: "웨이브" },
+		ja: { bounce: "バウンス", elastic: "エラスティック", pulse: "パルス", ripple: "リップル", spring: "スプリング", wave: "ウェーブ" },
 	},
 	interlude: {
 		en: { dots: "Dots", frame: "Frame", wave: "Wave" },

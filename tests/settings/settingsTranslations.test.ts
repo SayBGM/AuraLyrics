@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { UiLanguage } from "../../src/settings/SettingsStore";
-import { translate } from "../../src/settings/settingsTranslations";
+import { translate, translatedOptionLabel } from "../../src/settings/settingsTranslations";
 
 describe("settingsTranslations", () => {
 	test.each([
@@ -40,5 +40,14 @@ describe("settingsTranslations", () => {
 		expect(translate("resetTrackDelay", uiLanguage)).toBe(reset);
 		expect(translate("currentTrackDelayHint", uiLanguage).length).toBeGreaterThan(0);
 		expect(translate("noCurrentTrackDelay", uiLanguage).length).toBeGreaterThan(0);
+	});
+
+	test.each(["en", "ko", "ja"] as const)("provides localized highlight effect and motion options in %s", (language) => {
+		for (const effect of ["fill", "glow-sweep", "underline", "marker", "outline-fill", "spotlight"]) {
+			expect(translatedOptionLabel("highlightEffect", effect, language)).not.toBe(effect);
+		}
+		for (const motion of ["spring", "pulse", "bounce", "elastic", "wave", "ripple"]) {
+			expect(translatedOptionLabel("highlightMotion", motion, language)).not.toBe(motion);
+		}
 	});
 });

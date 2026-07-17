@@ -22,6 +22,8 @@ const LIVE_SETTINGS = [
 	"inactiveBlurPx",
 	"alignmentMode",
 	"visibleContextLines",
+	"highlightEffect",
+	"highlightMotion",
 	"motionEnabled",
 	"motionIntensity",
 	"springSoftness",

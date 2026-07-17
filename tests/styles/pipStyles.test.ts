@@ -309,20 +309,23 @@ describe("pipStyles", () => {
 	test("gives left, natural, and center alignment distinct internal flex contracts", () => {
 		const naturalRule =
 			lyricsStyles.match(
-				/\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.vocals,\n\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.syllable-main,\n\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.syllable-echo \{[^}]+\}/
+				/\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.vocals,\n\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.syllable-main \{[^}]+\}/
 			)?.[0] ?? "";
 		const leftRule =
 			lyricsStyles.match(
-				/\.lyrics-track\.align-left \.vocals-group \.vocals,\n\.lyrics-track\.align-left \.vocals-group \.syllable-main,\n\.lyrics-track\.align-left \.vocals-group \.syllable-echo \{[^}]+\}/
+				/\.lyrics-track\.align-left \.vocals-group \.vocals,\n\.lyrics-track\.align-left \.vocals-group \.syllable-main \{[^}]+\}/
 			)?.[0] ?? "";
 		const centerRule =
 			lyricsStyles.match(
-				/\.lyrics-track\.align-center \.vocals-group \.vocals,\n\.lyrics-track\.align-center \.vocals-group \.syllable-main,\n\.lyrics-track\.align-center \.vocals-group \.syllable-echo \{[^}]+\}/
+				/\.lyrics-track\.align-center \.vocals-group \.vocals,\n\.lyrics-track\.align-center \.vocals-group \.syllable-main \{[^}]+\}/
 			)?.[0] ?? "";
+		const echoRule = lyricsStyles.match(/\.lyrics-track \.vocals-group \.syllable-echo \{[^}]+\}/)?.[0] ?? "";
 
 		expect(naturalRule).toContain("justify-content: flex-end");
 		expect(leftRule).toContain("justify-content: flex-start");
 		expect(centerRule).toContain("justify-content: center");
+		expect(echoRule).toContain("justify-content: flex-end");
+		expect(echoRule).toContain("text-align: right");
 		expect(lyricsStyles).toContain(".lyrics-track.align-left .vocals-group.opposite-aligned");
 		expect(lyricsStyles).toContain(".lyrics-track.align-natural .vocals-group.opposite-aligned");
 	});
@@ -344,11 +347,12 @@ describe("pipStyles", () => {
 		expect(viewportRule).toContain("height: 100%");
 		expect(viewportRule).not.toContain("--lyrics-viewport-bleed");
 		expect(viewportRule).not.toContain("margin: calc(-1 * var(--lyrics-viewport-bleed))");
-		expect(vocalsGroupRule).toContain("--lyric-glow-bleed: calc(var(--lyrics-size) * 0.46)");
-		expect(vocalsGroupRule).toContain("padding-block: var(--lyric-glow-bleed)");
-		expect(vocalsGroupRule).toContain("margin-block: calc(-1 * var(--lyric-glow-bleed))");
+		expect(vocalsGroupRule).toContain("--lyric-layout-bleed: calc(var(--lyrics-size) * 0.58)");
+		expect(vocalsGroupRule).toContain("padding-block: var(--lyric-layout-bleed)");
+		expect(vocalsGroupRule).toContain("margin-block: calc(-1 * var(--lyric-layout-bleed))");
 		expect(vocalsGroupRule).toContain("margin-inline: 0");
-		expect(activeGroupRule).toContain("--lyric-glow-bleed: calc(var(--lyrics-size) * 0.58)");
+		expect(activeGroupRule).not.toContain("padding");
+		expect(activeGroupRule).not.toContain("--lyric-layout-bleed");
 		expect(viewportRule).toContain("#000 9%");
 		expect(viewportRule).toContain("#000 91%");
 	});
@@ -380,21 +384,22 @@ describe("pipStyles", () => {
 		expect(contextLineRule).toContain("color: var(--pip-muted-foreground-color)");
 	});
 
-	test("styles parenthetical word lyrics as right-aligned lowered echoes without reserving lyric width", () => {
+	test("keeps right-aligned parenthetical echoes in normal layout flow", () => {
 		expect(pipStyles).toContain(".syllable-row");
 		expect(pipStyles).toContain(".syllable-main");
 		expect(pipStyles).toContain(".syllable-echo");
 		expect(pipStyles).toContain(".parenthetical-word");
 		expect(pipStyles).toContain(".syllable-row.standalone-parenthetical .parenthetical-word .lyric");
 		expect(pipStyles).toContain("grid-template-columns: minmax(0, 1fr)");
+		expect(pipStyles).toContain("grid-template-rows: auto auto");
 		expect(pipStyles).toContain("grid-area: 1 / 1");
+		expect(pipStyles).toContain("grid-area: 2 / 1");
 		expect(pipStyles).not.toContain("minmax(28%, auto)");
 		expect(pipStyles).toContain("justify-content: end");
-		expect(pipStyles).toContain("--parenthetical-echo-offset: calc(var(--lyrics-size) * 0.82)");
-		expect(pipStyles).toContain("--parenthetical-echo-clearance: calc(var(--lyrics-size) * 0.38)");
 		expect(pipStyles).toContain(".syllable-row.has-parenthetical-echo");
-		expect(pipStyles).toContain("padding-bottom: calc(var(--parenthetical-echo-offset) + var(--parenthetical-echo-clearance))");
-		expect(pipStyles).toContain("transform: translateY(var(--parenthetical-echo-offset))");
+		expect(pipStyles).toContain(".syllable-row.parenthetical-only .syllable-echo");
+		expect(pipStyles).not.toContain("--parenthetical-echo-offset");
+		expect(pipStyles).not.toContain("--parenthetical-echo-clearance");
 		expect(pipStyles).toContain("font-size: calc(var(--lyrics-size) * 0.72)");
 		expect(pipStyles).toContain("font-size: var(--lyrics-size)");
 	});
@@ -427,12 +432,12 @@ describe("pipStyles", () => {
 	});
 
 	test("scopes the contrast-safe progress wake and additive halo to active synthetic syllables", () => {
-		const wakeRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing \.syllable\.active \{[^}]+\}/)?.[0] ?? "";
+		const wakeRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing\[data-highlight-effect="fill"\] \.syllable\.active \{[^}]+\}/)?.[0] ?? "";
 		const haloRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing \.vocals-group\.syllable-group\.active::after \{[^}]+\}/)?.[0] ?? "";
 
 		expect(wakeRule).toContain("var(--pip-foreground-color)");
 		expect(wakeRule).toContain("var(--pip-synthetic-wake-color)");
-		expect(wakeRule).toContain("var(--gradient-progress, 0%)");
+		expect(wakeRule).toContain("var(--highlight-progress, 0%)");
 		expect(wakeRule).toContain("var(--pip-muted-foreground-color)");
 		expect(wakeRule).not.toContain("opacity:");
 		expect(haloRule).toContain('content: ""');
@@ -448,7 +453,7 @@ describe("pipStyles", () => {
 	});
 
 	test("keeps the progress wake at zero intensity while disabling independent halo motion for reduced motion", () => {
-		const wakeRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing \.syllable\.active \{[^}]+\}/)?.[0] ?? "";
+		const wakeRule = lyricsStyles.match(/\.aura-lyrics\.synthetic-timing\[data-highlight-effect="fill"\] \.syllable\.active \{[^}]+\}/)?.[0] ?? "";
 		const reducedHaloRule =
 			lyricsStyles.match(/\.aura-lyrics\.synthetic-timing\.reduce-motion \.vocals-group\.syllable-group\.active::after \{[^}]+\}/)?.[0] ?? "";
 

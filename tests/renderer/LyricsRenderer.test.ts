@@ -454,6 +454,8 @@ describe("LyricsRenderer", () => {
 			backgroundSaturation: 0.74,
 			vignetteStrength: 0.48,
 			inactiveBlurPx: 1.4,
+			highlightEffect: "marker",
+			highlightMotion: "wave",
 			motionIntensity: 0.45,
 			springSoftness: 0.9,
 			glowStrength: 0.25,
@@ -472,6 +474,8 @@ describe("LyricsRenderer", () => {
 		expect(scene?.style.getPropertyValue("--inactive-blur")).toBe("1.4px");
 		expect(scene?.style.getPropertyValue("--motion-intensity")).toBe("0.45");
 		expect(scene?.style.getPropertyValue("--spring-softness")).toBe("0.9");
+		expect(scene?.dataset.highlightEffect).toBe("marker");
+		expect(scene?.dataset.highlightMotion).toBe("wave");
 		expect(scene?.style.fontFamily).toBe("Inter, sans-serif");
 		expect(scene?.classList.contains("reduce-motion")).toBe(true);
 		expect(root.querySelector(".lyrics-track")?.classList.contains("align-left")).toBe(true);
@@ -480,7 +484,7 @@ describe("LyricsRenderer", () => {
 		renderer.update(5, 1 / 60);
 		const syllable = root.querySelector<HTMLElement>(".syllable.synced");
 		expect(syllable?.style.scale).toBe("1");
-		expect(syllable?.style.transform).toBe("translateY(calc(var(--lyrics-size) * 0))");
+		expect(syllable?.style.transform).toBe("translateY(calc(var(--lyrics-size) * 0)) rotate(0deg) scaleX(1) scaleY(1)");
 		expect(syllable?.style.getPropertyValue("--text-shadow-opacity")).toBe("0%");
 	});
 
@@ -909,7 +913,7 @@ describe("LyricsRenderer", () => {
 		expect(root.querySelector(".vocals-group.sung")).toBeNull();
 	});
 
-	test("does not use text fill progress for line synced lyrics", () => {
+	test("uses only the existing line timing for line-wide highlight progress", () => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {
 			type: "line",
@@ -923,7 +927,9 @@ describe("LyricsRenderer", () => {
 		renderer.update(5, 1 / 60);
 
 		const activeLine = root.querySelector<HTMLElement>(".vocals-group.active");
-		expect(activeLine?.style.getPropertyValue("--line-progress")).toBe("");
+		const line = activeLine?.querySelector<HTMLElement>(".line.highlight-target");
+		expect(line?.style.getPropertyValue("--line-progress")).toBe("50%");
+		expect(line?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(root.querySelector(".line-group")).not.toBeNull();
 	});
 

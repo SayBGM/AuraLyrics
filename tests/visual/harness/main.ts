@@ -21,6 +21,7 @@ type ScenarioName =
 	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
+	| "highlight-marker-wave"
 	| "interlude-dots"
 	| "interlude-wave"
 	| "line-sync"
@@ -32,6 +33,7 @@ type ScenarioName =
 	| "synthetic-word-sync"
 	| "korean-tail"
 	| "multiline-active-row"
+	| "parenthetical-echo"
 	| "settings-general"
 	| "settings-lyrics"
 	| "settings-appearance"
@@ -341,6 +343,33 @@ const scenarios: Record<ScenarioName, Scenario> = {
 			],
 		},
 	},
+	"highlight-marker-wave": {
+		timestamp: 4.35,
+		settings: {
+			...settingsForVisuals,
+			highlightEffect: "marker",
+			highlightMotion: "wave",
+			reduceMotion: false,
+		},
+		theme: buildTrackTheme({
+			DARK_VIBRANT: "#102d3a",
+			DESATURATED: "#3c6870",
+			LIGHT_VIBRANT: "#8ce6e3",
+			PROMINENT: "#102d3a",
+			VIBRANT: "#63d2d5",
+			VIBRANT_NON_ALARMING: "#63d2d5",
+		}),
+		lyrics: syllableLyrics([
+			[["지나간", 0, 2]],
+			[
+				["빛", 3, 3.6],
+				["이", 3.6, 4.1, true],
+				["나는", 4.1, 4.9],
+				["밤", 4.9, 5.8],
+			],
+			[["돌아와", 6, 8]],
+		]),
+	},
 	"interlude-dots": {
 		timestamp: 7,
 		settings: { ...settingsForVisuals, interludeStyle: "dots", showInterludes: true },
@@ -495,6 +524,44 @@ const scenarios: Record<ScenarioName, Scenario> = {
 			["This active lyric wraps across multiple visual lines without changing measure", 7, 11],
 			["After the long line", 11, 13],
 		]),
+	},
+	"parenthetical-echo": {
+		timestamp: 3.4,
+		settings: {
+			...settingsForVisuals,
+			alignmentMode: "center",
+			fontScale: 1.08,
+			highlightEffect: "glow-sweep",
+			highlightMotion: "bounce",
+			reduceMotion: false,
+		},
+		lyrics: {
+			type: "syllable",
+			startTime: 0,
+			endTime: 8,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 8,
+						syllables: [
+							{ text: "빛나는", startTime: 0, endTime: 1.5, isPartOfWord: false },
+							{ text: "밤", startTime: 1.5, endTime: 2.2, isPartOfWord: false },
+							{
+								text: "(오래도록 우리 곁을 맴돌던 작은 목소리)",
+								startTime: 2.2,
+								endTime: 5.2,
+								isPartOfWord: false,
+							},
+							{ text: "다시", startTime: 5.2, endTime: 6.4, isPartOfWord: false },
+							{ text: "찾아와", startTime: 6.4, endTime: 8, isPartOfWord: false },
+						],
+					},
+				},
+			],
+		},
 	},
 	"settings-general": {
 		timestamp: 0,

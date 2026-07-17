@@ -41,6 +41,7 @@ type SceneResources = {
 	groups: AnimatedGroup[];
 	viewportController?: LyricsViewportController;
 	interludeFrameController?: InterludeFrameController;
+	layoutFrame?: number;
 	cleaned: boolean;
 };
 
@@ -116,22 +117,25 @@ export class LyricsRenderer {
 				interludeFrameController = new InterludeFrameController(root, container, settings.interludeStyle, groups);
 			}
 		}
-		return this.presentScene(
+		const resources: SceneResources = {
+			scene: container,
+			container,
+			lyricsViewport,
+			lyricsTrack,
+			groups,
+			viewportController,
+			interludeFrameController,
+			cleaned: false,
+		};
+		const handle = this.presentScene(
 			root,
-			{
-				scene: container,
-				container,
-				lyricsViewport,
-				lyricsTrack,
-				groups,
-				viewportController,
-				interludeFrameController,
-				cleaned: false,
-			},
+			resources,
 			presentation,
 			this.shouldAnimate(presentation, settings.motionEnabled && !settings.reduceMotion),
 			false
 		);
+		this.scheduleLayoutUpdate(resources);
+		return handle;
 	}
 
 	public showStatus(
@@ -211,6 +215,7 @@ export class LyricsRenderer {
 				scene.lyricsTrack.classList.toggle(`align-${alignment}`, settings.alignmentMode === alignment);
 			}
 		}
+		this.finishLayoutUpdate(scene);
 		scene.viewportController?.applySettings(settings);
 		scene.viewportController?.update();
 		for (const group of scene.groups) {
@@ -291,6 +296,11 @@ export class LyricsRenderer {
 			return;
 		}
 		scene.cleaned = true;
+		const hostWindow = scene.scene.ownerDocument.defaultView;
+		if (scene.layoutFrame !== undefined) {
+			hostWindow?.cancelAnimationFrame?.(scene.layoutFrame);
+			scene.layoutFrame = undefined;
+		}
 		this.deactivateInterludeFrame(scene);
 		scene.viewportController?.destroy();
 		scene.scene.remove();
@@ -299,6 +309,28 @@ export class LyricsRenderer {
 		scene.lyricsViewport = undefined;
 		scene.lyricsTrack = undefined;
 		scene.viewportController = undefined;
+	}
+
+	private scheduleLayoutUpdate(scene: SceneResources): void {
+		const hostWindow = scene.scene.ownerDocument.defaultView;
+		if (!hostWindow?.requestAnimationFrame || !scene.viewportController) {
+			return;
+		}
+		scene.layoutFrame = hostWindow.requestAnimationFrame(() => {
+			scene.layoutFrame = undefined;
+			if (!scene.cleaned && this.currentScene === scene) {
+				scene.viewportController?.update();
+			}
+		});
+	}
+
+	private finishLayoutUpdate(scene: SceneResources): void {
+		if (scene.layoutFrame === undefined) {
+			return;
+		}
+		scene.scene.ownerDocument.defaultView?.cancelAnimationFrame?.(scene.layoutFrame);
+		scene.layoutFrame = undefined;
+		scene.viewportController?.update();
 	}
 
 	private deactivateInterludeFrame(scene: SceneResources): void {
@@ -339,6 +371,8 @@ export class LyricsRenderer {
 		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
 		root.style.setProperty("--spring-softness", String(settings.springSoftness));
 		root.style.fontFamily = `${settings.fontFamily}, sans-serif`;
+		root.dataset.highlightEffect = settings.highlightEffect;
+		root.dataset.highlightMotion = settings.highlightMotion;
 		root.classList.toggle("reduce-motion", settings.reduceMotion || !settings.motionEnabled);
 		root.classList.toggle("motion-disabled", !settings.motionEnabled);
 	}

@@ -7,6 +7,7 @@ type ScenarioName =
 	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
+	| "highlight-marker-wave"
 	| "interlude-dots"
 	| "interlude-wave"
 	| "line-sync"
@@ -18,6 +19,7 @@ type ScenarioName =
 	| "synthetic-word-sync"
 	| "korean-tail"
 	| "multiline-active-row"
+	| "parenthetical-echo"
 	| "settings-general"
 	| "settings-lyrics"
 	| "settings-appearance"
@@ -382,6 +384,25 @@ for (const [scenario, snapshot] of [
 	});
 }
 
+test("highlight settings update the compact preview independently", async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 760 });
+	await renderScenario(page, "settings-appearance");
+
+	await page.locator('[data-control-id="highlight-effect"]').selectOption("marker");
+	await page.locator('[data-control-id="highlight-motion"]').selectOption("wave");
+	const preview = page.locator(".highlight-preview");
+	await preview.scrollIntoViewIfNeeded();
+	await expect(preview).toHaveAttribute("data-effect", "marker");
+	await expect(preview).toHaveAttribute("data-motion", "wave");
+	await expect(preview).toHaveAccessibleName("Highlight preview");
+	await expect(page.locator('[data-control-id="highlight-effect"]')).toHaveValue("marker");
+	await expect(page.locator('[data-control-id="highlight-motion"]')).toHaveValue("wave");
+	await expect(page.locator('[aria-labelledby="aura-settings-group-appearance-highlight"]')).toHaveScreenshot(
+		"settings-highlight-preview.png",
+		screenshotTolerance
+	);
+});
+
 test("compact Korean lyrics settings keep long descriptions and touch targets readable", async ({ page }) => {
 	await page.setViewportSize({ width: 640, height: 760 });
 	await renderScenario(page, "settings-lyrics-ko");
@@ -482,7 +503,7 @@ test("synthetic karaoke uses the themed syllable wake without a visible timing m
 		const haloStyle = getComputedStyle(activeGroup, "::after");
 		const syntheticStyleSource = Array.from(document.querySelectorAll("style"))
 			.map((style) => style.textContent ?? "")
-			.find((source) => source.includes(".aura-lyrics.synthetic-timing .syllable.active"));
+			.find((source) => source.includes('.aura-lyrics.synthetic-timing[data-highlight-effect="fill"] .syllable.active'));
 		const gradientProgress = activeSyllable.style.getPropertyValue("--gradient-progress");
 		return {
 			hasSyntheticClass: lyrics.classList.contains("synthetic-timing"),
@@ -604,6 +625,80 @@ test("word and syllable sync keeps readable tracking and visible glow", async ({
 	});
 	await expect(page.locator(".pip-cover")).toHaveCSS("opacity", "0.95");
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("word-sync-active.png", screenshotTolerance);
+});
+
+test("marker and wave combine on existing syllable timing", async ({ page }) => {
+	await renderScenario(page, "highlight-marker-wave");
+
+	const metrics = await page.evaluate(() => {
+		const scene = document.querySelector<HTMLElement>(".aura-lyrics");
+		const active = document.querySelector<HTMLElement>(".syllable.active");
+		if (!scene || !active) {
+			throw new Error("Missing highlighted syllable scene.");
+		}
+		const marker = getComputedStyle(active, "::before");
+		return {
+			effect: scene.dataset.highlightEffect,
+			motion: scene.dataset.highlightMotion,
+			progress: active.style.getPropertyValue("--highlight-progress"),
+			transform: active.style.transform,
+			markerContent: marker.content,
+			markerBackground: marker.backgroundColor,
+		};
+	});
+
+	expect(metrics.effect).toBe("marker");
+	expect(metrics.motion).toBe("wave");
+	expect(Number.parseFloat(metrics.progress)).toBeGreaterThan(0);
+	expect(metrics.transform).toContain("rotate(");
+	expect(metrics.markerContent).toBe('""');
+	expect(metrics.markerBackground).not.toBe("rgba(0, 0, 0, 0)");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("highlight-marker-wave.png", screenshotTolerance);
+});
+
+test("parenthetical echoes stay right aligned and keep stable flow before and during interaction", async ({ page }) => {
+	await page.setViewportSize({ width: 480, height: 300 });
+	const measure = async (timestamp: number) => {
+		await renderScenario(page, "parenthetical-echo", timestamp);
+		return page.evaluate(() => {
+			const rows = Array.from(document.querySelectorAll<HTMLElement>(".syllable-row"));
+			const row = rows.find((candidate) => candidate.classList.contains("has-parenthetical-echo"));
+			const echo = row?.querySelector<HTMLElement>(".syllable-echo");
+			const next = row ? rows[rows.indexOf(row) + 1] : undefined;
+			const group = row?.closest<HTMLElement>(".vocals-group");
+			if (!row || !echo || !next || !group) {
+				throw new Error("Missing parenthetical echo rows.");
+			}
+			const rowRect = row.getBoundingClientRect();
+			const echoRect = echo.getBoundingClientRect();
+			const nextRect = next.getBoundingClientRect();
+			const style = getComputedStyle(echo);
+			const groupStyle = getComputedStyle(group);
+			return {
+				layoutHeight: row.offsetHeight,
+				paddingBlockStart: groupStyle.paddingBlockStart,
+				paddingBlockEnd: groupStyle.paddingBlockEnd,
+				rightDelta: Math.abs(rowRect.right - echoRect.right),
+				nextGap: nextRect.top - echoRect.bottom,
+				justifyContent: style.justifyContent,
+				textAlign: style.textAlign,
+			};
+		});
+	};
+
+	const before = await measure(-0.2);
+	const active = await measure(3.4);
+
+	expect(before.justifyContent).toBe("flex-end");
+	expect(before.textAlign).toBe("right");
+	expect(before.rightDelta).toBeLessThanOrEqual(1);
+	expect(before.nextGap).toBeGreaterThanOrEqual(0);
+	expect(active.layoutHeight).toBe(before.layoutHeight);
+	expect(active.paddingBlockStart).toBe(before.paddingBlockStart);
+	expect(active.paddingBlockEnd).toBe(before.paddingBlockEnd);
+	expect(active.rightDelta).toBeLessThanOrEqual(1);
+	expect(active.nextGap).toBeGreaterThanOrEqual(0);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("parenthetical-echo.png", screenshotTolerance);
 });
 
 test("Korean tail sustain remains aligned and unclipped", async ({ page }) => {
@@ -922,13 +1017,16 @@ const transitionMetrics = async (page: Page) =>
 		};
 	});
 
-const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => {
-	await page.evaluate((scenarioName) => {
-		if (!window.auraVisualHarness) {
-			throw new Error("AuraLyrics visual harness API was not installed.");
-		}
-		window.auraVisualHarness.renderScenario(scenarioName);
-	}, name);
+const renderScenario = async (page: Page, name: ScenarioName, timestamp?: number): Promise<void> => {
+	await page.evaluate(
+		({ scenarioName, timestampSec }) => {
+			if (!window.auraVisualHarness) {
+				throw new Error("AuraLyrics visual harness API was not installed.");
+			}
+			window.auraVisualHarness.renderScenario(scenarioName, timestampSec);
+		},
+		{ scenarioName: name, timestampSec: timestamp }
+	);
 	if (name.startsWith("settings-")) {
 		await expect(page.locator(".aura-lyrics-settings")).toBeVisible();
 		return;

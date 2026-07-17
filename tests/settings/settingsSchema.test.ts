@@ -10,6 +10,17 @@ describe("settingsSchema", () => {
 		expect(DEFAULT_SETTINGS.language).toBe("en");
 	});
 
+	test("defaults highlighting to the existing fill and spring treatment", () => {
+		expect(DEFAULT_SETTINGS.highlightEffect).toBe("fill");
+		expect(DEFAULT_SETTINGS.highlightMotion).toBe("spring");
+		expect(normalizeLoadedSettings({ highlightEffect: "neon" as never }).highlightEffect).toBe("fill");
+		expect(normalizeLoadedSettings({ highlightMotion: "shake" as never }).highlightMotion).toBe("spring");
+		expect(normalizeLoadedSettings({ highlightEffect: "marker", highlightMotion: "wave" })).toMatchObject({
+			highlightEffect: "marker",
+			highlightMotion: "wave",
+		});
+	});
+
 	test("does not expose a configurable lyrics vertical position", () => {
 		const settings = normalizeLoadedSettings({
 			lyricsVerticalPosition: 0.25,
@@ -95,6 +106,18 @@ describe("settingsSchema", () => {
 		],
 		["alignment", { alignmentMode: "right" }, (settings: typeof DEFAULT_SETTINGS) => settings.alignmentMode, DEFAULT_SETTINGS.alignmentMode],
 		["interlude style", { interludeStyle: "bars" }, (settings: typeof DEFAULT_SETTINGS) => settings.interludeStyle, DEFAULT_SETTINGS.interludeStyle],
+		[
+			"highlight effect",
+			{ highlightEffect: "neon" },
+			(settings: typeof DEFAULT_SETTINGS) => settings.highlightEffect,
+			DEFAULT_SETTINGS.highlightEffect,
+		],
+		[
+			"highlight motion",
+			{ highlightMotion: "shake" },
+			(settings: typeof DEFAULT_SETTINGS) => settings.highlightMotion,
+			DEFAULT_SETTINGS.highlightMotion,
+		],
 		[
 			"proxy mode",
 			{ providers: { musixmatchProxyMode: "direct" } },

@@ -154,6 +154,8 @@ describe("SettingsStore", () => {
 		["language", { language: "ko" }],
 		["lyrics delay", { lyricsDelayMs: 350 }],
 		["alignment", { alignmentMode: "left" }],
+		["highlight effect", { highlightEffect: "marker" }],
+		["highlight motion", { highlightMotion: "wave" }],
 		["debug", { debugMode: true }],
 	] as const)("keeps the active preset after a non-visual %s update", (_name, patch) => {
 		const store = new SettingsStore(new MemoryStorage());

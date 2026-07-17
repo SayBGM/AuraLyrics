@@ -5,6 +5,8 @@ export type LyricsVisualPreset = "immersive" | "clean" | "karaoke" | "custom";
 export type SyncPreference = "prefer-syllable" | "line-only";
 export type AlignmentMode = "natural" | "center" | "left";
 export type InterludeStyle = "frame" | "dots" | "wave";
+export type HighlightEffect = "fill" | "glow-sweep" | "underline" | "marker" | "outline-fill" | "spotlight";
+export type HighlightMotion = "spring" | "pulse" | "bounce" | "elastic" | "wave" | "ripple";
 export type UiLanguage = "en" | "ko" | "ja";
 export type MusixmatchProxyMode = "default" | "custom";
 
@@ -27,6 +29,8 @@ export type ExtensionSettings = {
 	visibleContextLines: number;
 	showInterludes: boolean;
 	interludeStyle: InterludeStyle;
+	highlightEffect: HighlightEffect;
+	highlightMotion: HighlightMotion;
 	motionEnabled: boolean;
 	motionIntensity: number;
 	springSoftness: number;
@@ -71,6 +75,8 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 	visibleContextLines: 1,
 	showInterludes: true,
 	interludeStyle: "dots",
+	highlightEffect: "fill",
+	highlightMotion: "spring",
 	motionEnabled: true,
 	motionIntensity: 1,
 	springSoftness: 0.65,
@@ -136,6 +142,10 @@ export type PresetControlledKey = (typeof PRESET_CONTROLLED_KEYS)[number];
 const isProviderId = (value: unknown): value is ProviderId => typeof value === "string" && KNOWN_PROVIDER_IDS.includes(value as ProviderId);
 
 const isInterludeStyle = (value: unknown): value is InterludeStyle => value === "frame" || value === "dots" || value === "wave";
+const isHighlightEffect = (value: unknown): value is HighlightEffect =>
+	value === "fill" || value === "glow-sweep" || value === "underline" || value === "marker" || value === "outline-fill" || value === "spotlight";
+const isHighlightMotion = (value: unknown): value is HighlightMotion =>
+	value === "spring" || value === "pulse" || value === "bounce" || value === "elastic" || value === "wave" || value === "ripple";
 const isUiLanguage = (value: unknown): value is UiLanguage => value === "en" || value === "ko" || value === "ja";
 const isMusixmatchProxyMode = (value: unknown): value is MusixmatchProxyMode => value === "default" || value === "custom";
 const isLyricsVisualPreset = (value: unknown): value is LyricsVisualPreset =>
@@ -206,6 +216,8 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		visibleContextLines: clampNumericSetting("visibleContextLines", settings.visibleContextLines, defaults.visibleContextLines),
 		showInterludes: normalizeBoolean(settings.showInterludes, defaults.showInterludes),
 		interludeStyle: isInterludeStyle(settings.interludeStyle) ? settings.interludeStyle : defaults.interludeStyle,
+		highlightEffect: isHighlightEffect(settings.highlightEffect) ? settings.highlightEffect : defaults.highlightEffect,
+		highlightMotion: isHighlightMotion(settings.highlightMotion) ? settings.highlightMotion : defaults.highlightMotion,
 		motionEnabled: normalizeBoolean(settings.motionEnabled, defaults.motionEnabled),
 		motionIntensity: clampNumericSetting("motionIntensity", settings.motionIntensity, defaults.motionIntensity),
 		springSoftness: clampNumber(settings.springSoftness, defaults.springSoftness, 0, 1),
