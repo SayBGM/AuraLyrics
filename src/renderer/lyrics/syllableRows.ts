@@ -146,7 +146,7 @@ const parseTimedSegments = (vocal: SyllableVocal, splitParentheticals: boolean):
 	const parsed: ParsedTimedSegment[] = [];
 	let isInsideParenthetical = false;
 	for (const syllable of vocal.syllables) {
-		const text = syllable.romanizedText ?? syllable.text;
+		const text = syllable.text;
 		const segments: ParentheticalSegment[] =
 			!splitParentheticals || syllable.isPartOfWord
 				? [{ text, isParenthetical: false, continues: false }]

@@ -1,20 +1,29 @@
 import type { LyricsProvider } from "../lyrics/types";
+import { providerDisplayName } from "../shared/providerDisplayNames";
 import type { SettingsControlFactory } from "./SettingsControlFactory";
 import type { ExtensionSettings, SettingsStore, SettingsUpdateResult, UiLanguage } from "./SettingsStore";
-import { formatTranslation, type TranslationKey, translate, translatedOptionLabel } from "./settingsTranslations";
+import { formatTranslation, translate, translatedOptionLabel } from "./settingsTranslations";
+import type { SettingsFeedbackState } from "./settingsViewTypes";
 
 type SettingsProviderPanelCallbacks = {
+	onFeedback?(state: SettingsFeedbackState, text: string, durationMs?: number): void;
 	onMusixmatchTokenAccepted(token: string): void;
 	onRefreshMusixmatchToken(): Promise<string | undefined>;
 	onScheduleRefresh(): void;
 };
 
+export type SettingsProviderGroups = HTMLElement[] & {
+	authentication: HTMLElement[];
+	network: HTMLElement[];
+	priority: HTMLElement[];
+};
+
 export class SettingsProviderPanel {
 	private activeTokenRequest?: number;
 	private musixmatchTokenInput?: HTMLInputElement;
-	private providerStatus?: HTMLElement;
+	private providerAnnouncement?: HTMLElement;
+	private tokenRequestButton?: HTMLButtonElement;
 	private tokenRequestGeneration = 0;
-	private tokenStatus?: { key: TranslationKey } | { text: string };
 
 	public constructor(
 		private readonly ownerDocument: Document,
@@ -24,109 +33,127 @@ export class SettingsProviderPanel {
 		private readonly callbacks: SettingsProviderPanelCallbacks
 	) {}
 
-	public render(settings: ExtensionSettings): HTMLElement[] {
-		this.providerStatus = undefined;
+	public render(settings: ExtensionSettings): SettingsProviderGroups {
 		this.musixmatchTokenInput = undefined;
+		this.providerAnnouncement = undefined;
+		this.tokenRequestButton = undefined;
 		const language = settings.language;
-		const rows: HTMLElement[] = [];
-		for (const [index, provider] of settings.providers.order.entries()) {
-			rows.push(this.providerRow(settings, provider, index));
-		}
+		const priority = settings.providers.order.map((provider, index) => this.providerRow(settings, provider, index));
+		const order = this.ownerDocument.createElement("p");
+		order.className = "provider-order-summary";
+		order.textContent = formatTranslation("providerOrder", { order: settings.providers.order.map(providerDisplayName).join(" → ") }, language);
+		const announcement = this.ownerDocument.createElement("span");
+		announcement.className = "visually-hidden provider-order-announcement";
+		announcement.setAttribute("aria-live", "polite");
+		announcement.setAttribute("aria-atomic", "true");
+		this.providerAnnouncement = announcement;
+		priority.push(order, announcement);
+
 		const tokenRow = this.controls.input(
 			"musixmatch-token",
-			this.t("musixmatchToken", language),
+			translate("musixmatchToken", language),
 			settings.providers.musixmatchToken ?? "",
+			(value) => this.update({ providers: { ...this.store.get().providers, musixmatchToken: value || undefined } }).persisted,
+			() => this.invalidateTokenRequests(),
+			{ description: translate("authenticationDescription", language) },
+			"password"
+		);
+		this.enhanceTokenInput(tokenRow, settings.providers.musixmatchToken ?? "", language);
+		const generateButton = this.controls.button("generate-musixmatch-token", translate("generateMusixmatchToken", language), () => {
+			void this.refreshMusixmatchToken();
+		});
+		this.tokenRequestButton = generateButton;
+
+		const proxyMode = this.controls.select(
+			"proxy-mode",
+			translate("musixmatchProxyMode", language),
+			settings.providers.musixmatchProxyMode,
+			["default", "custom"],
 			(value) => {
-				this.clearTokenStatus();
-				return this.update({ providers: { ...this.store.get().providers, musixmatchToken: value || undefined } }).persisted;
+				const result = this.update({
+					providers: {
+						...this.store.get().providers,
+						musixmatchProxyMode: value as ExtensionSettings["providers"]["musixmatchProxyMode"],
+					},
+				});
+				this.callbacks.onScheduleRefresh();
+				return result.persisted;
 			},
-			() => this.clearTokenStatus()
-		);
-		this.musixmatchTokenInput = tokenRow.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]') ?? undefined;
-		rows.push(tokenRow);
-		rows.push(
-			this.controls.button("generate-musixmatch-token", this.t("generateMusixmatchToken", language), () => void this.refreshMusixmatchToken())
-		);
-		rows.push(
-			this.controls.select(
-				"proxy-mode",
-				this.t("musixmatchProxyMode", language),
-				settings.providers.musixmatchProxyMode,
-				["default", "custom"],
-				(value) => {
-					const result = this.update({
-						providers: {
-							...this.store.get().providers,
-							musixmatchProxyMode: value as ExtensionSettings["providers"]["musixmatchProxyMode"],
-						},
-					});
-					this.callbacks.onScheduleRefresh();
-					return result.persisted;
-				},
-				(value) => translatedOptionLabel("musixmatchProxyMode", value, language)
-			)
-		);
-		rows.push(
-			this.controls.text(
-				this.t(
+			(value) => translatedOptionLabel("musixmatchProxyMode", value, language),
+			{
+				description: translate(
 					settings.providers.musixmatchProxyMode === "custom" ? "musixmatchProxyModeCustomDescription" : "musixmatchProxyModeDefaultDescription",
 					language
-				)
-			)
+				),
+			}
 		);
+		const network = [proxyMode];
 		if (settings.providers.musixmatchProxyMode === "custom") {
-			rows.push(
-				this.controls.input("proxy-url", this.t("musixmatchProxyBaseUrl", language), settings.providers.musixmatchProxyBaseUrl ?? "", (value) => {
-					return this.update({ providers: { ...this.store.get().providers, musixmatchProxyBaseUrl: value || undefined } }).persisted;
-				})
+			network.push(
+				this.controls.input(
+					"proxy-url",
+					translate("musixmatchProxyBaseUrl", language),
+					settings.providers.musixmatchProxyBaseUrl ?? "",
+					(value) => this.update({ providers: { ...this.store.get().providers, musixmatchProxyBaseUrl: value || undefined } }).persisted,
+					undefined,
+					{ description: translate("networkDescription", language) },
+					"url"
+				)
 			);
+			const example = this.ownerDocument.createElement("code");
+			example.className = "proxy-example";
+			example.textContent = translate("musixmatchProxyExample", language);
+			network.push(example);
 		}
-		const status = this.controls.status(this.tokenStatusText(language));
-		this.providerStatus = status;
-		rows.push(status);
-		rows.push(this.controls.text(this.format("providerOrder", { order: settings.providers.order.join(" → ") }, language)));
-		return rows;
+		const authentication = [tokenRow, generateButton];
+		return Object.assign([...priority, ...authentication, ...network], { priority, authentication, network });
 	}
 
 	public clearTokenStatus(): void {
 		this.invalidateTokenRequests();
-		this.tokenStatus = undefined;
-		this.updateTokenStatus();
 	}
 
 	public cleanup(): void {
-		const wasRequesting = this.activeTokenRequest !== undefined;
 		this.invalidateTokenRequests();
-		this.providerStatus = undefined;
 		this.musixmatchTokenInput = undefined;
-		if (wasRequesting) {
-			this.tokenStatus = undefined;
-		}
+		this.providerAnnouncement = undefined;
+		this.tokenRequestButton = undefined;
 	}
 
 	private providerRow(settings: ExtensionSettings, provider: ExtensionSettings["providers"]["order"][number], index: number): HTMLElement {
 		const row = this.ownerDocument.createElement("div");
 		row.className = "setting-row provider-row";
 		const label = this.ownerDocument.createElement("span");
-		label.textContent = this.providerLabel(provider);
+		label.className = "setting-label";
+		const providerName = this.providerLabel(provider);
+		label.textContent = providerName;
 		const controls = this.ownerDocument.createElement("div");
 		controls.className = "provider-controls";
 		const enabled = this.ownerDocument.createElement("input");
 		enabled.type = "checkbox";
 		enabled.checked = settings.providers.enabled[provider];
 		enabled.dataset.controlId = `provider-enabled-${provider}`;
-		enabled.setAttribute("aria-label", this.format("providerEnabled", { provider: this.providerLabel(provider) }, settings.language));
+		enabled.setAttribute("aria-label", formatTranslation("providerEnabled", { provider: providerName }, settings.language));
 		enabled.addEventListener("change", () => {
-			this.update({ providers: { ...this.store.get().providers, enabled: { ...this.store.get().providers.enabled, [provider]: enabled.checked } } });
+			const result = this.update({
+				providers: { ...this.store.get().providers, enabled: { ...this.store.get().providers.enabled, [provider]: enabled.checked } },
+			});
+			this.reportPersistence(result.persisted, settings.language);
 		});
-		const up = this.controls.iconButton(`provider-${provider}-up`, "up", this.format("moveUp", { provider }, settings.language), () =>
-			this.moveProvider(provider, -1)
+		const up = this.controls.iconButton(
+			`provider-${provider}-up`,
+			"up",
+			formatTranslation("moveUp", { provider: providerName }, settings.language),
+			() => this.moveProvider(provider, -1)
 		);
 		up.dataset.providerId = provider;
 		up.dataset.providerDirection = "up";
 		up.disabled = index === 0;
-		const down = this.controls.iconButton(`provider-${provider}-down`, "down", this.format("moveDown", { provider }, settings.language), () =>
-			this.moveProvider(provider, 1)
+		const down = this.controls.iconButton(
+			`provider-${provider}-down`,
+			"down",
+			formatTranslation("moveDown", { provider: providerName }, settings.language),
+			() => this.moveProvider(provider, 1)
 		);
 		down.dataset.providerId = provider;
 		down.dataset.providerDirection = "down";
@@ -145,39 +172,87 @@ export class SettingsProviderPanel {
 			return;
 		}
 		[order[index], order[nextIndex]] = [order[nextIndex], order[index]];
-		this.update({ providers: { ...settings.providers, order } });
+		const result = this.update({ providers: { ...settings.providers, order } });
+		if (!result.persisted) {
+			this.callbacks.onFeedback?.("error", translate("saveError", settings.language));
+			return;
+		}
+		const message = formatTranslation(
+			"providerMoved",
+			{ provider: this.providerLabel(provider), position: String(nextIndex + 1) },
+			settings.language
+		);
+		this.providerAnnouncement?.replaceChildren(message);
+		this.callbacks.onFeedback?.("success", message, 2500);
 		this.callbacks.onScheduleRefresh();
+	}
+
+	private enhanceTokenInput(row: HTMLElement, token: string, language: UiLanguage): void {
+		const input = row.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
+		if (!input) {
+			return;
+		}
+		this.musixmatchTokenInput = input;
+		const wrapper = this.ownerDocument.createElement("span");
+		wrapper.className = "token-control";
+		input.replaceWith(wrapper);
+		wrapper.append(input);
+		const visibility = this.controls.button("toggle-musixmatch-token", translate("show", language), () => {
+			const showing = input.type === "text";
+			input.type = showing ? "password" : "text";
+			visibility.textContent = translate(showing ? "show" : "hide", language);
+		});
+		visibility.classList.add("token-action");
+		wrapper.append(visibility);
+		const clipboard = this.ownerDocument.defaultView?.navigator.clipboard;
+		if (clipboard?.writeText) {
+			const copy = this.controls.button("copy-musixmatch-token", translate("copy", language), () => {
+				void clipboard
+					.writeText(input.value || token)
+					.then(() => this.callbacks.onFeedback?.("success", translate("tokenCopied", language), 2500))
+					.catch((error: unknown) => this.callbacks.onFeedback?.("error", error instanceof Error ? error.message : String(error)));
+			});
+			copy.classList.add("token-action");
+			wrapper.append(copy);
+		}
 	}
 
 	private async refreshMusixmatchToken(): Promise<void> {
 		const request = ++this.tokenRequestGeneration;
-		let acceptedToken: string | undefined;
 		this.activeTokenRequest = request;
-		this.tokenStatus = { key: "requestingToken" };
-		this.updateTokenStatus();
+		if (this.tokenRequestButton) {
+			this.tokenRequestButton.disabled = true;
+		}
+		const language = this.store.get().language;
+		this.callbacks.onFeedback?.("working", translate("requestingToken", language));
 		try {
 			const token = await this.callbacks.onRefreshMusixmatchToken();
 			if (!this.isCurrentTokenRequest(request)) {
 				return;
 			}
 			if (!token) {
-				this.tokenStatus = { key: "tokenMissing" };
-			} else {
-				const result = this.store.updateWithResult({ providers: { ...this.store.get().providers, musixmatchToken: token } });
-				this.patchMusixmatchTokenInput(token);
-				this.tokenStatus = { key: "tokenUpdated" };
-				acceptedToken = result.persisted ? token : undefined;
-			}
-		} catch (error) {
-			if (!this.isCurrentTokenRequest(request)) {
+				this.callbacks.onFeedback?.("error", translate("tokenMissing", language));
 				return;
 			}
-			this.tokenStatus = { text: error instanceof Error ? error.message : String(error) };
-		}
-		this.activeTokenRequest = undefined;
-		this.updateTokenStatus();
-		if (acceptedToken) {
-			this.callbacks.onMusixmatchTokenAccepted(acceptedToken);
+			const result = this.store.updateWithResult({ providers: { ...this.store.get().providers, musixmatchToken: token } });
+			if (!result.persisted) {
+				this.callbacks.onFeedback?.("error", translate("saveError", language));
+				return;
+			}
+			this.patchMusixmatchTokenInput(token);
+			this.callbacks.onMusixmatchTokenAccepted(token);
+			this.callbacks.onFeedback?.("success", translate("tokenUpdated", language), 2500);
+		} catch (error) {
+			if (this.isCurrentTokenRequest(request)) {
+				this.callbacks.onFeedback?.("error", error instanceof Error ? error.message : String(error));
+			}
+		} finally {
+			if (this.isCurrentTokenRequest(request)) {
+				this.activeTokenRequest = undefined;
+				if (this.tokenRequestButton) {
+					this.tokenRequestButton.disabled = false;
+				}
+			}
 		}
 	}
 
@@ -188,47 +263,26 @@ export class SettingsProviderPanel {
 	private invalidateTokenRequests(): void {
 		this.tokenRequestGeneration += 1;
 		this.activeTokenRequest = undefined;
-	}
-
-	private updateTokenStatus(): void {
-		if (this.providerStatus) {
-			this.providerStatus.textContent = this.tokenStatusText(this.store.get().language);
+		if (this.tokenRequestButton) {
+			this.tokenRequestButton.disabled = false;
 		}
-	}
-
-	private tokenStatusText(language: UiLanguage): string {
-		if (!this.tokenStatus) {
-			return "";
-		}
-		return "key" in this.tokenStatus ? this.t(this.tokenStatus.key, language) : this.tokenStatus.text;
 	}
 
 	private patchMusixmatchTokenInput(token: string): void {
-		const input = this.musixmatchTokenInput;
-		if (!input) {
-			return;
-		}
-		const selectionStart = input.selectionStart;
-		const selectionEnd = input.selectionEnd;
-		input.value = token;
-		if (this.ownerDocument.activeElement === input && selectionStart != null && selectionEnd != null) {
-			input.setSelectionRange(Math.min(selectionStart, token.length), Math.min(selectionEnd, token.length));
+		if (this.musixmatchTokenInput) {
+			this.musixmatchTokenInput.value = token;
 		}
 	}
 
 	private providerLabel(provider: ExtensionSettings["providers"]["order"][number]): string {
-		return this.providers.find((item) => item.id === provider)?.id ?? provider;
+		return providerDisplayName(this.providers.find((item) => item.id === provider)?.id ?? provider);
+	}
+
+	private reportPersistence(persisted: boolean, language: UiLanguage): void {
+		this.callbacks.onFeedback?.(persisted ? "saved" : "error", translate(persisted ? "saved" : "saveError", language), persisted ? 1500 : undefined);
 	}
 
 	private update(patch: Partial<ExtensionSettings>): SettingsUpdateResult {
 		return this.store.updateWithResult(patch);
-	}
-
-	private t(key: TranslationKey, language: UiLanguage): string {
-		return translate(key, language);
-	}
-
-	private format(key: TranslationKey, values: Record<string, string>, language: UiLanguage): string {
-		return formatTranslation(key, values, language);
 	}
 }

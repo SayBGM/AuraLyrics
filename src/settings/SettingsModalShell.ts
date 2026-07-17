@@ -1,7 +1,7 @@
 import { createSettingsIcon } from "./settingsIcons";
 import { settingsStyles } from "./settingsStyles";
 import { translate } from "./settingsTranslations";
-import { SETTINGS_SECTIONS, type SettingsSection, settingsPanelId, settingsTabId } from "./settingsViewTypes";
+import { SETTINGS_SECTIONS, type SettingsFeedbackState, type SettingsSection, settingsPanelId, settingsTabId } from "./settingsViewTypes";
 
 type SettingsModalShellCallbacks = {
 	language(): "en" | "ja" | "ko";
@@ -15,6 +15,7 @@ export class SettingsModalShell {
 	private mediaQuery?: MediaQueryList;
 	public navigation!: HTMLElement;
 	public panelScroller!: HTMLDivElement;
+	public feedbackBar!: HTMLDivElement;
 
 	public constructor(
 		private readonly ownerDocument: Document,
@@ -36,7 +37,17 @@ export class SettingsModalShell {
 		const panelScroller = this.ownerDocument.createElement("div");
 		panelScroller.className = "settings-panel-scroll";
 		this.panelScroller = panelScroller;
-		layout.append(navigation, panelScroller);
+		const content = this.ownerDocument.createElement("div");
+		content.className = "settings-content";
+		const feedbackBar = this.ownerDocument.createElement("div");
+		feedbackBar.className = "settings-feedback";
+		feedbackBar.dataset.state = "idle";
+		feedbackBar.setAttribute("role", "status");
+		feedbackBar.setAttribute("aria-live", "polite");
+		feedbackBar.setAttribute("aria-atomic", "true");
+		this.feedbackBar = feedbackBar;
+		content.append(panelScroller, feedbackBar);
+		layout.append(navigation, content);
 		const styles = this.ownerDocument.createElement("style");
 		styles.textContent = settingsStyles;
 		container.replaceChildren(styles, layout);
@@ -65,6 +76,7 @@ export class SettingsModalShell {
 
 	public refreshText(): void {
 		const language = this.callbacks.language();
+		this.navigation.closest<HTMLElement>(".aura-lyrics-settings")?.setAttribute("aria-label", translate("settingsTitle", language));
 		this.navigation.setAttribute("aria-label", translate("settingsNavigation", language));
 		for (const section of SETTINGS_SECTIONS) {
 			const label = this.navigation.querySelector<HTMLElement>(`[data-section="${section.id}"] .settings-tab-label`);
@@ -72,6 +84,11 @@ export class SettingsModalShell {
 				label.textContent = translate(section.label, language);
 			}
 		}
+	}
+
+	public setFeedback(state: SettingsFeedbackState, text = ""): void {
+		this.feedbackBar.dataset.state = state;
+		this.feedbackBar.textContent = text;
 	}
 
 	public setCompact(compact: boolean): void {

@@ -166,7 +166,7 @@ describe("pipStyles", () => {
 		const auraLyricsRule = baseStyles.match(/\.aura-lyrics \{[^}]+\}/)?.[0] ?? "";
 		const activeLineRule = lyricsStyles.match(/\.line-group\.active \.line \{[^}]+\}/)?.[0] ?? "";
 		const syllableRule = lyricsStyles.match(/(?:^|\n)\.syllable \{[^}]+\}/)?.[0] ?? "";
-		const providerRule = lyricsStyles.match(/\.provider-source \{[^}]+\}/)?.[0] ?? "";
+		const providerRule = lyricsStyles.match(/\.provider-credit-label \{[^}]+\}/)?.[0] ?? "";
 		const interludeRule = interludeStyles.match(/\.interlude-pill \{[^}]+\}/)?.[0] ?? "";
 		const statusRule = statusStyles.match(/\.status-card \{[^}]+\}/)?.[0] ?? "";
 
@@ -251,7 +251,7 @@ describe("pipStyles", () => {
 
 	test("keeps lyric tracking stable between inactive and active states", () => {
 		const lyricRule = pipStyles.match(/\.lyric \{[^}]+\}/)?.[0] ?? "";
-		const lineRule = pipStyles.match(/\.line \{[^}]+\}/)?.[0] ?? "";
+		const lineRule = pipStyles.match(/(?:^|\n)\.line \{[^}]+\}/)?.[0] ?? "";
 		const wordRule = pipStyles.match(/\.word \{[^}]+\}/)?.[0] ?? "";
 		const syllableRule = pipStyles.match(/(?:^|\n)\.syllable \{[^}]+\}/)?.[0] ?? "";
 		const activeLineRule = pipStyles.match(/\.line-group\.active \.line \{[^}]+\}/)?.[0] ?? "";
@@ -306,6 +306,27 @@ describe("pipStyles", () => {
 		expect(pipStyles).toContain("transform-origin: left center");
 	});
 
+	test("gives left, natural, and center alignment distinct internal flex contracts", () => {
+		const naturalRule =
+			lyricsStyles.match(
+				/\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.vocals,\n\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.syllable-main,\n\.lyrics-track\.align-natural \.vocals-group\.opposite-aligned \.syllable-echo \{[^}]+\}/
+			)?.[0] ?? "";
+		const leftRule =
+			lyricsStyles.match(
+				/\.lyrics-track\.align-left \.vocals-group \.vocals,\n\.lyrics-track\.align-left \.vocals-group \.syllable-main,\n\.lyrics-track\.align-left \.vocals-group \.syllable-echo \{[^}]+\}/
+			)?.[0] ?? "";
+		const centerRule =
+			lyricsStyles.match(
+				/\.lyrics-track\.align-center \.vocals-group \.vocals,\n\.lyrics-track\.align-center \.vocals-group \.syllable-main,\n\.lyrics-track\.align-center \.vocals-group \.syllable-echo \{[^}]+\}/
+			)?.[0] ?? "";
+
+		expect(naturalRule).toContain("justify-content: flex-end");
+		expect(leftRule).toContain("justify-content: flex-start");
+		expect(centerRule).toContain("justify-content: center");
+		expect(lyricsStyles).toContain(".lyrics-track.align-left .vocals-group.opposite-aligned");
+		expect(lyricsStyles).toContain(".lyrics-track.align-natural .vocals-group.opposite-aligned");
+	});
+
 	test("keeps interlude indicators centered regardless of lyric alignment", () => {
 		expect(pipStyles).toContain(".lyrics-track.align-left .interlude");
 		expect(pipStyles).toContain(".lyrics-track.align-natural .interlude");
@@ -350,12 +371,12 @@ describe("pipStyles", () => {
 		const syllableNextRule = pipStyles.match(/\.syllable-row\.context-next \{[^}]+\}/)?.[0] ?? "";
 		const contextLineRule = pipStyles.match(/\.line-group\.context-previous \.line,\n\.line-group\.context-next \.line \{[^}]+\}/)?.[0] ?? "";
 
-		expect(vocalsPreviousRule).toContain("opacity: 0.48");
-		expect(vocalsNextRule).toContain("opacity: 0.48");
-		expect(vocalsPreviousRule).toContain("filter: blur(calc(var(--inactive-blur) * 0.55))");
-		expect(vocalsNextRule).toContain("filter: blur(calc(var(--inactive-blur) * 0.55))");
-		expect(syllablePreviousRule).toContain("opacity: 0.48");
-		expect(syllableNextRule).toContain("opacity: 0.48");
+		expect(vocalsPreviousRule).toContain("opacity: 1");
+		expect(vocalsNextRule).toContain("opacity: 1");
+		expect(vocalsPreviousRule).toContain("filter: blur(0)");
+		expect(vocalsNextRule).toContain("filter: blur(0)");
+		expect(syllablePreviousRule).toContain("opacity: 1");
+		expect(syllableNextRule).toContain("opacity: 1");
 		expect(contextLineRule).toContain("color: var(--pip-muted-foreground-color)");
 	});
 
@@ -446,7 +467,7 @@ describe("pipStyles", () => {
 		expect(animatedGlyphRules).toEqual([]);
 	});
 
-	test("styles a colored interlude frame and soft lyric blur", () => {
+	test("styles a colored interlude frame with one outer progress effect and no inner attenuation", () => {
 		expect(pipStyles).toContain(".pip-border-frame");
 		expect(pipStyles).toContain(".pip-frame-surface");
 		expect(pipStyles).toContain(".pip-frame-inner-shadow");
@@ -472,8 +493,9 @@ describe("pipStyles", () => {
 		expect(pipStyles).not.toContain("conic-gradient(");
 		expect(pipStyles).not.toContain("stroke: url(#pip-border-progress-gradient)");
 		expect(pipStyles).toContain("#aura-lyrics-root.interlude-frame-active .pip-content");
-		expect(pipStyles).toContain("scale(0.875)");
-		expect(pipStyles).toContain(".aura-lyrics.interlude-active");
+		expect(pipStyles).toContain("scale(0.94)");
+		expect(pipStyles).toContain("opacity: 0.82");
+		expect(pipStyles).not.toContain(".aura-lyrics.interlude-active .vocals-group");
 		expect(pipStyles).toContain(".interlude-pill");
 		expect(pipStyles).toContain(".interlude-dot");
 		expect(pipStyles).toContain(".interlude-wave");
@@ -481,6 +503,23 @@ describe("pipStyles", () => {
 		expect(pipStyles).toContain("@keyframes interlude-wave-live");
 		expect(pipStyles).not.toContain(".interlude-frame {");
 		expect(pipStyles).not.toContain("width: var(--interlude-progress, 0%)");
+	});
+
+	test("stops movement and repeating animation for reduced or disabled motion", () => {
+		const reducedTrack = lyricsStyles.match(/\.aura-lyrics\.reduce-motion \.lyrics-track \{[^}]+\}/)?.[0] ?? "";
+		const disabled =
+			lyricsStyles.match(/\.aura-lyrics\.motion-disabled \.lyrics-track,\n\.aura-lyrics\.motion-disabled \.vocals-group,[\s\S]+?\{[^}]+\}/)?.[0] ??
+			"";
+		const reducedInterlude =
+			interludeStyles.match(
+				/#aura-lyrics-root\.reduce-motion \.interlude-pill,[\s\S]+?#aura-lyrics-root\.motion-disabled \.interlude-wave-bar \{[^}]+\}/
+			)?.[0] ?? "";
+
+		expect(reducedTrack).toContain("transition: none");
+		expect(disabled).toContain("transition: none");
+		expect(reducedInterlude).toContain("animation: none !important");
+		expect(reducedInterlude).toContain("transition-duration: 120ms");
+		expect(lyricsStyles).toContain(".aura-lyrics.motion-disabled .lyric-translation");
 	});
 
 	test("animates wave interludes only while playback and the interlude are active", () => {

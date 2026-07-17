@@ -84,12 +84,12 @@ const providers: LyricsProvider[] = [
 
 const callbacks = (onRefreshMusixmatchToken: () => Promise<string | undefined> = vi.fn()) => ({
 	getCurrentTrackLyricsDelay: vi.fn(),
-	onAdjustCurrentTrackLyricsDelay: vi.fn(),
-	onRefreshLyrics: vi.fn(),
+	onAdjustCurrentTrackLyricsDelay: vi.fn(() => true),
+	onRefreshLyrics: vi.fn(async () => undefined),
 	onClearCache: vi.fn(),
 	onMusixmatchTokenAccepted: vi.fn(),
 	onRefreshMusixmatchToken,
-	onResetCurrentTrackLyricsDelay: vi.fn(),
+	onResetCurrentTrackLyricsDelay: vi.fn(() => true),
 });
 
 const openView = (
@@ -202,6 +202,7 @@ describe("SettingsView", () => {
 		const modalTitle = modal.querySelector<HTMLElement>("[data-modal-title]");
 
 		expect(modalTitle?.textContent).toBe("AuraLyrics");
+		expect(content.getAttribute("aria-label")).toBe("AuraLyrics Settings");
 		expect(content.querySelector(".settings-title")).toBeNull();
 		expect(content.textContent).not.toContain("AuraLyrics");
 
@@ -272,7 +273,7 @@ describe("SettingsView", () => {
 
 	test("keeps a range input node and focus while updating its value", () => {
 		const { content, storage, store } = openView();
-		tab(content, "lyrics").click();
+		tab(content, "appearance").click();
 		const range = control<HTMLInputElement>(content, "font-scale");
 		storage.setCalls = 0;
 		range.focus();
@@ -365,9 +366,11 @@ describe("SettingsView", () => {
 		};
 		const onAdjust = vi.fn((_uri: string, deltaMs: number) => {
 			current = { ...current, delayMs: current.delayMs + deltaMs, hasOverride: true };
+			return true;
 		});
 		const onReset = vi.fn(() => {
 			current = { ...current, delayMs: current.defaultDelayMs, hasOverride: false };
+			return true;
 		});
 		const { content } = openView({
 			callbacks: {
@@ -490,7 +493,7 @@ describe("SettingsView", () => {
 		const tokenInput = control<HTMLInputElement>(content, "musixmatch-token");
 		const liveRegion = content.querySelector<HTMLElement>('[role="status"]');
 		expect(liveRegion?.getAttribute("aria-live")).toBe("polite");
-		expect(liveRegion?.textContent).toBe("");
+		expect(liveRegion?.textContent).toBe("Saved");
 		tokenInput.value = "abcdef";
 		tokenInput.dispatchEvent(new Event("change", { bubbles: true }));
 		tokenInput.focus();
@@ -509,8 +512,62 @@ describe("SettingsView", () => {
 		expect(refreshedTokenInput).toBe(tokenInput);
 		expect(tab(content, "providers").getAttribute("aria-selected")).toBe("true");
 		expect(document.activeElement).toBe(refreshedTokenInput);
-		expect(refreshedTokenInput.selectionStart).toBe(2);
-		expect(refreshedTokenInput.selectionEnd).toBe(5);
+		expect(refreshedTokenInput.type).toBe("password");
+	});
+
+	test("shows preview and saved feedback while keeping errors until a successful save", () => {
+		const { content, view } = openView();
+		const feedback = content.querySelector<HTMLElement>(".settings-feedback");
+
+		expect(view.reportPersistenceFailure()).toBe(true);
+		expect(feedback?.dataset.state).toBe("error");
+		tab(content, "appearance").click();
+		const dim = control<HTMLInputElement>(content, "background-dim");
+		dim.value = "0.5";
+		dim.dispatchEvent(new Event("input", { bubbles: true }));
+		expect(feedback?.dataset.state).toBe("error");
+
+		dim.dispatchEvent(new Event("change", { bubbles: true }));
+		expect(feedback?.dataset.state).toBe("saved");
+		expect(feedback?.textContent).toBe("Saved");
+	});
+
+	test("locks asynchronous maintenance actions and reports completion in the common status bar", async () => {
+		let resolveRefresh: () => void = () => undefined;
+		const refresh = new Promise<void>((resolve) => {
+			resolveRefresh = resolve;
+		});
+		const { content } = openView({ callbacks: { onRefreshLyrics: () => refresh } });
+		tab(content, "advanced").click();
+		const button = control<HTMLButtonElement>(content, "refresh-current-lyrics");
+		const feedback = content.querySelector<HTMLElement>(".settings-feedback");
+
+		button.click();
+		expect(button.disabled).toBe(true);
+		expect(feedback?.dataset.state).toBe("working");
+		expect(feedback?.textContent).toBe("Working...");
+
+		resolveRefresh();
+		await refresh;
+		await flushTimers();
+		expect(button.disabled).toBe(false);
+		expect(feedback?.dataset.state).toBe("success");
+		expect(feedback?.textContent).toBe("Current lyrics refreshed");
+	});
+
+	test("requires an inline second confirmation before resetting settings", () => {
+		const { content, store } = openView();
+		store.update({ language: "ko" });
+		tab(content, "advanced").click();
+
+		control<HTMLButtonElement>(content, "reset-settings").click();
+		expect(store.get().language).toBe("ko");
+		expect(control(content, "confirm-reset-settings").textContent).toBe("초기화");
+		expect(control(content, "cancel-reset-settings").textContent).toBe("취소");
+
+		control<HTMLButtonElement>(content, "confirm-reset-settings").click();
+		expect(store.get().language).toBe("en");
+		expect(content.querySelector(".settings-feedback")?.textContent).toBe("설정을 초기화했습니다");
 	});
 
 	test("invalidates pending token requests on panel detach and modal close, then reopens cleanly", async () => {
@@ -555,7 +612,7 @@ describe("SettingsView", () => {
 	test("translates provider enabled labels and appearance navigation", async () => {
 		const { content } = openView();
 		tab(content, "providers").click();
-		expect(control(content, "provider-enabled-spotify").getAttribute("aria-label")).toBe("spotify enabled");
+		expect(control(content, "provider-enabled-spotify").getAttribute("aria-label")).toBe("Spotify enabled");
 
 		tab(content, "general").click();
 		const language = control<HTMLSelectElement>(content, "language");
@@ -565,7 +622,7 @@ describe("SettingsView", () => {
 		expect(tab(content, "appearance").textContent).toContain("表示");
 
 		tab(content, "providers").click();
-		expect(control(content, "provider-enabled-spotify").getAttribute("aria-label")).toBe("spotify を有効化");
+		expect(control(content, "provider-enabled-spotify").getAttribute("aria-label")).toBe("Spotify を有効化");
 	});
 
 	test("uses 17px accessible inline SVG icons for sections and provider ordering", () => {
@@ -620,6 +677,14 @@ describe("SettingsView", () => {
 		expect(css).toContain("#1a1a1f");
 		expect(css).toContain("#f5f5f7");
 		expect(css).toContain("#ff7457");
+		expect(css).toContain("color-scheme: dark");
+		expect(css).toContain("--settings-control-height: 40px");
+		expect(css).toContain("--settings-disabled-control: 0.45");
+		expect(css).toContain("--settings-disabled-group: 0.65");
+		expect(css).toContain("min-height: 44px");
+		expect(css).toContain("background: var(--settings-accent)");
+		expect(css).toContain("outline: 2px solid var(--settings-focus)");
+		expect(css).toContain(".settings-feedback");
 		expect(css).toContain(":focus-visible");
 		expect(css).not.toContain("settings-hero");
 		expect(content.parentElement?.classList.contains("main-trackCreditsModal-originalCredits")).toBe(true);

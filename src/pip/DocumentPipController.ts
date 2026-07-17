@@ -244,6 +244,7 @@ export class DocumentPipController {
 		root.style.setProperty("--inactive-blur", `${settings.inactiveBlurPx}px`);
 		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
 		root.classList.toggle("reduce-motion", settings.reduceMotion || !settings.motionEnabled);
+		root.classList.toggle("motion-disabled", !settings.motionEnabled);
 		root.classList.toggle("interlude-style-frame", settings.interludeStyle === "frame");
 		root.classList.toggle("interlude-style-dots", settings.interludeStyle === "dots");
 		root.classList.toggle("interlude-style-wave", settings.interludeStyle === "wave");

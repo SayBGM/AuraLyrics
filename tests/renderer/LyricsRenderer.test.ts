@@ -1438,8 +1438,8 @@ describe("LyricsRenderer", () => {
 
 		renderer.update(20, 1 / 60);
 
-		expect(root.querySelector<HTMLElement>(".vocals-group.active")).toBeNull();
-		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -200px, 0)");
+		expect(root.querySelector<HTMLElement>(".provider-credit.active")?.textContent).toContain("LRCLIB");
+		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -380px, 0)");
 	});
 
 	test("keeps only previous active and next lines visible by default", () => {
@@ -1481,8 +1481,8 @@ describe("LyricsRenderer", () => {
 		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS, "lrclib");
 
 		const rows = Array.from(root.querySelectorAll(".lyrics-track > *"));
-		expect(rows.at(-1)?.classList.contains("provider-source")).toBe(true);
-		expect(rows.at(-1)?.textContent).toContain("lrclib");
+		expect(rows.at(-1)?.classList.contains("provider-credit")).toBe(true);
+		expect(rows.at(-1)?.textContent).toContain("LRCLIB");
 	});
 
 	test("shows provider diagnostics only when debug mode is enabled", () => {
@@ -1518,9 +1518,10 @@ describe("LyricsRenderer", () => {
 			diagnostics,
 		});
 
-		const source = root.querySelector(".provider-source");
+		const source = root.querySelector(".provider-credit");
 		const detail = root.querySelector(".provider-diagnostics");
-		expect(source?.textContent).toContain("network");
+		expect(source?.textContent).toContain("Lyrics by LRCLIB");
+		expect(detail?.textContent).toContain("network");
 		expect(detail?.textContent).toContain("cache miss");
 		expect(detail?.textContent).toContain("spotify: no lyrics");
 		expect(detail?.textContent).toContain("lrclib: success");
@@ -1579,7 +1580,7 @@ describe("LyricsRenderer", () => {
 		};
 
 		const renderer = new LyricsRenderer();
-		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "frame", showInterludes: false }, "spotify");
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "frame", showInterludes: true }, "spotify");
 		const viewport = root.querySelector<HTMLElement>(".lyrics-viewport");
 		const rows = root.querySelectorAll<HTMLElement>(".vocals-group");
 		Object.defineProperty(pipRoot, "clientWidth", { configurable: true, value: 300 });
@@ -1832,6 +1833,94 @@ describe("LyricsRenderer", () => {
 		expect(translation?.dataset.scrollRow).toBeUndefined();
 		expect(translation?.querySelector(".syllable")).toBeNull();
 		expect(group?.lastElementChild).toBe(translation);
+	});
+
+	test("mounts static lyrics as a focusable manually scrollable document without automatic track movement", () => {
+		const root = document.createElement("div");
+		const lyrics: StaticLyrics = {
+			type: "static",
+			lines: [
+				{ text: "첫 줄", translatedText: "First line" },
+				{ text: "둘째 줄", translatedText: "Second line" },
+			],
+		};
+		const renderer = new LyricsRenderer();
+		renderer.mount(root, { lyrics, settings: { ...DEFAULT_SETTINGS, language: "ko" }, provider: "lrclib" });
+		const viewport = root.querySelector<HTMLElement>(".static-lyrics-viewport");
+		const track = root.querySelector<HTMLElement>(".static-lyrics-track");
+
+		expect(viewport?.tabIndex).toBe(0);
+		expect(viewport?.getAttribute("aria-label")).toContain("정적 가사");
+		expect(track?.textContent).toContain("첫 줄");
+		expect(track?.lastElementChild?.classList.contains("provider-credit")).toBe(true);
+		renderer.update(500, 1 / 60);
+		expect(track?.style.transform).toBe("");
+	});
+
+	test("announces timed lyrics once per active row instead of once per syllable", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 8,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [
+							{ text: "Hello", startTime: 0, endTime: 2, isPartOfWord: false },
+							{ text: "world", startTime: 2, endTime: 4, isPartOfWord: false },
+						],
+					},
+				},
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 4,
+						endTime: 8,
+						syllables: [{ text: "Again", startTime: 4, endTime: 8, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
+		const announcer = root.querySelector<HTMLElement>('[role="status"][aria-live="polite"]');
+
+		renderer.update(1, 1 / 60);
+		expect(announcer?.textContent).toBe("Hello world");
+		renderer.update(3, 1 / 60);
+		expect(announcer?.textContent).toBe("Hello world");
+		renderer.update(5, 1 / 60);
+		expect(announcer?.textContent).toBe("Again");
+	});
+
+	test("skips dots, waves, and frame state while holding the previous lyric when interludes are hidden", () => {
+		const pipRoot = document.createElement("div");
+		const root = document.createElement("main");
+		pipRoot.append(root);
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 12,
+			content: [
+				{ type: "vocal", text: "Before", startTime: 0, endTime: 4, oppositeAligned: false },
+				{ type: "interlude", startTime: 4, endTime: 8 },
+				{ type: "vocal", text: "After", startTime: 8, endTime: 12, oppositeAligned: false },
+			],
+		};
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, interludeStyle: "frame", showInterludes: false });
+
+		renderer.update(6, 1 / 60);
+		expect(root.querySelector(".interlude")).toBeNull();
+		expect(root.querySelector(".line-group.active")?.textContent).toContain("Before");
+		expect(pipRoot.classList.contains("interlude-frame-active")).toBe(false);
+		expect(pipRoot.style.getPropertyValue("--pip-interlude-progress")).toBe("");
 	});
 
 	test("keeps parentheses inline instead of echo-splitting when a translation is shown", () => {

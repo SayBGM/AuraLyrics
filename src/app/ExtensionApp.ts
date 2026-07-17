@@ -134,12 +134,11 @@ export class ExtensionApp {
 		this.settingsView = new SettingsView(this.settings, this.registry.all(), {
 			getCurrentTrackLyricsDelay: () => this.currentTrackLyricsDelayState(),
 			onAdjustCurrentTrackLyricsDelay: (uri, deltaMs) => this.adjustCurrentTrackLyricsDelay(uri, deltaMs),
-			onRefreshLyrics: () => void this.loadCurrentTrack(true),
+			onRefreshLyrics: () => this.loadCurrentTrack(true),
 			onClearCache: () => {
 				this.cache.clear();
-				this.spicetify.showNotification?.("AuraLyrics cache cleared.");
 			},
-			onMusixmatchTokenAccepted: () => this.spicetify.showNotification?.("Musixmatch token updated."),
+			onMusixmatchTokenAccepted: () => undefined,
 			onRefreshMusixmatchToken: () => this.fetchMusixmatchToken(),
 			onResetCurrentTrackLyricsDelay: (uri) => this.resetCurrentTrackLyricsDelay(uri),
 		});
@@ -392,7 +391,9 @@ export class ExtensionApp {
 		const settingsFailure = this.settings.consumePersistenceFailure();
 		const trackDelayFailure = this.trackLyricsDelays.consumePersistenceFailure();
 		if (settingsFailure || trackDelayFailure) {
-			this.spicetify.showNotification?.(SETTINGS_PERSISTENCE_ERROR, true);
+			if (!this.settingsView.reportPersistenceFailure()) {
+				this.spicetify.showNotification?.(SETTINGS_PERSISTENCE_ERROR, true);
+			}
 		}
 	}
 
@@ -417,23 +418,25 @@ export class ExtensionApp {
 		return this.trackLyricsDelays.resolve(this.player.getCurrentTrack()?.uri, this.settings.get().lyricsDelayMs);
 	}
 
-	private adjustCurrentTrackLyricsDelay(uri: string, deltaMs: number): void {
+	private adjustCurrentTrackLyricsDelay(uri: string, deltaMs: number): boolean {
 		const state = this.currentTrackLyricsDelayState();
 		if (!state || state.uri !== uri) {
 			this.settingsView.refreshCurrentTrack();
-			return;
+			return false;
 		}
-		this.trackLyricsDelays.set(uri, state.delayMs + deltaMs);
+		const result = this.trackLyricsDelays.set(uri, state.delayMs + deltaMs);
 		this.refreshLyricsTiming();
+		return result.persisted;
 	}
 
-	private resetCurrentTrackLyricsDelay(uri: string): void {
+	private resetCurrentTrackLyricsDelay(uri: string): boolean {
 		if (this.player.getCurrentTrack()?.uri !== uri) {
 			this.settingsView.refreshCurrentTrack();
-			return;
+			return false;
 		}
-		this.trackLyricsDelays.delete(uri);
+		const persisted = this.trackLyricsDelays.delete(uri);
 		this.refreshLyricsTiming();
+		return persisted;
 	}
 
 	private refreshLyricsTiming(): void {

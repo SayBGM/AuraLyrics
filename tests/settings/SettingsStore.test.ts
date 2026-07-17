@@ -143,11 +143,33 @@ describe("SettingsStore", () => {
 		const settings = store.preview({ fontScale: 99 });
 
 		expect(settings.fontScale).toBe(2.4);
-		expect(settings.preset).toBe("custom");
+		expect(settings.preset).toBe("immersive");
 		expect(store.get()).toEqual(settings);
 		expect(listener).toHaveBeenCalledOnce();
 		expect(listener).toHaveBeenCalledWith(settings);
 		expect(set).not.toHaveBeenCalled();
+	});
+
+	test.each([
+		["language", { language: "ko" }],
+		["lyrics delay", { lyricsDelayMs: 350 }],
+		["alignment", { alignmentMode: "left" }],
+		["debug", { debugMode: true }],
+	] as const)("keeps the active preset after a non-visual %s update", (_name, patch) => {
+		const store = new SettingsStore(new MemoryStorage());
+
+		expect(store.update(patch).preset).toBe("immersive");
+	});
+
+	test.each([
+		["background blur", { backgroundBlurPx: 24 }],
+		["inactive blur", { inactiveBlurPx: 1.5 }],
+		["motion intensity", { motionIntensity: 1.2 }],
+		["glow", { glowStrength: 1.1 }],
+	] as const)("switches to custom after changing preset-owned %s", (_name, patch) => {
+		const store = new SettingsStore(new MemoryStorage());
+
+		expect(store.update(patch).preset).toBe("custom");
 	});
 
 	test("commits the current preview once without changing or re-emitting it", () => {

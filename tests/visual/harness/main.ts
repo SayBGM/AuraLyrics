@@ -1,7 +1,7 @@
 import { outroMetadataThresholdSec } from "../../../src/app/OutroPresentationPolicy";
 import { buildTrackTheme, type TrackTheme } from "../../../src/app/TrackThemeService";
 import type { TrackIdentity } from "../../../src/domain/types";
-import type { LineLyrics, LyricsDocument, SyllableLyrics } from "../../../src/lyrics/types";
+import type { LineLyrics, LyricsDocument, StaticLyrics, SyllableLyrics } from "../../../src/lyrics/types";
 import { COVER_CROSSFADE_DURATION_MS, PipCoverTransitionController } from "../../../src/pip/PipCoverTransitionController";
 import { LyricsRenderer } from "../../../src/renderer/LyricsRenderer";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../../../src/renderer/SceneTransitionController";
 import { DEFAULT_SETTINGS, type ExtensionSettings, SettingsStore } from "../../../src/settings/SettingsStore";
 import { SettingsView } from "../../../src/settings/SettingsView";
+import type { SettingsSection } from "../../../src/settings/settingsViewTypes";
 import { pipStyles } from "../../../src/styles/pipStyles";
 
 type ScenarioName =
@@ -20,13 +21,25 @@ type ScenarioName =
 	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
+	| "interlude-dots"
+	| "interlude-wave"
 	| "line-sync"
+	| "provider-credit"
+	| "reduced-motion-lyrics"
+	| "static-document"
+	| "translated-line"
 	| "word-sync"
 	| "synthetic-word-sync"
 	| "korean-tail"
 	| "multiline-active-row"
 	| "settings-general"
-	| "settings-lyrics";
+	| "settings-lyrics"
+	| "settings-appearance"
+	| "settings-motion"
+	| "settings-providers"
+	| "settings-advanced"
+	| "settings-lyrics-ko"
+	| "settings-providers-ja";
 
 type Scenario = {
 	lyrics?: LyricsDocument;
@@ -39,6 +52,8 @@ type Scenario = {
 		track: TrackIdentity;
 	};
 	theme?: TrackTheme;
+	settingsLanguage?: ExtensionSettings["language"];
+	settingsSection?: SettingsSection;
 };
 
 type TransitionScenarioName = "metadata-next" | "metadata-previous" | "outro-up" | "reduced-motion-next" | "short-tail-next";
@@ -276,7 +291,7 @@ const scenarios: Record<ScenarioName, Scenario> = {
 		timestamp: 2.4,
 		settings: {
 			...settingsForVisuals,
-			alignmentMode: "left",
+			alignmentMode: "natural",
 		},
 		lyrics: {
 			type: "syllable",
@@ -313,7 +328,7 @@ const scenarios: Record<ScenarioName, Scenario> = {
 		settings: {
 			...settingsForVisuals,
 			interludeStyle: "frame",
-			showInterludes: false,
+			showInterludes: true,
 		},
 		lyrics: {
 			type: "line",
@@ -325,6 +340,16 @@ const scenarios: Record<ScenarioName, Scenario> = {
 				{ type: "vocal", text: "After the break returns", startTime: 10, endTime: 14, oppositeAligned: false },
 			],
 		},
+	},
+	"interlude-dots": {
+		timestamp: 7,
+		settings: { ...settingsForVisuals, interludeStyle: "dots", showInterludes: true },
+		lyrics: interludeLyrics(),
+	},
+	"interlude-wave": {
+		timestamp: 7,
+		settings: { ...settingsForVisuals, interludeStyle: "wave", showInterludes: true },
+		lyrics: interludeLyrics(),
 	},
 	"line-sync": {
 		timestamp: 5,
@@ -338,6 +363,59 @@ const scenarios: Record<ScenarioName, Scenario> = {
 			["Same lyric width stays steady", 7, 11],
 			["After the chorus resolves", 11, 15],
 		]),
+	},
+	"provider-credit": {
+		timestamp: 12,
+		settings: settingsForVisuals,
+		lyrics: lineLyrics([
+			["This is the final lyric", 0, 4],
+			["The credits follow", 4, 8],
+		]),
+	},
+	"reduced-motion-lyrics": {
+		timestamp: 5,
+		settings: { ...settingsForVisuals, reduceMotion: true },
+		lyrics: lineLyrics([
+			["Motion is kept quiet", 0, 3],
+			["Color carries the focus", 3, 7],
+			["Context stays readable", 7, 11],
+		]),
+	},
+	"static-document": {
+		timestamp: 0,
+		settings: { ...settingsForVisuals, showTranslation: true },
+		lyrics: {
+			type: "static",
+			lines: [
+				{ text: "창가에 머문 빛", translatedText: "Light resting by the window" },
+				{ text: "조용히 번지는 밤", translatedText: "Night spreading quietly" },
+				{ text: "우리의 이야기를 적어", translatedText: "Write down our story" },
+				{ text: "다시 아침이 올 때까지", translatedText: "Until morning comes again" },
+			],
+		} satisfies StaticLyrics,
+	},
+	"translated-line": {
+		timestamp: 5,
+		settings: { ...settingsForVisuals, showTranslation: true },
+		lyrics: {
+			...lineLyrics([
+				["Before the translated line", 0, 3],
+				["별빛이 우리를 비춰", 3, 7],
+				["After the translated line", 7, 11],
+			]),
+			content: [
+				{ type: "vocal", text: "Before the translated line", startTime: 0, endTime: 3, oppositeAligned: false },
+				{
+					type: "vocal",
+					text: "별빛이 우리를 비춰",
+					translatedText: "Starlight shines on us",
+					startTime: 3,
+					endTime: 7,
+					oppositeAligned: false,
+				},
+				{ type: "vocal", text: "After the translated line", startTime: 7, endTime: 11, oppositeAligned: false },
+			],
+		},
 	},
 	"word-sync": {
 		timestamp: 4.2,
@@ -421,10 +499,44 @@ const scenarios: Record<ScenarioName, Scenario> = {
 	"settings-general": {
 		timestamp: 0,
 		mode: "settings",
+		settingsSection: "general",
 	},
 	"settings-lyrics": {
 		timestamp: 0,
 		mode: "settings",
+		settingsSection: "lyrics",
+	},
+	"settings-appearance": {
+		timestamp: 0,
+		mode: "settings",
+		settingsSection: "appearance",
+	},
+	"settings-motion": {
+		timestamp: 0,
+		mode: "settings",
+		settingsSection: "motion",
+	},
+	"settings-providers": {
+		timestamp: 0,
+		mode: "settings",
+		settingsSection: "providers",
+	},
+	"settings-advanced": {
+		timestamp: 0,
+		mode: "settings",
+		settingsSection: "advanced",
+	},
+	"settings-lyrics-ko": {
+		timestamp: 0,
+		mode: "settings",
+		settingsLanguage: "ko",
+		settingsSection: "lyrics",
+	},
+	"settings-providers-ja": {
+		timestamp: 0,
+		mode: "settings",
+		settingsLanguage: "ja",
+		settingsSection: "providers",
 	},
 };
 
@@ -469,7 +581,7 @@ window.auraVisualHarness = {
 			throw new Error(`Unknown visual scenario: ${name}`);
 		}
 		if (scenario.mode === "settings") {
-			renderSettingsScenario(name === "settings-lyrics" ? "lyrics" : "general");
+			renderSettingsScenario(scenario.settingsSection ?? "general", scenario.settingsLanguage ?? "en");
 			return;
 		}
 		pipRoot.className = scenario.mode === "metadata" ? "is-playing controls-visible" : "is-playing";
@@ -502,7 +614,7 @@ window.auraVisualHarness = {
 				...structuredClone(DEFAULT_SETTINGS),
 				...scenario.settings,
 			},
-			provider: "visual",
+			provider: "lrclib",
 			timingSource: scenario.timingSource,
 		});
 		for (let frame = 0; frame < 3; frame += 1) {
@@ -546,7 +658,7 @@ function renderControlledTransition(name: TransitionScenarioName, phase: Transit
 		renderer.mount(visualMountRoot, {
 			lyrics: outroLyrics,
 			settings,
-			provider: "visual",
+			provider: "lrclib",
 		});
 		renderer.update(thresholdSec, 1 / 60);
 	} else if (name === "short-tail-next") {
@@ -559,7 +671,7 @@ function renderControlledTransition(name: TransitionScenarioName, phase: Transit
 		renderer.mount(visualMountRoot, {
 			lyrics: shortTailLyrics,
 			settings,
-			provider: "visual",
+			provider: "lrclib",
 		});
 		renderer.update(durationSec, 1 / 60);
 	} else {
@@ -666,7 +778,7 @@ function measureChromeRects(): ChromeRects {
 	};
 }
 
-function renderSettingsScenario(section: "general" | "lyrics"): void {
+function renderSettingsScenario(section: SettingsSection, language: ExtensionSettings["language"]): void {
 	const values = new Map<string, string>();
 	const store = new SettingsStore({
 		get: (key) => values.get(key),
@@ -675,6 +787,10 @@ function renderSettingsScenario(section: "general" | "lyrics"): void {
 			return true;
 		},
 	});
+	store.update({ language });
+	if (section === "providers") {
+		store.update({ providers: { ...store.get().providers, musixmatchToken: "visual-mxm-token" } });
+	}
 	window.Spicetify = {
 		PopupModal: {
 			display: ({ content }) => {
@@ -703,17 +819,30 @@ function renderSettingsScenario(section: "general" | "lyrics"): void {
 			title: "Midnight Bloom",
 			uri: "spotify:track:visual-settings",
 		}),
-		onAdjustCurrentTrackLyricsDelay: () => undefined,
-		onRefreshLyrics: () => undefined,
+		onAdjustCurrentTrackLyricsDelay: () => true,
+		onRefreshLyrics: async () => undefined,
 		onClearCache: () => undefined,
 		onMusixmatchTokenAccepted: () => undefined,
 		onRefreshMusixmatchToken: async () => undefined,
-		onResetCurrentTrackLyricsDelay: () => undefined,
+		onResetCurrentTrackLyricsDelay: () => true,
 	});
 	settingsView.open();
-	if (section === "lyrics") {
-		document.querySelector<HTMLButtonElement>('[role="tab"][data-section="lyrics"]')?.click();
+	if (section !== "general") {
+		document.querySelector<HTMLButtonElement>(`[role="tab"][data-section="${section}"]`)?.click();
 	}
+}
+
+function interludeLyrics(): LineLyrics {
+	return {
+		type: "line",
+		startTime: 0,
+		endTime: 14,
+		content: [
+			{ type: "vocal", text: "Before the break", startTime: 0, endTime: 4, oppositeAligned: false },
+			{ type: "interlude", startTime: 4, endTime: 10 },
+			{ type: "vocal", text: "After the break returns", startTime: 10, endTime: 14, oppositeAligned: false },
+		],
+	};
 }
 
 function lineLyrics(lines: Array<[text: string, startTime: number, endTime: number]>): LineLyrics {

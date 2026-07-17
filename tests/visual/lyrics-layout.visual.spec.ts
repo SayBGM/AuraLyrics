@@ -7,13 +7,25 @@ type ScenarioName =
 	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
+	| "interlude-dots"
+	| "interlude-wave"
 	| "line-sync"
+	| "provider-credit"
+	| "reduced-motion-lyrics"
+	| "static-document"
+	| "translated-line"
 	| "word-sync"
 	| "synthetic-word-sync"
 	| "korean-tail"
 	| "multiline-active-row"
 	| "settings-general"
-	| "settings-lyrics";
+	| "settings-lyrics"
+	| "settings-appearance"
+	| "settings-motion"
+	| "settings-providers"
+	| "settings-advanced"
+	| "settings-lyrics-ko"
+	| "settings-providers-ja";
 
 type TransitionScenarioName = "metadata-next" | "metadata-previous" | "outro-up" | "reduced-motion-next" | "short-tail-next";
 type TransitionPhase = "start" | "mid";
@@ -353,6 +365,98 @@ test("settings lyrics panel keeps the current-song delay card readable and reach
 	await expect(page.locator('[data-control-id="track-delay-plus-100"]')).toHaveAttribute("aria-label", "Adjust current song lyrics by +100 ms");
 	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-track-delay.png", screenshotTolerance);
 });
+
+for (const [scenario, snapshot] of [
+	["settings-appearance", "settings-appearance.png"],
+	["settings-motion", "settings-motion.png"],
+	["settings-providers", "settings-providers.png"],
+	["settings-advanced", "settings-advanced.png"],
+] as const) {
+	test(`${scenario} keeps the desktop information groups inside the shared shell`, async ({ page }) => {
+		await page.setViewportSize({ width: 1024, height: 760 });
+		await renderScenario(page, scenario);
+
+		await expect(page.locator(".settings-group").first()).toBeVisible();
+		await expect(page.locator(".settings-feedback")).toBeVisible();
+		await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot(snapshot, screenshotTolerance);
+	});
+}
+
+test("compact Korean lyrics settings keep long descriptions and touch targets readable", async ({ page }) => {
+	await page.setViewportSize({ width: 640, height: 760 });
+	await renderScenario(page, "settings-lyrics-ko");
+
+	await expect(page.locator('[data-control-id="current-track-delay"]')).toBeVisible();
+	await expect(page.locator(".settings-navigation")).toHaveAttribute("aria-orientation", "horizontal");
+	const buttonHeight = await page.locator('[data-control-id="track-delay-plus-50"]').evaluate((button) => button.getBoundingClientRect().height);
+	expect(buttonHeight).toBeGreaterThanOrEqual(44);
+	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-lyrics-ko-compact.png", screenshotTolerance);
+});
+
+test("mobile Japanese provider settings keep masked credentials and 44px reorder targets", async ({ page }) => {
+	await page.setViewportSize({ width: 360, height: 760 });
+	await renderScenario(page, "settings-providers-ja");
+
+	await expect(page.locator('[data-control-id="musixmatch-token"]')).toHaveAttribute("type", "password");
+	const reorderHeight = await page.locator('[data-control-id="provider-lrclib-up"]').evaluate((button) => button.getBoundingClientRect().height);
+	expect(reorderHeight).toBeGreaterThanOrEqual(44);
+	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-providers-ja-mobile.png", screenshotTolerance);
+});
+
+test("static lyrics use a manually scrollable document layout with translation", async ({ page }) => {
+	await page.setViewportSize({ width: 600, height: 600 });
+	await renderScenario(page, "static-document");
+	const metrics = await page.locator(".static-lyrics-viewport").evaluate((viewport) => ({
+		overflowY: getComputedStyle(viewport).overflowY,
+		tabIndex: (viewport as HTMLElement).tabIndex,
+		trackTransform: (viewport.querySelector(".static-lyrics-track") as HTMLElement | null)?.style.transform ?? null,
+	}));
+
+	expect(metrics).toEqual({ overflowY: "auto", tabIndex: 0, trackTransform: "" });
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("static-lyrics-document.png", screenshotTolerance);
+});
+
+test("translated line lyrics remain readable in a 480 by 270 PiP", async ({ page }) => {
+	await page.setViewportSize({ width: 480, height: 270 });
+	await renderScenario(page, "translated-line");
+
+	await expect(page.locator(".line-group.active .lyric-translation")).toHaveText("Starlight shines on us");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("translated-line-480x270.png", screenshotTolerance);
+});
+
+test("a 320 by 180 PiP shows only the active lyric row", async ({ page }) => {
+	await page.setViewportSize({ width: 320, height: 180 });
+	await renderScenario(page, "line-sync");
+
+	await expect(page.locator(".line-group:not(.out-of-context)")).toHaveCount(1);
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("line-sync-320x180.png", screenshotTolerance);
+});
+
+for (const [scenario, snapshot] of [
+	["interlude-dots", "interlude-dots.png"],
+	["interlude-wave", "interlude-wave.png"],
+	["reduced-motion-lyrics", "lyrics-reduced-motion.png"],
+	["provider-credit", "provider-credit.png"],
+] as const) {
+	test(`${scenario} matches the shared lyric presentation`, async ({ page }) => {
+		await page.setViewportSize({ width: 600, height: 600 });
+		await renderScenario(page, scenario);
+		if (scenario === "provider-credit") {
+			const credit = page.locator(".provider-credit");
+			await expect(credit.filter({ has: page.locator(".provider-credit-label") })).toHaveCount(1);
+			await expect(credit).toHaveClass(/active/);
+			await expect(credit).not.toHaveClass(/out-of-context/);
+			await expect(credit).toHaveCSS("opacity", "1");
+			const creditBox = await credit.boundingBox();
+			expect(creditBox).not.toBeNull();
+			expect(creditBox?.y).toBeGreaterThanOrEqual(0);
+			expect((creditBox?.y ?? 0) + (creditBox?.height ?? 0)).toBeLessThanOrEqual(600);
+			await expect(page.locator(".line-group:not(.out-of-context)")).toHaveCount(0);
+			await expect(page.locator(".line-group").first()).toHaveCSS("opacity", "0");
+		}
+		await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot(snapshot, screenshotTolerance);
+	});
+}
 
 test("synthetic karaoke uses the themed syllable wake without a visible timing marker", async ({ page }) => {
 	await renderScenario(page, "synthetic-word-sync");
@@ -825,7 +929,7 @@ const renderScenario = async (page: Page, name: ScenarioName): Promise<void> => 
 		}
 		window.auraVisualHarness.renderScenario(scenarioName);
 	}, name);
-	if (name === "settings-general" || name === "settings-lyrics") {
+	if (name.startsWith("settings-")) {
 		await expect(page.locator(".aura-lyrics-settings")).toBeVisible();
 		return;
 	}

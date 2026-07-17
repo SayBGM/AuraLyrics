@@ -1,6 +1,6 @@
 import type { EventEmitter } from "../shared/EventEmitter";
 import { SettingsPersistence, type SettingsStorage } from "./SettingsPersistence";
-import { DEFAULT_SETTINGS, type ExtensionSettings, type LyricsVisualPreset, PRESETS } from "./settingsSchema";
+import { DEFAULT_SETTINGS, type ExtensionSettings, type LyricsVisualPreset, PRESET_CONTROLLED_KEYS, PRESETS } from "./settingsSchema";
 
 export type { SettingsStorage } from "./SettingsPersistence";
 export {
@@ -86,10 +86,11 @@ export class SettingsStore {
 	}
 
 	private merge(patch: Partial<ExtensionSettings>, markCustom: boolean): ExtensionSettings {
+		const changesPresetValue = PRESET_CONTROLLED_KEYS.some((key) => patch[key] !== undefined && patch[key] !== this.settings[key]);
 		return this.persistence.normalize({
 			...this.settings,
 			...patch,
-			preset: markCustom && patch.preset === undefined ? "custom" : (patch.preset ?? this.settings.preset),
+			preset: markCustom && patch.preset === undefined && changesPresetValue ? "custom" : (patch.preset ?? this.settings.preset),
 			providers: {
 				...this.settings.providers,
 				...patch.providers,

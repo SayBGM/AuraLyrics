@@ -12,13 +12,15 @@ export type CurrentTrackLyricsDelayState = {
 
 export type SettingsCallbacks = {
 	getCurrentTrackLyricsDelay(): CurrentTrackLyricsDelayState | undefined;
-	onAdjustCurrentTrackLyricsDelay(uri: string, deltaMs: number): void;
-	onRefreshLyrics(): void;
-	onClearCache(): void;
+	onAdjustCurrentTrackLyricsDelay(uri: string, deltaMs: number): boolean;
+	onRefreshLyrics(): Promise<void>;
+	onClearCache(): void | Promise<void>;
 	onMusixmatchTokenAccepted(token: string): void;
 	onRefreshMusixmatchToken(): Promise<string | undefined>;
-	onResetCurrentTrackLyricsDelay(uri: string): void;
+	onResetCurrentTrackLyricsDelay(uri: string): boolean;
 };
+
+export type SettingsFeedbackState = "error" | "idle" | "previewing" | "saved" | "success" | "working";
 
 export type SettingsSection = "advanced" | "appearance" | "general" | "lyrics" | "motion" | "providers";
 

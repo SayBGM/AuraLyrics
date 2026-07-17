@@ -48,16 +48,18 @@ describe("splitHangulSyllables", () => {
 		expect(result2.map((s) => s.isPartOfWord)).toEqual([false, true, true]);
 	});
 
-	test("leaves mixed, Latin, and parenthetical text unsplit", () => {
+	test("leaves mixed, Latin, and single-character text unsplit while ignoring romanization for display timing", () => {
 		const mixed: Syllable = { text: "안녕(Hi)", startTime: 0, endTime: 2, isPartOfWord: false };
 		const latin: Syllable = { text: "Hello", startTime: 0, endTime: 1, isPartOfWord: false };
 		const singleChar: Syllable = { text: "안", startTime: 0, endTime: 1, isPartOfWord: false };
 		const romanized: Syllable = { text: "안녕", romanizedText: "annyeong", startTime: 0, endTime: 2, isPartOfWord: false };
 
-		for (const syllable of [mixed, latin, singleChar, romanized]) {
+		for (const syllable of [mixed, latin, singleChar]) {
 			const result = leadSyllables(splitHangulSyllables(lyricsWithSyllables([syllable])));
 			expect(result).toEqual([syllable]);
 		}
+		const romanizedResult = leadSyllables(splitHangulSyllables(lyricsWithSyllables([romanized])));
+		expect(romanizedResult.map((item) => item.text)).toEqual(["안", "녕"]);
 	});
 
 	test("does not split ultra-short words below the per-char duration floor", () => {

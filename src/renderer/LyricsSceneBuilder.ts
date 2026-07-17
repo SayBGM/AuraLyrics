@@ -1,9 +1,10 @@
-import type { Interlude, LyricsDocument } from "../lyrics/types";
+import type { Interlude, LyricsDocument, LyricsLoadDiagnostics } from "../lyrics/types";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import type { AnimatedGroup } from "./AnimatedGroup";
 import type { RhythmProfile } from "./AudioAnalysisWaveformService";
 import { InterludeView } from "./components/Interlude";
 import { LineVocals } from "./components/LineVocals";
+import { createProviderCreditElement, ProviderCredit } from "./components/ProviderCredit";
 import { SyllableVocals } from "./components/SyllableVocals";
 import { interludeKey } from "./interludeProgress";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
@@ -11,29 +12,48 @@ import { applyHoldTiming, createTranslationElement, syllableToLine } from "./lyr
 
 export type LyricsScene = {
 	groups: AnimatedGroup[];
+	mode: "static" | "timed";
 };
 
 export type LyricsSceneOptions = {
 	lyrics: LyricsDocument;
 	settings: ExtensionSettings;
+	provider?: string;
+	loadSource?: "cache" | "network";
+	diagnostics?: LyricsLoadDiagnostics;
 	waveforms?: InterludeWaveformMap;
 	rhythm?: RhythmProfile;
 };
 
-export const buildLyricsScene = (lyricsTrack: HTMLElement, { lyrics, settings, waveforms = {}, rhythm }: LyricsSceneOptions): LyricsScene => {
+export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneOptions): LyricsScene => {
+	const { lyrics, settings, waveforms = {}, rhythm } = options;
 	const groups: AnimatedGroup[] = [];
 	const ownerDocument = lyricsTrack.ownerDocument;
 	if (lyrics.type === "static") {
 		for (const line of lyrics.lines) {
 			const row = ownerDocument.createElement("div");
-			row.className = "vocals-group static";
-			row.textContent = line.romanizedText ?? line.text;
+			row.className = "vocals-group static-line";
+			const text = ownerDocument.createElement("span");
+			text.className = "lyric line static-line-text";
+			text.textContent = line.text;
+			row.append(text);
 			if (settings.showTranslation && line.translatedText) {
 				row.append(createTranslationElement(line.translatedText, ownerDocument));
 			}
 			lyricsTrack.append(row);
 		}
-		return { groups };
+		if (options.provider) {
+			lyricsTrack.append(
+				createProviderCreditElement(ownerDocument, {
+					provider: options.provider,
+					language: settings.language,
+					loadSource: options.loadSource,
+					diagnostics: options.diagnostics,
+					showDiagnostics: settings.debugMode,
+				})
+			);
+		}
+		return { groups, mode: "static" };
 	}
 
 	if (lyrics.type === "line") {
@@ -47,7 +67,8 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, { lyrics, settings, w
 			lyricsTrack.append(line.element);
 		}
 		applyHoldTiming(groups);
-		return { groups };
+		appendTimedCredit(groups, lyricsTrack, lyrics.endTime, options);
+		return { groups, mode: "timed" };
 	}
 
 	for (const item of lyrics.content) {
@@ -109,7 +130,8 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, { lyrics, settings, w
 		lyricsTrack.append(group);
 	}
 	applyHoldTiming(groups);
-	return { groups };
+	appendTimedCredit(groups, lyricsTrack, lyrics.endTime, options);
+	return { groups, mode: "timed" };
 };
 
 const appendInterlude = (
@@ -119,9 +141,33 @@ const appendInterlude = (
 	settings: ExtensionSettings,
 	waveforms: InterludeWaveformMap
 ): void => {
-	const interlude = new InterludeView(item, settings.interludeStyle, waveforms[interludeKey(item)], lyricsTrack.ownerDocument);
+	if (!settings.showInterludes) {
+		return;
+	}
+	const interlude = new InterludeView(item, settings.interludeStyle, settings.language, waveforms[interludeKey(item)], lyricsTrack.ownerDocument);
 	groups.push(interlude);
-	if (settings.showInterludes && settings.interludeStyle !== "frame") {
+	if (settings.interludeStyle !== "frame") {
 		lyricsTrack.append(interlude.element);
 	}
+};
+
+const appendTimedCredit = (groups: AnimatedGroup[], lyricsTrack: HTMLElement, documentEndTime: number, options: LyricsSceneOptions): void => {
+	if (!options.provider) {
+		return;
+	}
+	const finiteEnds = groups.map((group) => group.endTime).filter(Number.isFinite);
+	const startTime = Math.max(documentEndTime, ...finiteEnds);
+	const credit = new ProviderCredit(
+		startTime,
+		{
+			provider: options.provider,
+			language: options.settings.language,
+			loadSource: options.loadSource,
+			diagnostics: options.diagnostics,
+			showDiagnostics: options.settings.debugMode,
+		},
+		lyricsTrack.ownerDocument
+	);
+	groups.push(credit);
+	lyricsTrack.append(credit.element);
 };

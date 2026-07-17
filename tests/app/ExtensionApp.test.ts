@@ -2083,7 +2083,7 @@ describe("ExtensionApp", () => {
 		expect(internals.closePip).not.toHaveBeenCalled();
 	});
 
-	test("notifies about a generated Musixmatch token only after the settings panel adopts it", async () => {
+	test("reports an adopted Musixmatch token in the open settings status bar without a toast", async () => {
 		const { showNotification, spicetify } = createSpicetify();
 		let modal: HTMLElement | undefined;
 		spicetify.PopupModal = {
@@ -2104,13 +2104,6 @@ describe("ExtensionApp", () => {
 			settingsView: { destroy: () => void; open: () => void };
 		};
 		internals.musixmatchTokenService = { refresh: vi.fn(() => result.promise) };
-		const tokensAtNotification: Array<string | undefined> = [];
-		showNotification.mockImplementation((message) => {
-			if (message === "Musixmatch token updated.") {
-				tokensAtNotification.push(internals.settings.get().providers.musixmatchToken);
-			}
-		});
-
 		try {
 			internals.settingsView.open();
 			const content = document.querySelector<HTMLElement>(".aura-lyrics-settings");
@@ -2118,17 +2111,17 @@ describe("ExtensionApp", () => {
 			content?.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
 			result.resolve("accepted-token");
 			await result.promise;
-			await vi.waitFor(() => expect(showNotification).toHaveBeenCalledWith("Musixmatch token updated."));
+			await vi.waitFor(() => expect(content?.querySelector(".settings-feedback")?.textContent).toBe("Musixmatch token updated."));
 
-			expect(tokensAtNotification).toEqual(["accepted-token"]);
 			expect(internals.settings.get().providers.musixmatchToken).toBe("accepted-token");
+			expect(showNotification).not.toHaveBeenCalled();
 		} finally {
 			internals.settingsView.destroy();
 			window.Spicetify = undefined;
 		}
 	});
 
-	test("keeps persistence failure as the final notification when a fetched token cannot be saved", async () => {
+	test("keeps token persistence failure in the open settings status bar instead of a toast", async () => {
 		const { showNotification, spicetify } = createSpicetify();
 		let modal: HTMLElement | undefined;
 		spicetify.PopupModal = {
@@ -2161,11 +2154,11 @@ describe("ExtensionApp", () => {
 			const content = document.querySelector<HTMLElement>(".aura-lyrics-settings");
 			content?.querySelector<HTMLButtonElement>('[data-section="providers"]')?.click();
 			content?.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
-			await vi.waitFor(() => expect(showNotification).toHaveBeenCalledWith("AuraLyrics settings could not be saved.", true));
+			await vi.waitFor(() => expect(content?.querySelector(".settings-feedback")?.getAttribute("data-state")).toBe("error"));
 
 			expect(internals.settings.get().providers.musixmatchToken).toBe("runtime-token");
-			expect(showNotification).toHaveBeenCalledTimes(1);
-			expect(showNotification).not.toHaveBeenCalledWith("Musixmatch token updated.");
+			expect(content?.querySelector(".settings-feedback")?.textContent).toContain("Could not save settings");
+			expect(showNotification).not.toHaveBeenCalled();
 		} finally {
 			app.destroy();
 			window.Spicetify = undefined;

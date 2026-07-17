@@ -23,7 +23,7 @@ export class LineVocals {
 		this.element.dataset.endTime = String(line.endTime);
 		const span = this.ownerDocument.createElement("span");
 		span.className = "lyric line";
-		appendLineTokens(span, line.romanizedText ?? line.text, this.ownerDocument);
+		appendLineTokens(span, line.text, this.ownerDocument);
 		this.element.append(span);
 		if (settings.showTranslation && line.translatedText) {
 			this.element.append(createTranslationElement(line.translatedText, this.ownerDocument));

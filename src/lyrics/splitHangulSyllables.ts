@@ -25,7 +25,7 @@ export const splitHangulSyllables = (lyrics: SyllableLyrics): SyllableLyrics => 
 const splitVocal = (vocal: SyllableVocal): SyllableVocal => {
 	let isInsideParenthetical = false;
 	const syllables = vocal.syllables.flatMap((syllable) => {
-		const text = syllable.romanizedText ?? syllable.text;
+		const text = syllable.text;
 		const isParentheticalToken = isInsideParenthetical || text.includes("(") || text.includes(")");
 		isInsideParenthetical = parentheticalStateAfter(text, isInsideParenthetical);
 		return isParentheticalToken ? [syllable] : splitSyllable(syllable);
@@ -46,7 +46,7 @@ const parentheticalStateAfter = (text: string, initialState: boolean): boolean =
 };
 
 const splitSyllable = (syllable: Syllable): Syllable[] => {
-	const match = syllable.romanizedText ? null : HANGUL_WORD.exec(syllable.text);
+	const match = HANGUL_WORD.exec(syllable.text);
 	if (!match) {
 		return [syllable];
 	}

@@ -1,8 +1,14 @@
+import type { NumericSettingSpec } from "./numericSettingSpecs";
 import { createSettingsIcon } from "./settingsIcons";
 
-export type NumberControlChange = {
-	persisted: boolean;
-	value: number;
+export type ControlPresentation = {
+	description?: string;
+	disabledReason?: string;
+};
+
+export type SettingsControlFactoryCallbacks = {
+	onPersist?(persisted: boolean): void;
+	onPreview?(): void;
 };
 
 export class SettingsControlFactory {
@@ -11,7 +17,8 @@ export class SettingsControlFactory {
 
 	public constructor(
 		private readonly ownerDocument: Document,
-		private readonly commitPreview: () => boolean
+		private readonly commitPreview: () => boolean,
+		private readonly callbacks: SettingsControlFactoryCallbacks = {}
 	) {}
 
 	public select(
@@ -20,7 +27,8 @@ export class SettingsControlFactory {
 		value: string,
 		options: string[],
 		onChange: (value: string) => boolean,
-		optionLabel = (option: string): string => option
+		optionLabel = (option: string): string => option,
+		presentation: ControlPresentation = {}
 	): HTMLElement {
 		const select = this.ownerDocument.createElement("select");
 		select.dataset.controlId = controlId;
@@ -31,25 +39,20 @@ export class SettingsControlFactory {
 			element.selected = option === value;
 			select.append(element);
 		}
-		select.addEventListener("change", () => {
-			this.markPersistenceComplete(onChange(select.value));
-		});
-		return this.row(label, select);
+		this.applyDisabled(select, presentation);
+		select.addEventListener("change", () => this.markPersistenceComplete(onChange(select.value)));
+		return this.row(controlId, label, select, presentation);
 	}
 
-	public number(controlId: string, label: string, value: number, onChange: (value: number) => NumberControlChange): HTMLElement {
-		const input = this.ownerDocument.createElement("input");
-		input.type = "number";
-		input.value = String(value);
-		input.dataset.controlId = controlId;
-		input.addEventListener("change", () => {
-			const result = onChange(Number(input.value));
-			input.value = String(result.value);
-			this.markPersistenceComplete(result.persisted);
-		});
-		return this.row(label, input);
-	}
-
+	public range(
+		controlId: string,
+		label: string,
+		value: number,
+		spec: NumericSettingSpec,
+		formatValue: (value: number) => string,
+		onChange: (value: number) => number | undefined,
+		presentation?: ControlPresentation
+	): HTMLElement;
 	public range(
 		controlId: string,
 		label: string,
@@ -58,39 +61,74 @@ export class SettingsControlFactory {
 		max: number,
 		step: number,
 		onChange: (value: number) => void
+	): HTMLElement;
+	public range(
+		controlId: string,
+		label: string,
+		value: number,
+		specOrMin: NumericSettingSpec | number,
+		formatOrMax: ((value: number) => string) | number,
+		changeOrStep: ((value: number) => unknown) | number,
+		onChangeOrPresentation?: ((value: number) => unknown) | ControlPresentation,
+		providedPresentation: ControlPresentation = {}
 	): HTMLElement {
+		const legacy = typeof specOrMin === "number";
+		const spec: NumericSettingSpec = legacy
+			? { min: specOrMin, max: formatOrMax as number, step: changeOrStep as number, unit: "percent" }
+			: specOrMin;
+		const formatValue = legacy ? (next: number): string => String(next) : (formatOrMax as (value: number) => string);
+		const onChange = legacy ? (onChangeOrPresentation as (value: number) => unknown) : (changeOrStep as (value: number) => unknown);
+		const presentation = legacy ? providedPresentation : ((onChangeOrPresentation as ControlPresentation | undefined) ?? providedPresentation);
+		const wrapper = this.ownerDocument.createElement("span");
+		wrapper.className = "range-control";
 		const input = this.ownerDocument.createElement("input");
 		input.type = "range";
-		input.min = String(min);
-		input.max = String(max);
-		input.step = String(step);
+		input.id = `aura-setting-${controlId}`;
+		input.min = String(spec.min);
+		input.max = String(spec.max);
+		input.step = String(spec.step);
 		input.value = String(value);
 		input.dataset.controlId = controlId;
+		this.applyDisabled(input, presentation);
+		const output = this.ownerDocument.createElement("output");
+		output.className = "range-output";
+		output.htmlFor = input.id;
+		output.textContent = formatValue(value);
 		let controlPreviewRevision = 0;
 		let previewedValue = value;
 		const preview = (): void => {
 			const nextValue = Number(input.value);
+			output.textContent = formatValue(nextValue);
 			if (nextValue === previewedValue) {
 				return;
 			}
 			previewedValue = nextValue;
 			this.previewRevision += 1;
 			controlPreviewRevision = this.previewRevision;
-			onChange(nextValue);
+			const normalizedValue = onChange(nextValue);
+			if (typeof normalizedValue === "number" && normalizedValue !== nextValue) {
+				previewedValue = normalizedValue;
+				input.value = String(normalizedValue);
+				output.textContent = formatValue(normalizedValue);
+			}
+			this.callbacks.onPreview?.();
 		};
 		const commit = (): void => {
 			preview();
 			if (controlPreviewRevision <= this.committedPreviewRevision) {
 				return;
 			}
-			if (this.commitPreview()) {
+			const persisted = this.commitPreview();
+			if (persisted) {
 				this.committedPreviewRevision = this.previewRevision;
 			}
+			this.callbacks.onPersist?.(persisted);
 		};
 		input.addEventListener("input", preview);
 		input.addEventListener("change", commit);
 		input.addEventListener("pointerup", commit);
-		return this.row(label, input);
+		wrapper.append(input, output);
+		return this.row(controlId, label, wrapper, presentation, input);
 	}
 
 	public input(
@@ -98,28 +136,34 @@ export class SettingsControlFactory {
 		label: string,
 		value: string,
 		onChange: (value: string) => boolean,
-		onInput?: (value: string) => void
+		onInput?: (value: string) => void,
+		presentation: ControlPresentation = {},
+		type: "password" | "text" | "url" = "text"
 	): HTMLElement {
 		const input = this.ownerDocument.createElement("input");
-		input.type = "text";
+		input.type = type;
 		input.value = value;
 		input.dataset.controlId = controlId;
+		this.applyDisabled(input, presentation);
 		input.addEventListener("input", () => onInput?.(input.value));
-		input.addEventListener("change", () => {
-			this.markPersistenceComplete(onChange(input.value));
-		});
-		return this.row(label, input);
+		input.addEventListener("change", () => this.markPersistenceComplete(onChange(input.value)));
+		return this.row(controlId, label, input, presentation);
 	}
 
-	public toggle(controlId: string, label: string, value: boolean, onChange: (value: boolean) => boolean): HTMLElement {
+	public toggle(
+		controlId: string,
+		label: string,
+		value: boolean,
+		onChange: (value: boolean) => boolean,
+		presentation: ControlPresentation = {}
+	): HTMLElement {
 		const input = this.ownerDocument.createElement("input");
 		input.type = "checkbox";
 		input.checked = value;
 		input.dataset.controlId = controlId;
-		input.addEventListener("change", () => {
-			this.markPersistenceComplete(onChange(input.checked));
-		});
-		return this.row(label, input);
+		this.applyDisabled(input, presentation);
+		input.addEventListener("change", () => this.markPersistenceComplete(onChange(input.checked)));
+		return this.row(controlId, label, input, presentation);
 	}
 
 	public button(controlId: string, label: string, onClick: () => void): HTMLButtonElement {
@@ -154,33 +198,63 @@ export class SettingsControlFactory {
 		return button;
 	}
 
-	public text(value: string): HTMLElement {
+	public text(value: string, className = "muted"): HTMLElement {
 		const span = this.ownerDocument.createElement("span");
-		span.className = "muted";
+		span.className = className;
 		span.textContent = value;
 		return span;
 	}
 
-	public status(value: string): HTMLElement {
-		const status = this.text(value);
-		status.classList.add("settings-status");
-		status.setAttribute("role", "status");
-		status.setAttribute("aria-live", "polite");
-		return status;
-	}
-
-	public row(label: string, control: HTMLElement): HTMLElement {
+	public row(
+		controlId: string,
+		label: string,
+		control: HTMLElement,
+		presentation: ControlPresentation = {},
+		accessibleControl = control
+	): HTMLElement {
 		const row = this.ownerDocument.createElement("label");
 		row.className = "setting-row";
-		const span = this.ownerDocument.createElement("span");
-		span.textContent = label;
-		row.append(span, control);
+		if (presentation.disabledReason) {
+			row.classList.add("is-disabled");
+		}
+		const copy = this.ownerDocument.createElement("span");
+		copy.className = "setting-copy";
+		const labelText = this.ownerDocument.createElement("span");
+		labelText.className = "setting-label";
+		labelText.textContent = label;
+		copy.append(labelText);
+		const describedBy: string[] = [];
+		if (presentation.description) {
+			const description = this.ownerDocument.createElement("span");
+			description.className = "setting-description";
+			description.id = `aura-setting-${controlId}-description`;
+			description.textContent = presentation.description;
+			describedBy.push(description.id);
+			copy.append(description);
+		}
+		if (presentation.disabledReason) {
+			const reason = this.ownerDocument.createElement("span");
+			reason.className = "disabled-reason";
+			reason.id = `aura-setting-${controlId}-disabled-reason`;
+			reason.textContent = presentation.disabledReason;
+			describedBy.push(reason.id);
+			copy.append(reason);
+		}
+		if (describedBy.length > 0) {
+			accessibleControl.setAttribute("aria-describedby", describedBy.join(" "));
+		}
+		row.append(copy, control);
 		return row;
+	}
+
+	private applyDisabled(control: HTMLInputElement | HTMLSelectElement, presentation: ControlPresentation): void {
+		control.disabled = Boolean(presentation.disabledReason);
 	}
 
 	private markPersistenceComplete(persisted: boolean): void {
 		if (persisted) {
 			this.committedPreviewRevision = this.previewRevision;
 		}
+		this.callbacks.onPersist?.(persisted);
 	}
 }

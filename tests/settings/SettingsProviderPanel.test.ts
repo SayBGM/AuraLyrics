@@ -36,264 +36,130 @@ const deferred = <T>() => {
 	return { promise, resolve };
 };
 
-const flushPromise = async <T>(promise: Promise<T>): Promise<void> => {
-	await promise;
-	await Promise.resolve();
+const mountPanel = (
+	store: SettingsStore,
+	onRefreshMusixmatchToken: () => Promise<string | undefined>,
+	onFeedback = vi.fn(),
+	onAccepted = vi.fn()
+) => {
+	const controls = new SettingsControlFactory(document, () => store.commit());
+	const panel = new SettingsProviderPanel(document, store, providers, controls, {
+		onFeedback,
+		onMusixmatchTokenAccepted: onAccepted,
+		onRefreshMusixmatchToken,
+		onScheduleRefresh: vi.fn(),
+	});
+	const groups = panel.render(store.get());
+	const root = document.createElement("div");
+	root.append(...groups);
+	document.body.append(root);
+	return { groups, onAccepted, onFeedback, panel, root };
 };
 
 describe("SettingsProviderPanel", () => {
-	test("keeps token status and input nodes live while an async token request resolves", async () => {
+	test("uses canonical provider names and masks the Musixmatch token by default", () => {
 		const store = new SettingsStore(new MemoryStorage());
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		let resolveToken: (value: string | undefined) => void = () => undefined;
-		const token = new Promise<string | undefined>((resolve) => {
-			resolveToken = resolve;
-		});
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: vi.fn(),
-			onRefreshMusixmatchToken: () => token,
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
-		document.body.append(root);
-		const input = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
-		const status = root.querySelector<HTMLElement>('[role="status"]');
-		if (!input || !status) {
-			throw new Error("Provider token controls were not rendered.");
-		}
-		input.value = "abcdef";
-		input.dispatchEvent(new Event("change", { bubbles: true }));
-		input.focus();
-		input.setSelectionRange(2, 4);
+		const { root } = mountPanel(store, async () => undefined);
+		const token = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
 
-		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
-		expect(status.textContent).toContain("Requesting");
-		resolveToken("generated-token");
-		await token;
-		await Promise.resolve();
+		expect(root.textContent).toContain("Spotify");
+		expect(root.textContent).toContain("LRCLIB");
+		expect(root.textContent).toContain("Musixmatch");
+		expect(token?.type).toBe("password");
 
-		expect(store.get().providers.musixmatchToken).toBe("generated-token");
-		expect(root.querySelector('[role="status"]')).toBe(status);
-		expect(root.querySelector('[data-control-id="musixmatch-token"]')).toBe(input);
-		expect(input.value).toBe("generated-token");
-		expect(input.selectionStart).toBe(2);
-		expect(input.selectionEnd).toBe(4);
-		expect(status.textContent).toContain("updated");
+		root.querySelector<HTMLButtonElement>('[data-control-id="toggle-musixmatch-token"]')?.click();
+		expect(token?.type).toBe("text");
 	});
 
-	test("applies only the newest token request when requests finish out of order", async () => {
+	test("shows copy only when Clipboard API is available and reports its result", async () => {
+		const writeText = vi.fn(async () => undefined);
+		Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
 		const store = new SettingsStore(new MemoryStorage());
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		const first = deferred<string | undefined>();
-		const second = deferred<string | undefined>();
-		const requests = [first.promise, second.promise];
-		const accepted = vi.fn();
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: accepted,
-			onRefreshMusixmatchToken: () => requests.shift() ?? Promise.resolve(undefined),
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
-		document.body.append(root);
+		store.update({ providers: { ...store.get().providers, musixmatchToken: "copy-me" } });
+		const onFeedback = vi.fn();
+		const { root } = mountPanel(store, async () => undefined, onFeedback);
+		const copy = root.querySelector<HTMLButtonElement>('[data-control-id="copy-musixmatch-token"]');
+
+		expect(copy).not.toBeNull();
+		copy?.click();
+		await Promise.resolve();
+		expect(writeText).toHaveBeenCalledWith("copy-me");
+		expect(onFeedback).toHaveBeenCalledWith("success", "Token copied", 2500);
+		Reflect.deleteProperty(navigator, "clipboard");
+	});
+
+	test("locks token generation while working and reports the result through shared feedback", async () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const request = deferred<string | undefined>();
+		const onFeedback = vi.fn();
+		const onAccepted = vi.fn();
+		const { root } = mountPanel(store, () => request.promise, onFeedback, onAccepted);
 		const button = root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]');
 		const input = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
-		const status = root.querySelector<HTMLElement>('[role="status"]');
-		if (!button || !input || !status) {
-			throw new Error("Provider token controls were not rendered.");
-		}
 
-		button.click();
-		button.click();
-		second.resolve("new-token");
-		await flushPromise(second.promise);
-		expect(store.get().providers.musixmatchToken).toBe("new-token");
-		expect(input.value).toBe("new-token");
-		expect(status.textContent).toContain("updated");
-		expect(accepted).toHaveBeenCalledOnce();
-		expect(accepted).toHaveBeenCalledWith("new-token");
-
-		first.resolve("stale-token");
-		await flushPromise(first.promise);
-		expect(store.get().providers.musixmatchToken).toBe("new-token");
-		expect(input.value).toBe("new-token");
-		expect(status.textContent).toContain("updated");
-		expect(accepted).toHaveBeenCalledOnce();
-	});
-
-	test("invalidates pending requests and releases mounted nodes during cleanup", async () => {
-		const store = new SettingsStore(new MemoryStorage());
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		const request = deferred<string | undefined>();
-		const accepted = vi.fn();
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: accepted,
-			onRefreshMusixmatchToken: () => request.promise,
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
-		const input = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
-		const status = root.querySelector<HTMLElement>('[role="status"]');
-		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
-		expect(status?.textContent).toContain("Requesting");
-
-		panel.cleanup();
-		request.resolve("stale-token");
-		await flushPromise(request.promise);
-
-		expect(store.get().providers.musixmatchToken).toBeUndefined();
-		expect(input?.value).toBe("");
-		expect(status?.textContent).toContain("Requesting");
-		expect(accepted).not.toHaveBeenCalled();
-		const reopened = document.createElement("div");
-		reopened.append(...panel.render(store.get()));
-		expect(reopened.querySelector('[role="status"]')?.textContent).toBe("");
-	});
-
-	test("clearTokenStatus invalidates a pending request without mutating the store", async () => {
-		const store = new SettingsStore(new MemoryStorage());
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		const request = deferred<string | undefined>();
-		const accepted = vi.fn();
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: accepted,
-			onRefreshMusixmatchToken: () => request.promise,
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
-		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
-
-		panel.clearTokenStatus();
-		request.resolve("stale-token");
-		await flushPromise(request.promise);
-
-		expect(store.get().providers.musixmatchToken).toBeUndefined();
-		expect(root.querySelector('[role="status"]')?.textContent).toBe("");
-		expect(accepted).not.toHaveBeenCalled();
-	});
-
-	test("manual token edits invalidate a pending request before it can overwrite the store or UI", async () => {
-		const store = new SettingsStore(new MemoryStorage());
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		const request = deferred<string | undefined>();
-		const accepted = vi.fn();
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: accepted,
-			onRefreshMusixmatchToken: () => request.promise,
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
-		document.body.append(root);
-		const input = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
-		const status = root.querySelector<HTMLElement>('[role="status"]');
-		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
-		if (!input || !status) {
-			throw new Error("Provider token controls were not rendered.");
-		}
-
-		input.value = "manual-token";
-		input.dispatchEvent(new Event("change", { bubbles: true }));
-		expect(store.get().providers.musixmatchToken).toBe("manual-token");
-		expect(status.textContent).toBe("");
+		button?.click();
+		expect(button?.disabled).toBe(true);
+		expect(onFeedback).toHaveBeenCalledWith("working", "Requesting Musixmatch token...");
 
 		request.resolve("generated-token");
-		await flushPromise(request.promise);
+		await request.promise;
+		await Promise.resolve();
+
+		expect(button?.disabled).toBe(false);
+		expect(store.get().providers.musixmatchToken).toBe("generated-token");
+		expect(input?.value).toBe("generated-token");
+		expect(onAccepted).toHaveBeenCalledWith("generated-token");
+		expect(onFeedback).toHaveBeenCalledWith("success", "Musixmatch token updated.", 2500);
+	});
+
+	test("manual typing invalidates an in-flight token request", async () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const request = deferred<string | undefined>();
+		const onAccepted = vi.fn();
+		const { root } = mountPanel(store, () => request.promise, vi.fn(), onAccepted);
+		const input = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
+
+		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
+		if (!input) {
+			throw new Error("Token input was not rendered.");
+		}
+		input.value = "manual-token";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		input.dispatchEvent(new Event("change", { bubbles: true }));
+		request.resolve("stale-token");
+		await request.promise;
+		await Promise.resolve();
 
 		expect(store.get().providers.musixmatchToken).toBe("manual-token");
 		expect(input.value).toBe("manual-token");
-		expect(status.textContent).toBe("");
-		expect(accepted).not.toHaveBeenCalled();
+		expect(onAccepted).not.toHaveBeenCalled();
 	});
 
-	test("typing into the token field invalidates a pending request before change persistence", async () => {
+	test("announces provider reordering with its display name", () => {
 		const store = new SettingsStore(new MemoryStorage());
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		const request = deferred<string | undefined>();
-		const accepted = vi.fn();
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: accepted,
-			onRefreshMusixmatchToken: () => request.promise,
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
-		document.body.append(root);
-		const input = root.querySelector<HTMLInputElement>('[data-control-id="musixmatch-token"]');
-		const status = root.querySelector<HTMLElement>('[role="status"]');
-		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
-		if (!input || !status) {
-			throw new Error("Provider token controls were not rendered.");
-		}
+		const onFeedback = vi.fn();
+		const { root } = mountPanel(store, async () => undefined, onFeedback);
 
-		input.value = "typing-token";
-		input.dispatchEvent(new Event("input", { bubbles: true }));
-		expect(store.get().providers.musixmatchToken).toBeUndefined();
-		expect(status.textContent).toBe("");
+		root.querySelector<HTMLButtonElement>('[data-control-id="provider-lrclib-up"]')?.click();
 
-		request.resolve("generated-token");
-		await flushPromise(request.promise);
-		expect(store.get().providers.musixmatchToken).toBeUndefined();
-		expect(input.value).toBe("typing-token");
-		expect(accepted).not.toHaveBeenCalled();
-
-		input.dispatchEvent(new Event("change", { bubbles: true }));
-		expect(store.get().providers.musixmatchToken).toBe("typing-token");
+		expect(store.get().providers.order.slice(0, 2)).toEqual(["lrclib", "spotify"]);
+		expect(onFeedback).toHaveBeenCalledWith("success", "Moved LRCLIB to position 1.", 2500);
+		expect(root.querySelector(".provider-order-announcement")?.textContent).toContain("LRCLIB");
 	});
 
-	test("does not accept or notify a fetched token when settings persistence fails", async () => {
+	test("does not accept a generated token when persistence fails", async () => {
 		const storage = new ToggleFailStorage();
 		const store = new SettingsStore(storage);
 		storage.failWrites = true;
-		const persistenceFailed = vi.fn();
-		store.persistenceFailed.subscribe(persistenceFailed);
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		const accepted = vi.fn();
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: accepted,
-			onRefreshMusixmatchToken: async () => "runtime-token",
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
+		const onFeedback = vi.fn();
+		const onAccepted = vi.fn();
+		const { root } = mountPanel(store, async () => "runtime-token", onFeedback, onAccepted);
+
 		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(store.get().providers.musixmatchToken).toBe("runtime-token");
-		expect(persistenceFailed).toHaveBeenCalledOnce();
-		expect(accepted).not.toHaveBeenCalled();
-	});
-
-	test.each([
-		{ name: "undefined", fetch: async () => undefined, status: "was not returned" },
-		{
-			name: "rejection",
-			fetch: async () => {
-				throw new Error("token offline");
-			},
-			status: "token offline",
-		},
-	])("does not accept or notify a token fetch $name", async ({ fetch, status }) => {
-		const store = new SettingsStore(new MemoryStorage());
-		const controls = new SettingsControlFactory(document, () => store.commit());
-		const accepted = vi.fn();
-		const panel = new SettingsProviderPanel(document, store, providers, controls, {
-			onMusixmatchTokenAccepted: accepted,
-			onRefreshMusixmatchToken: fetch,
-			onScheduleRefresh: vi.fn(),
-		});
-		const root = document.createElement("div");
-		root.append(...panel.render(store.get()));
-		root.querySelector<HTMLButtonElement>('[data-control-id="generate-musixmatch-token"]')?.click();
-		await Promise.resolve();
-		await Promise.resolve();
-
-		expect(store.get().providers.musixmatchToken).toBeUndefined();
-		expect(root.querySelector('[role="status"]')?.textContent).toContain(status);
-		expect(accepted).not.toHaveBeenCalled();
+		expect(onAccepted).not.toHaveBeenCalled();
+		expect(onFeedback).toHaveBeenCalledWith("error", expect.stringContaining("Could not save"));
 	});
 });

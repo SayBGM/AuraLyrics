@@ -109,17 +109,21 @@ export const interludeStyles = `
 	animation-delay: calc(var(--bar-index, 0) * 62ms);
 }
 
-.aura-lyrics.interlude-active .line-group:not(.out-of-context),
-.aura-lyrics.interlude-active .syllable-row:not(.out-of-context) {
-	opacity: 0.24;
-	filter: blur(calc(var(--inactive-blur) * 1.45));
-	transform: translate3d(0, 0, 0) scale(0.96);
+#aura-lyrics-root.reduce-motion .interlude-pill,
+#aura-lyrics-root.reduce-motion .interlude-dot,
+#aura-lyrics-root.reduce-motion .interlude-wave-bar,
+#aura-lyrics-root.motion-disabled .interlude-pill,
+#aura-lyrics-root.motion-disabled .interlude-dot,
+#aura-lyrics-root.motion-disabled .interlude-wave-bar {
+	animation: none !important;
+	transition-duration: 120ms;
+	transform: none;
 }
 
-.aura-lyrics.interlude-active .line-group.context-current,
-.aura-lyrics.interlude-active .syllable-row.context-current {
-	opacity: 0.36;
-	filter: blur(calc(var(--inactive-blur) * 0.95));
+#aura-lyrics-root.motion-disabled .interlude-pill,
+#aura-lyrics-root.motion-disabled .interlude-dot,
+#aura-lyrics-root.motion-disabled .interlude-wave-bar {
+	transition: none;
 }
 
 @keyframes interlude-breathe {

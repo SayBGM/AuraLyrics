@@ -243,9 +243,9 @@ body {
 }
 
 #aura-lyrics-root.interlude-frame-active .pip-content {
-	transform: translate3d(0, 0, 0) scale(0.875);
-	filter: blur(calc(1.6px * var(--motion-intensity, 1))) saturate(0.86);
-	opacity: 0.68;
+	transform: translate3d(0, 0, 0) scale(0.94);
+	filter: saturate(0.92);
+	opacity: 0.82;
 }
 
 #aura-lyrics-root.album-art-mode .pip-content {

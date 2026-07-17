@@ -1,15 +1,15 @@
 import { describe, expect, test, vi } from "vitest";
-import { appendProviderSource } from "../../src/renderer/lyricsTrackHelpers";
+import { createProviderCreditElement } from "../../src/renderer/components/ProviderCredit";
 
-describe("appendProviderSource", () => {
-	test("creates provider source and diagnostics through the supplied owner document", () => {
+describe("createProviderCreditElement", () => {
+	test("creates a localized canonical provider credit and diagnostics in the supplied document", () => {
 		const ownerDocument = document.implementation.createHTMLDocument("pip");
-		const lyricsTrack = ownerDocument.createElement("div");
 		const createElement = vi.spyOn(ownerDocument, "createElement");
 
-		appendProviderSource(ownerDocument, lyricsTrack, {
+		const credit = createProviderCreditElement(ownerDocument, {
 			provider: "lrclib",
-			source: "network",
+			language: "ko",
+			loadSource: "network",
 			showDiagnostics: true,
 			diagnostics: {
 				cache: { status: "miss", primaryProvider: "spotify" },
@@ -17,8 +17,9 @@ describe("appendProviderSource", () => {
 			},
 		});
 
-		expect(createElement).toHaveBeenCalledTimes(2);
-		expect(lyricsTrack.querySelector(".provider-source")?.textContent).toBe("Source: lrclib · network");
-		expect(lyricsTrack.querySelector(".provider-diagnostics")?.textContent).toContain("lrclib: success");
+		expect(createElement).toHaveBeenCalledTimes(3);
+		expect(credit.querySelector(".provider-credit-label")?.textContent).toBe("가사 제공: LRCLIB");
+		expect(credit.querySelector(".provider-diagnostics")?.textContent).toContain("network · cache miss");
+		expect(credit.querySelector(".provider-diagnostics")?.textContent).toContain("lrclib: success");
 	});
 });

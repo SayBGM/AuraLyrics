@@ -1,4 +1,5 @@
 import type { ProviderId } from "../domain/types";
+import { clampNumericSetting } from "./numericSettingSpecs";
 
 export type LyricsVisualPreset = "immersive" | "clean" | "karaoke" | "custom";
 export type SyncPreference = "prefer-syllable" | "line-only";
@@ -120,6 +121,18 @@ export const PRESETS: Record<Exclude<LyricsVisualPreset, "custom">, Partial<Exte
 	},
 };
 
+export const PRESET_CONTROLLED_KEYS = [
+	"backgroundBlurPx",
+	"backgroundDim",
+	"backgroundSaturation",
+	"vignetteStrength",
+	"inactiveBlurPx",
+	"motionIntensity",
+	"glowStrength",
+] as const satisfies readonly (keyof ExtensionSettings)[];
+
+export type PresetControlledKey = (typeof PRESET_CONTROLLED_KEYS)[number];
+
 const isProviderId = (value: unknown): value is ProviderId => typeof value === "string" && KNOWN_PROVIDER_IDS.includes(value as ProviderId);
 
 const isInterludeStyle = (value: unknown): value is InterludeStyle => value === "frame" || value === "dots" || value === "wave";
@@ -135,8 +148,6 @@ const clampNumber = (value: unknown, fallback: number, min: number, max: number)
 	const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
 	return Math.min(max, Math.max(min, next));
 };
-
-const roundClampedNumber = (value: unknown, fallback: number, min: number, max: number): number => Math.round(clampNumber(value, fallback, min, max));
 
 const normalizeBoolean = (value: unknown, fallback: boolean): boolean => (typeof value === "boolean" ? value : fallback);
 
@@ -179,26 +190,26 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 	return {
 		language: isUiLanguage(settings.language) ? settings.language : defaults.language,
 		preset: isLyricsVisualPreset(settings.preset) ? settings.preset : defaults.preset,
-		lyricsDelayMs: roundClampedNumber(settings.lyricsDelayMs, defaults.lyricsDelayMs, -5000, 5000),
-		fontScale: clampNumber(fontScale, defaults.fontScale, 0.6, 2.4),
+		lyricsDelayMs: clampNumericSetting("lyricsDelayMs", settings.lyricsDelayMs, defaults.lyricsDelayMs),
+		fontScale: clampNumericSetting("fontScale", fontScale, defaults.fontScale),
 		fontFamily: normalizeString(settings.fontFamily, 256) ?? defaults.fontFamily,
 		backgroundEnabled: true,
-		backgroundBlurPx: clampNumber(settings.backgroundBlurPx, defaults.backgroundBlurPx, 0, 80),
-		backgroundDim: clampNumber(settings.backgroundDim, defaults.backgroundDim, 0, 1),
-		backgroundSaturation: clampNumber(settings.backgroundSaturation, defaults.backgroundSaturation, 0, 2),
-		vignetteStrength: clampNumber(settings.vignetteStrength, defaults.vignetteStrength, 0, 1),
-		inactiveBlurPx: clampNumber(settings.inactiveBlurPx, defaults.inactiveBlurPx, 0, 4),
+		backgroundBlurPx: clampNumericSetting("backgroundBlurPx", settings.backgroundBlurPx, defaults.backgroundBlurPx),
+		backgroundDim: clampNumericSetting("backgroundDim", settings.backgroundDim, defaults.backgroundDim),
+		backgroundSaturation: clampNumericSetting("backgroundSaturation", settings.backgroundSaturation, defaults.backgroundSaturation),
+		vignetteStrength: clampNumericSetting("vignetteStrength", settings.vignetteStrength, defaults.vignetteStrength),
+		inactiveBlurPx: clampNumericSetting("inactiveBlurPx", settings.inactiveBlurPx, defaults.inactiveBlurPx),
 		syncPreference: isSyncPreference(settings.syncPreference) ? settings.syncPreference : defaults.syncPreference,
 		pseudoKaraoke: normalizeBoolean(settings.pseudoKaraoke, defaults.pseudoKaraoke),
 		showTranslation: normalizeBoolean(settings.showTranslation, defaults.showTranslation),
 		alignmentMode: isAlignmentMode(settings.alignmentMode) ? settings.alignmentMode : defaults.alignmentMode,
-		visibleContextLines: roundClampedNumber(settings.visibleContextLines, defaults.visibleContextLines, 0, 2),
+		visibleContextLines: clampNumericSetting("visibleContextLines", settings.visibleContextLines, defaults.visibleContextLines),
 		showInterludes: normalizeBoolean(settings.showInterludes, defaults.showInterludes),
 		interludeStyle: isInterludeStyle(settings.interludeStyle) ? settings.interludeStyle : defaults.interludeStyle,
 		motionEnabled: normalizeBoolean(settings.motionEnabled, defaults.motionEnabled),
-		motionIntensity: clampNumber(settings.motionIntensity, defaults.motionIntensity, 0, 2),
+		motionIntensity: clampNumericSetting("motionIntensity", settings.motionIntensity, defaults.motionIntensity),
 		springSoftness: clampNumber(settings.springSoftness, defaults.springSoftness, 0, 1),
-		glowStrength: clampNumber(settings.glowStrength, defaults.glowStrength, 0, 1.5),
+		glowStrength: clampNumericSetting("glowStrength", settings.glowStrength, defaults.glowStrength),
 		reduceMotion: normalizeBoolean(settings.reduceMotion, defaults.reduceMotion),
 		providers: {
 			order: normalizeProviderOrder(providers.order),

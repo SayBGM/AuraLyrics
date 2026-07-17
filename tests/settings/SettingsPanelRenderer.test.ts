@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { LyricsProvider } from "../../src/lyrics/types";
+import { NUMERIC_SETTING_SPECS } from "../../src/settings/numericSettingSpecs";
 import { SettingsPanelRenderer } from "../../src/settings/SettingsPanelRenderer";
 import { SettingsStore } from "../../src/settings/SettingsStore";
 
@@ -50,5 +51,67 @@ describe("SettingsPanelRenderer", () => {
 		expect(motion.querySelector('[data-control-id="reduce-motion"]')).not.toBeNull();
 		expect(advanced.querySelector('[data-control-id="refresh-current-lyrics"]')).not.toBeNull();
 		expect(advanced.querySelector('[data-control-id="reset-settings"]')).not.toBeNull();
+	});
+
+	test("uses shared numeric specs and connects controls to group descriptions", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const renderer = new SettingsPanelRenderer(document, store, providers, {
+			getCurrentTrackLyricsDelay: vi.fn(),
+			onAdjustCurrentTrackLyricsDelay: vi.fn(() => true),
+			onClearCache: vi.fn(),
+			onMusixmatchTokenAccepted: vi.fn(),
+			onRefreshLyrics: vi.fn(async () => undefined),
+			onRefreshMusixmatchToken: vi.fn(),
+			onScheduleRefresh: vi.fn(),
+			onResetCurrentTrackLyricsDelay: vi.fn(() => true),
+		});
+		const panels = [renderer.render("lyrics"), renderer.render("appearance"), renderer.render("motion")];
+		const mappings = [
+			["lyrics-delay", "lyricsDelayMs"],
+			["context-lines", "visibleContextLines"],
+			["font-scale", "fontScale"],
+			["background-blur", "backgroundBlurPx"],
+			["inactive-blur", "inactiveBlurPx"],
+			["motion-intensity", "motionIntensity"],
+			["glow-strength", "glowStrength"],
+		] as const;
+
+		for (const [controlId, settingKey] of mappings) {
+			const input = panels.map((panel) => panel.querySelector<HTMLInputElement>(`[data-control-id="${controlId}"]`)).find(Boolean);
+			const spec = NUMERIC_SETTING_SPECS[settingKey];
+			expect(input?.min).toBe(String(spec.min));
+			expect(input?.max).toBe(String(spec.max));
+			expect(input?.step).toBe(String(spec.step));
+			expect(input?.closest(".setting-row")?.querySelector("output")?.textContent).toMatch(/%|px|ms|lines/);
+			expect(input?.getAttribute("aria-describedby")).toContain("aura-settings-group-");
+		}
+	});
+
+	test("disables dependent controls with an adjacent reason while keeping glow available", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		store.update({ syncPreference: "line-only", showInterludes: false, motionEnabled: false, reduceMotion: true });
+		const renderer = new SettingsPanelRenderer(document, store, providers, {
+			getCurrentTrackLyricsDelay: vi.fn(),
+			onAdjustCurrentTrackLyricsDelay: vi.fn(() => true),
+			onClearCache: vi.fn(),
+			onMusixmatchTokenAccepted: vi.fn(),
+			onRefreshLyrics: vi.fn(async () => undefined),
+			onRefreshMusixmatchToken: vi.fn(),
+			onScheduleRefresh: vi.fn(),
+			onResetCurrentTrackLyricsDelay: vi.fn(() => true),
+		});
+		const lyrics = renderer.render("lyrics");
+		const motion = renderer.render("motion");
+		const pseudo = lyrics.querySelector<HTMLInputElement>('[data-control-id="pseudo-karaoke"]');
+		const interlude = lyrics.querySelector<HTMLSelectElement>('[data-control-id="interlude-style"]');
+		const intensity = motion.querySelector<HTMLInputElement>('[data-control-id="motion-intensity"]');
+		const glow = motion.querySelector<HTMLInputElement>('[data-control-id="glow-strength"]');
+
+		expect(pseudo?.disabled).toBe(true);
+		expect(pseudo?.closest(".setting-row")?.querySelector(".disabled-reason")?.textContent).toContain("Prefer syllables");
+		expect(interlude?.disabled).toBe(true);
+		expect(interlude?.value).toBe("dots");
+		expect(intensity?.disabled).toBe(true);
+		expect(glow?.disabled).toBe(false);
 	});
 });

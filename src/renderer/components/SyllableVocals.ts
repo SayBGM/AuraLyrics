@@ -67,8 +67,8 @@ export class SyllableVocals {
 
 		for (const live of this.liveSyllables) {
 			const progress = clamp((timestamp - live.metadata.startTime) / Math.max(live.metadata.endTime - live.metadata.startTime, 0.001), 0, 1);
-			const scale = 1 + (scaleCurve.at(progress) - 1) * this.motionIntensity;
-			const yOffset = yOffsetCurve.at(progress) * this.motionIntensity;
+			const scale = immediate ? 1 : 1 + (scaleCurve.at(progress) - 1) * this.motionIntensity;
+			const yOffset = immediate ? 0 : yOffsetCurve.at(progress) * this.motionIntensity;
 			const glow = glowCurve.at(progress);
 			if (immediate) {
 				live.scale.set(scale);
@@ -122,6 +122,7 @@ export class SyllableVocals {
 		for (const rowModel of model.rows) {
 			const row = createSyllableRow(this.ownerDocument);
 			row.element.dataset.scrollRow = "true";
+			row.element.setAttribute("aria-label", syllableRowLabel(rowModel.main, rowModel.echo));
 			for (const className of rowModel.rowClasses) {
 				row.element.classList.add(className);
 			}
@@ -180,6 +181,22 @@ const createSyllableRow = (ownerDocument: Document): SyllableRow => {
 	row.append(main, echo);
 	return { element: row, main, echo };
 };
+
+const syllableRowLabel = (main: SyllableVisualGroup, echo: SyllableVisualGroup): string =>
+	[main, echo]
+		.map((group) =>
+			group.words
+				.map((word) =>
+					word.tokens
+						.map((token) => token.text)
+						.join("")
+						.trim()
+				)
+				.filter(Boolean)
+				.join(" ")
+		)
+		.filter(Boolean)
+		.join(" ");
 
 const createWord = (isParenthetical: boolean, ownerDocument: Document): HTMLSpanElement => {
 	const word = ownerDocument.createElement("span");

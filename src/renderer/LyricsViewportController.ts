@@ -42,15 +42,23 @@ export const contextStateForRow = (index: number, focusedIndex: number | undefin
 
 export class LyricsViewportController {
 	private settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">;
+	private lastAnnouncement = "";
+	private readonly resizeObserver?: ResizeObserver;
 
 	public constructor(
 		private readonly lyricsTrack: HTMLElement,
 		private readonly lyricsViewport: HTMLElement,
 		private readonly container: HTMLElement,
 		settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">,
-		private readonly groups: AnimatedGroup[]
+		private readonly groups: AnimatedGroup[],
+		private readonly announcer?: HTMLElement
 	) {
 		this.settings = settings;
+		const ResizeObserverConstructor = this.lyricsViewport.ownerDocument.defaultView?.ResizeObserver;
+		if (ResizeObserverConstructor) {
+			this.resizeObserver = new ResizeObserverConstructor(() => this.update());
+			this.resizeObserver.observe(this.lyricsViewport);
+		}
 	}
 
 	public applySettings(settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">): void {
@@ -59,8 +67,14 @@ export class LyricsViewportController {
 
 	public update(): void {
 		const previewRow = this.settings.interludeStyle === "frame" ? this.getInterludePreviewRow() : undefined;
-		updateContextVisibility(this.lyricsTrack, Math.max(0, Math.round(this.settings.visibleContextLines)), previewRow);
+		const contextLines = Math.min(Math.max(0, Math.round(this.settings.visibleContextLines)), contextCapacity(this.lyricsViewport, this.container));
+		const focused = updateContextVisibility(this.lyricsTrack, contextLines, previewRow);
 		scrollActiveIntoView(this.lyricsTrack, this.lyricsViewport, this.container, previewRow);
+		this.announce(focused?.row);
+	}
+
+	public destroy(): void {
+		this.resizeObserver?.disconnect();
 	}
 
 	private getInterludePreviewRow(): HTMLElement | undefined {
@@ -72,6 +86,18 @@ export class LyricsViewportController {
 			.slice(activeInterludeIndex + 1)
 			.find((group) => !(group instanceof InterludeView) && group.element.parentElement === this.lyricsTrack);
 		return nextVocal?.element.querySelector<HTMLElement>("[data-scroll-row='true']") ?? nextVocal?.element;
+	}
+
+	private announce(row: HTMLElement | undefined): void {
+		if (!this.announcer || !row) {
+			return;
+		}
+		const text = row.getAttribute("aria-label")?.trim() || row.textContent?.replace(/\s+/gu, " ").trim() || "";
+		if (!text || text === this.lastAnnouncement) {
+			return;
+		}
+		this.lastAnnouncement = text;
+		this.announcer.textContent = text;
 	}
 }
 
@@ -88,7 +114,11 @@ const getFocusedRow = (rows: HTMLElement[], preferredRow?: HTMLElement): { row: 
 	return index === undefined ? undefined : { row: rows[index], index };
 };
 
-const updateContextVisibility = (lyricsTrack: HTMLElement, contextLines: number, preferredRow?: HTMLElement): void => {
+const updateContextVisibility = (
+	lyricsTrack: HTMLElement,
+	contextLines: number,
+	preferredRow?: HTMLElement
+): { row: HTMLElement; index: number } | undefined => {
 	const rows = getScrollRows(lyricsTrack);
 	const focused = getFocusedRow(rows, preferredRow);
 	if (!focused) {
@@ -96,10 +126,11 @@ const updateContextVisibility = (lyricsTrack: HTMLElement, contextLines: number,
 			row.classList.remove("out-of-context");
 			row.removeAttribute("aria-hidden");
 		}
-		return;
+		return undefined;
 	}
+	const effectiveContextLines = focused.row.classList.contains("provider-credit-timed") ? 0 : contextLines;
 	rows.forEach((row, index) => {
-		const state = contextStateForRow(index, focused.index, contextLines);
+		const state = contextStateForRow(index, focused.index, effectiveContextLines);
 		row.classList.toggle("out-of-context", state.outOfContext);
 		row.classList.toggle("context-previous", state.position === "previous");
 		row.classList.toggle("context-next", state.position === "next");
@@ -110,6 +141,7 @@ const updateContextVisibility = (lyricsTrack: HTMLElement, contextLines: number,
 			row.removeAttribute("aria-hidden");
 		}
 	});
+	return focused;
 };
 
 const scrollActiveIntoView = (lyricsTrack: HTMLElement, lyricsViewport: HTMLElement, container: HTMLElement, preferredRow?: HTMLElement): void => {
@@ -128,14 +160,35 @@ const getOffsetTopWithin = (element: HTMLElement, container: HTMLElement): numbe
 	let current: HTMLElement | null = element;
 	while (current && current !== container) {
 		offset += current.offsetTop;
-		current = current.parentElement;
+		current = current.offsetParent as HTMLElement | null;
 	}
 	if (current === container) {
 		return offset;
 	}
 	const elementRect = element.getBoundingClientRect();
 	const containerRect = container.getBoundingClientRect();
-	return elementRect.top - containerRect.top;
+	const rectOffset = elementRect.top - containerRect.top;
+	if (elementRect.height > 0 || containerRect.height > 0 || rectOffset !== 0) {
+		return rectOffset;
+	}
+
+	// jsdom has no layout engine and therefore exposes neither offsetParent nor
+	// useful DOMRects. Keep the structural fallback so unit tests can provide
+	// deterministic offsetTop values without changing the browser calculation.
+	offset = 0;
+	current = element;
+	while (current && current !== container) {
+		offset += current.offsetTop;
+		current = current.parentElement;
+	}
+	return current === container ? offset : rectOffset;
 };
 
 const isActiveInterlude = (group: AnimatedGroup): group is InterludeView => group instanceof InterludeView && group.isActive;
+
+const contextCapacity = (lyricsViewport: HTMLElement, container: HTMLElement): number => {
+	const height = lyricsViewport.clientHeight || container.clientHeight || 600;
+	if (height < 220) return 0;
+	if (height < 360) return 1;
+	return Number.POSITIVE_INFINITY;
+};

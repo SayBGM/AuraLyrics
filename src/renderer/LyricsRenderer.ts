@@ -9,7 +9,6 @@ import { InterludeFrameController } from "./InterludeFrameController";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { buildLyricsScene } from "./LyricsSceneBuilder";
 import { LyricsViewportController } from "./LyricsViewportController";
-import { appendProviderSource } from "./lyricsTrackHelpers";
 import { SceneTransitionController, type SceneTransitionDirection, type SceneTransitionHandle } from "./SceneTransitionController";
 
 export type { StatusViewModel } from "./components/StatusScene";
@@ -87,10 +86,36 @@ export class LyricsRenderer {
 			container.setAttribute("aria-describedby", description.id);
 			container.append(description);
 		}
-		const groups = buildLyricsScene(lyricsTrack, { lyrics, settings, waveforms, rhythm }).groups;
-		const viewportController = new LyricsViewportController(lyricsTrack, lyricsViewport, container, settings, groups);
-		const interludeFrameController = new InterludeFrameController(root, container, settings.interludeStyle, groups);
-		appendProviderSource(ownerDocument, lyricsTrack, { provider, source, diagnostics, showDiagnostics: settings.debugMode });
+		const scene = buildLyricsScene(lyricsTrack, {
+			lyrics,
+			settings,
+			provider,
+			loadSource: source,
+			diagnostics,
+			waveforms,
+			rhythm,
+		});
+		const groups = scene.groups;
+		container.classList.toggle("static-lyrics", scene.mode === "static");
+		lyricsViewport.classList.toggle("static-lyrics-viewport", scene.mode === "static");
+		lyricsTrack.classList.toggle("static-lyrics-track", scene.mode === "static");
+		let viewportController: LyricsViewportController | undefined;
+		let interludeFrameController: InterludeFrameController | undefined;
+		if (scene.mode === "static") {
+			lyricsViewport.tabIndex = 0;
+			lyricsViewport.setAttribute("aria-label", staticLyricsLabel(settings.language));
+		} else {
+			const announcer = ownerDocument.createElement("span");
+			announcer.className = "aura-visually-hidden";
+			announcer.setAttribute("role", "status");
+			announcer.setAttribute("aria-live", "polite");
+			announcer.setAttribute("aria-atomic", "true");
+			container.append(announcer);
+			viewportController = new LyricsViewportController(lyricsTrack, lyricsViewport, container, settings, groups, announcer);
+			if (settings.showInterludes) {
+				interludeFrameController = new InterludeFrameController(root, container, settings.interludeStyle, groups);
+			}
+		}
 		return this.presentScene(
 			root,
 			{
@@ -267,6 +292,7 @@ export class LyricsRenderer {
 		}
 		scene.cleaned = true;
 		this.deactivateInterludeFrame(scene);
+		scene.viewportController?.destroy();
 		scene.scene.remove();
 		scene.groups.length = 0;
 		scene.container = undefined;
@@ -314,6 +340,7 @@ export class LyricsRenderer {
 		root.style.setProperty("--spring-softness", String(settings.springSoftness));
 		root.style.fontFamily = `${settings.fontFamily}, sans-serif`;
 		root.classList.toggle("reduce-motion", settings.reduceMotion || !settings.motionEnabled);
+		root.classList.toggle("motion-disabled", !settings.motionEnabled);
 	}
 
 	private applyRhythmProfile(root: HTMLElement, rhythm: RhythmProfile | undefined): void {
@@ -341,4 +368,10 @@ const syntheticTimingLabel = (language: ExtensionSettings["language"]): string =
 	if (language === "ko") return "가상 노래방 싱크";
 	if (language === "ja") return "仮想カラオケ同期";
 	return "Synthesized karaoke sync";
+};
+
+const staticLyricsLabel = (language: ExtensionSettings["language"]): string => {
+	if (language === "ko") return "정적 가사 문서";
+	if (language === "ja") return "静的歌詞ドキュメント";
+	return "Static lyrics document";
 };

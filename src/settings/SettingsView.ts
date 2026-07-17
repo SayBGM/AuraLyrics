@@ -3,7 +3,8 @@ import { SettingsModalLifecycle } from "./SettingsModalLifecycle";
 import { SettingsModalShell } from "./SettingsModalShell";
 import { SettingsPanelRenderer } from "./SettingsPanelRenderer";
 import type { SettingsStore } from "./SettingsStore";
-import type { SettingsCallbacks, SettingsSection } from "./settingsViewTypes";
+import { translate } from "./settingsTranslations";
+import type { SettingsCallbacks, SettingsFeedbackState, SettingsSection } from "./settingsViewTypes";
 
 export class SettingsView {
 	private activeSection: SettingsSection = "general";
@@ -11,6 +12,8 @@ export class SettingsView {
 	private readonly lifecycle: SettingsModalLifecycle;
 	private readonly panelRenderer: SettingsPanelRenderer;
 	private refreshTimer?: number;
+	private feedbackTimer?: number;
+	private feedbackState: SettingsFeedbackState = "idle";
 	private shell?: SettingsModalShell;
 
 	public constructor(
@@ -21,6 +24,7 @@ export class SettingsView {
 		this.lifecycle = new SettingsModalLifecycle(window, window.document);
 		this.panelRenderer = new SettingsPanelRenderer(window.document, store, providers, {
 			...callbacks,
+			onFeedback: (state, text, durationMs) => this.showFeedback(state, text, durationMs),
 			onScheduleRefresh: (refreshNavigation) => this.schedulePanelRefresh(refreshNavigation),
 		});
 	}
@@ -33,6 +37,8 @@ export class SettingsView {
 		const ownerDocument = window.document;
 		const container = ownerDocument.createElement("div");
 		container.className = "aura-lyrics-settings";
+		container.setAttribute("role", "region");
+		container.setAttribute("aria-label", translate("settingsTitle", this.store.get().language));
 		const shell = new SettingsModalShell(ownerDocument, {
 			language: () => this.store.get().language,
 			onActivate: (section, focusTab) => this.activateSection(section, focusTab),
@@ -59,6 +65,14 @@ export class SettingsView {
 		if (this.container && this.activeSection === "lyrics") {
 			this.schedulePanelRefresh();
 		}
+	}
+
+	public reportPersistenceFailure(): boolean {
+		if (!this.container || !this.shell) {
+			return false;
+		}
+		this.showFeedback("error", translate("saveError", this.store.get().language));
+		return true;
 	}
 
 	private activateSection(section: SettingsSection, focusTab: boolean): void {
@@ -101,16 +115,43 @@ export class SettingsView {
 		shell.detachResponsive();
 		this.panelRenderer.cleanup();
 		this.clearRefreshTimer();
+		this.clearFeedbackTimer();
+		this.feedbackState = "idle";
 		if (this.container === container) {
 			this.container = undefined;
 			this.shell = undefined;
 		}
 	}
 
+	private showFeedback(state: SettingsFeedbackState, text: string, durationMs?: number): void {
+		if (this.feedbackState === "error" && state !== "saved" && state !== "success" && state !== "error") {
+			return;
+		}
+		this.clearFeedbackTimer();
+		this.feedbackState = state;
+		this.shell?.setFeedback(state, text);
+		const timeout = durationMs ?? (state === "saved" ? 1500 : state === "success" ? 2500 : undefined);
+		if (timeout === undefined || state === "error" || state === "working" || state === "previewing") {
+			return;
+		}
+		this.feedbackTimer = window.setTimeout(() => {
+			this.feedbackTimer = undefined;
+			this.feedbackState = "idle";
+			this.shell?.setFeedback("idle");
+		}, timeout);
+	}
+
 	private clearRefreshTimer(): void {
 		if (this.refreshTimer !== undefined) {
 			window.clearTimeout(this.refreshTimer);
 			this.refreshTimer = undefined;
+		}
+	}
+
+	private clearFeedbackTimer(): void {
+		if (this.feedbackTimer !== undefined) {
+			window.clearTimeout(this.feedbackTimer);
+			this.feedbackTimer = undefined;
 		}
 	}
 }

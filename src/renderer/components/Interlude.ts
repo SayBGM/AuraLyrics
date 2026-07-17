@@ -1,5 +1,6 @@
 import type { Interlude as InterludeMetadata } from "../../lyrics/types";
 import type { InterludeStyle } from "../../settings/SettingsStore";
+import type { UiLanguage } from "../../settings/settingsSchema";
 import type { InterludeWaveform } from "../AudioAnalysisWaveformService";
 import { interludeProgressAt, progressPercent } from "../interludeProgress";
 
@@ -14,6 +15,7 @@ export class InterludeView {
 	public constructor(
 		private readonly interlude: InterludeMetadata,
 		private readonly style: InterludeStyle,
+		language: UiLanguage,
 		waveform?: InterludeWaveform,
 		private readonly ownerDocument: Document = document
 	) {
@@ -21,7 +23,7 @@ export class InterludeView {
 		this.endTime = interlude.endTime;
 		this.element = this.ownerDocument.createElement("div");
 		this.element.className = `vocals-group interlude interlude-style-${style}`;
-		this.element.setAttribute("aria-label", "Instrumental break");
+		this.element.setAttribute("aria-label", interludeLabel(language));
 		this.element.dataset.interludeStyle = style;
 		if (style === "dots") {
 			this.element.innerHTML =
@@ -75,3 +77,9 @@ export class InterludeView {
 }
 
 const fallbackBars = (): number[] => [0.24, 0.52, 0.8, 0.42, 0.68, 0.34, 0.58, 0.86, 0.46, 0.64, 0.3, 0.72];
+
+const interludeLabel = (language: UiLanguage): string => {
+	if (language === "ko") return "연주 구간";
+	if (language === "ja") return "間奏";
+	return "Instrumental break";
+};

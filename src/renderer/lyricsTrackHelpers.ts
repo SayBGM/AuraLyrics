@@ -1,4 +1,4 @@
-import type { LyricsLoadDiagnostics, ProviderAttemptStatus, SyllableVocalSet } from "../lyrics/types";
+import type { SyllableVocalSet } from "../lyrics/types";
 import type { AnimatedGroup } from "./AnimatedGroup";
 
 export const applyHoldTiming = (groups: AnimatedGroup[]): void => {
@@ -28,43 +28,3 @@ export const createTranslationElement = (text: string, ownerDocument: Document =
 	translation.textContent = text;
 	return translation;
 };
-
-type ProviderSourceOptions = {
-	provider: string | undefined;
-	source?: "cache" | "network";
-	diagnostics?: LyricsLoadDiagnostics;
-	showDiagnostics?: boolean;
-};
-
-export const appendProviderSource = (
-	ownerDocument: Document,
-	lyricsTrack: HTMLElement,
-	{ provider, source: loadSource, diagnostics, showDiagnostics = false }: ProviderSourceOptions
-): void => {
-	if (!provider) {
-		return;
-	}
-	const sourceElement = ownerDocument.createElement("div");
-	sourceElement.className = "provider-source";
-	sourceElement.textContent = `Source: ${provider}${showDiagnostics && loadSource ? ` · ${loadSource}` : ""}`;
-	lyricsTrack.append(sourceElement);
-	if (!showDiagnostics || !diagnostics) {
-		return;
-	}
-	const detail = ownerDocument.createElement("div");
-	detail.className = "provider-diagnostics";
-	detail.textContent = providerDiagnosticsText(diagnostics);
-	lyricsTrack.append(detail);
-};
-
-const providerDiagnosticsText = (diagnostics: LyricsLoadDiagnostics): string => {
-	const cache = diagnostics.cache;
-	const cacheDetail =
-		cache.status === "hit" || cache.status === "provider-mismatch"
-			? `cache ${cache.status.replace("-", " ")} (${cache.provider})`
-			: `cache ${cache.status.replace("-", " ")}`;
-	const attempts = diagnostics.attempts.map((attempt) => `${attempt.provider}: ${attemptStatusLabel(attempt.status)}`).join(" -> ");
-	return attempts ? `${cacheDetail} · ${attempts}` : cacheDetail;
-};
-
-const attemptStatusLabel = (status: ProviderAttemptStatus): string => status.replace("-", " ");
