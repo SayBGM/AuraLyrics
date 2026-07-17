@@ -39,10 +39,10 @@ describe("TopbarController", () => {
 		controller.register();
 
 		expect(registered.map(({ label }) => label)).toEqual(["AuraLyrics", "AuraLyrics 설정"]);
-		expect(registered.map(({ icon }) => icon)).toEqual([expect.stringContaining("M17.5 16.5v-3"), expect.stringContaining('<circle cx="10" cy="7"')]);
+		expect(registered.map(({ icon }) => icon)).toEqual(["lyrics", expect.stringContaining('<circle cx="10" cy="7"')]);
+		expect(registered[1].icon).toContain("<svg");
+		expect(registered[1].icon).toContain('aria-hidden="true"');
 		for (const button of registered) {
-			expect(button.icon).toContain("<svg");
-			expect(button.icon).toContain('aria-hidden="true"');
 			expect(button.element.classList.contains("aura-lyrics-topbar-button")).toBe(true);
 			expect(button.element.getAttribute("aria-label")).toBe(button.label);
 		}
