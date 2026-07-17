@@ -19,6 +19,12 @@ type MusixmatchRichsyncToken = {
 	o: number;
 };
 
+type TimedMusixmatchRichsyncToken = {
+	text: string;
+	startTime: number;
+	separatorStartTime?: number;
+};
+
 export type MusixmatchTranslationEntry = {
 	translation?: {
 		description?: string;
@@ -57,6 +63,62 @@ const lookupTranslation = (translations: MusixmatchTranslationMap | undefined, t
 	return translated && translationKey(translated) !== translationKey(text) ? translated : undefined;
 };
 
+const MAX_RICHSYNC_REPAIR_STEP_SECONDS = 0.001;
+
+const collectTimedRichsyncTokens = (line: MusixmatchRichsyncLine): TimedMusixmatchRichsyncToken[] => {
+	const tokens: TimedMusixmatchRichsyncToken[] = [];
+	let separatorStartTime: number | undefined;
+	for (const token of line.l ?? []) {
+		const startTime = Number.isFinite(line.ts) && Number.isFinite(token.o) ? line.ts + token.o : Number.NaN;
+		if (token.c.trim().length === 0) {
+			separatorStartTime = Number.isFinite(startTime) ? startTime : undefined;
+			continue;
+		}
+		if (Number.isFinite(startTime)) {
+			tokens.push({ text: token.c, startTime, separatorStartTime });
+		}
+		separatorStartTime = undefined;
+	}
+	return tokens;
+};
+
+const buildRichsyncSyllables = (line: MusixmatchRichsyncLine): Syllable[] => {
+	if (!Number.isFinite(line.ts) || !Number.isFinite(line.te) || line.te <= line.ts) {
+		return [];
+	}
+	const tokens = collectTimedRichsyncTokens(line);
+	if (tokens.length === 0) {
+		return [];
+	}
+	const repairStep = Math.min(MAX_RICHSYNC_REPAIR_STEP_SECONDS, (line.te - line.ts) / (tokens.length + 1));
+	const syllables = new Array<Syllable>(tokens.length);
+	let endTime = line.te;
+	for (let index = tokens.length - 1; index >= 0; index -= 1) {
+		const token = tokens[index];
+		const earliestStartTime = line.ts + repairStep * index;
+		const isUsableStartTime = (value: number | undefined): value is number =>
+			value !== undefined && Number.isFinite(value) && value >= earliestStartTime && value < endTime;
+		let startTime: number;
+		if (isUsableStartTime(token.startTime)) {
+			startTime = token.startTime;
+		} else if (isUsableStartTime(token.separatorStartTime)) {
+			startTime = token.separatorStartTime;
+		} else if (token.startTime < earliestStartTime) {
+			startTime = earliestStartTime;
+		} else {
+			startTime = Math.max(earliestStartTime, endTime - repairStep);
+		}
+		syllables[index] = {
+			text: token.text,
+			startTime,
+			endTime,
+			isPartOfWord: false,
+		};
+		endTime = startTime;
+	}
+	return syllables;
+};
+
 export const parseMusixmatchSubtitle = (subtitleBody: string, translations?: MusixmatchTranslationMap): LineLyrics | undefined => {
 	const lines = JSON.parse(subtitleBody) as MusixmatchSubtitleLine[];
 	if (!Array.isArray(lines) || lines.length === 0) {
@@ -89,22 +151,7 @@ export const parseMusixmatchRichsync = (richsyncBody: string, translations?: Mus
 	const content = lines
 		.map((line) => {
 			const tokens = (line.l ?? []).filter((token) => token.c.trim().length > 0);
-			const syllables = tokens
-				.map((token, index): Syllable | undefined => {
-					const startTime = line.ts + token.o;
-					const nextToken = tokens[index + 1];
-					const endTime = nextToken ? line.ts + nextToken.o : line.te;
-					if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) {
-						return undefined;
-					}
-					return {
-						text: token.c,
-						startTime,
-						endTime,
-						isPartOfWord: false,
-					};
-				})
-				.filter((syllable): syllable is Syllable => syllable !== undefined);
+			const syllables = buildRichsyncSyllables(line);
 			if (syllables.length === 0) {
 				return undefined;
 			}
