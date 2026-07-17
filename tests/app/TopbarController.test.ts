@@ -38,10 +38,16 @@ describe("TopbarController", () => {
 
 		controller.register();
 
-		expect(registered.map(({ icon, label }) => ({ icon, label }))).toEqual([
-			{ icon: "lyrics", label: "AuraLyrics" },
-			{ icon: "settings", label: "AuraLyrics Settings" },
-		]);
+		expect(registered.map(({ label }) => label)).toEqual(["AuraLyrics", "AuraLyrics 설정"]);
+		expect(registered.map(({ icon }) => icon)).toEqual([expect.stringContaining("M17.5 16.5v-3"), expect.stringContaining('<circle cx="10" cy="7"')]);
+		for (const button of registered) {
+			expect(button.icon).toContain("<svg");
+			expect(button.icon).toContain('aria-hidden="true"');
+			expect(button.element.classList.contains("aura-lyrics-topbar-button")).toBe(true);
+			expect(button.element.getAttribute("aria-label")).toBe(button.label);
+		}
+		expect(registered[0].element.classList.contains("aura-lyrics-topbar-toggle")).toBe(true);
+		expect(registered[1].element.classList.contains("aura-lyrics-topbar-settings")).toBe(true);
 		registered[0].element.click();
 		registered[1].element.click();
 		const contextMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
