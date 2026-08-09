@@ -57,6 +57,83 @@ describe("buildSyllableRows", () => {
 		expect(words(model.rows[0].main).join("")).not.toContain(")");
 	});
 
+	test("keeps pseudo-karaoke continuation tokens inside a parenthetical echo", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 4,
+			syllables: [
+				{ text: "가", startTime: 0, endTime: 0.5, isPartOfWord: false },
+				{ text: "사", startTime: 0.5, endTime: 1, isPartOfWord: true },
+				{ text: "(", startTime: 1, endTime: 1.1, isPartOfWord: false },
+				{ text: "괄", startTime: 1.1, endTime: 1.5, isPartOfWord: true },
+				{ text: "호", startTime: 1.5, endTime: 2, isPartOfWord: true },
+				{ text: ")", startTime: 2, endTime: 2.1, isPartOfWord: true },
+				{ text: "다", startTime: 2.1, endTime: 3, isPartOfWord: false },
+				{ text: "음", startTime: 3, endTime: 4, isPartOfWord: true },
+			],
+		});
+
+		expect(model.hasParenthetical).toBe(true);
+		expect(model.rows.map(mainText)).toEqual(["가사", "다음"]);
+		expect(model.rows.map(echoText)).toEqual(["괄호", ""]);
+		expect(model.rows.flatMap((row) => [mainText(row), echoText(row)]).join("")).not.toMatch(/[()]/);
+	});
+
+	test("splits separate provider delimiter tokens and removes a following ASCII comma token", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 4,
+			syllables: [
+				{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+				{ text: "(", startTime: 1, endTime: 1.1, isPartOfWord: false },
+				{ text: "메아리", startTime: 1.1, endTime: 2, isPartOfWord: false },
+				{ text: ")", startTime: 2, endTime: 2.1, isPartOfWord: false },
+				{ text: ",", startTime: 2.1, endTime: 2.2, isPartOfWord: false },
+				{ text: "다음", startTime: 2.2, endTime: 4, isPartOfWord: false },
+			],
+		});
+
+		expect(model.rows.map(mainText)).toEqual(["본문", "다음"]);
+		expect(model.rows.map(echoText)).toEqual(["메아리", ""]);
+		expect(model.rows[0]).toMatchObject({ endTime: 2.2, holdEndTime: 2.2 });
+		expect(model.rows.flatMap((row) => [mainText(row), echoText(row)]).join("")).not.toMatch(/[()]/);
+	});
+
+	test.each(["，", "、"])("removes a following %s token and retains its time in the closed row", (comma) => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 3,
+			syllables: [
+				{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+				{ text: "(메아리)", startTime: 1, endTime: 2, isPartOfWord: false },
+				{ text: comma, startTime: 2, endTime: 2.2, isPartOfWord: false },
+				{ text: "다음", startTime: 2.2, endTime: 3, isPartOfWord: false },
+			],
+		});
+
+		expect(model.rows.map(mainText)).toEqual(["본문", "다음"]);
+		expect(model.rows.map(echoText)).toEqual(["메아리", ""]);
+		expect(model.rows[0]).toMatchObject({ endTime: 2.2, holdEndTime: 2.2 });
+	});
+
+	test("retains the timing of a combined close-and-comma token", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 3,
+			syllables: [
+				{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+				{ text: "(", startTime: 1, endTime: 1.1, isPartOfWord: false },
+				{ text: "메아리", startTime: 1.1, endTime: 2, isPartOfWord: false },
+				{ text: "),", startTime: 2, endTime: 2.2, isPartOfWord: false },
+				{ text: "다음", startTime: 2.2, endTime: 3, isPartOfWord: false },
+			],
+		});
+
+		expect(model.rows.map(mainText)).toEqual(["본문", "다음"]);
+		expect(model.rows.map(echoText)).toEqual(["메아리", ""]);
+		expect(model.rows[0]).toMatchObject({ endTime: 2.2, holdEndTime: 2.2 });
+	});
+
 	test("models parenthetical echoes in the same visual rows as their main lyric", () => {
 		const model = buildSyllableRows({
 			startTime: 0,
@@ -117,6 +194,13 @@ describe("buildSyllableRows", () => {
 		expect(model.rows[0].rowClasses).not.toContain("standalone-parenthetical");
 	});
 
+	test("keeps punctuation after a leading parenthetical in the echo row", () => {
+		const model = buildSyllableRows(vocal("(hey)! 다음", 0, 3));
+
+		expect(model.rows.map(mainText)).toEqual(["", "다음"]);
+		expect(model.rows.map(echoText)).toEqual(["hey!", ""]);
+	});
+
 	test("stacks repeated short ad-libs while leaving the following lyric clean", () => {
 		const model = buildSyllableRows(vocal("피땀으로 (hey), 눈물로 (hey) 채운게 미련하다고", 0, 6));
 
@@ -160,10 +244,115 @@ describe("buildSyllableRows", () => {
 
 	test("keeps ordinary commas, other punctuation, and unsplit parentheticals unchanged", () => {
 		expect(buildSyllableRows(vocal("본문, 다음 가사")).rows.map(mainText)).toEqual(["본문, 다음 가사"]);
+		expect(buildSyllableRows(vocal("본문， 다음 가사")).rows.map(mainText)).toEqual(["본문， 다음 가사"]);
+		expect(buildSyllableRows(vocal("본문、 다음 가사")).rows.map(mainText)).toEqual(["본문、 다음 가사"]);
 		expect(buildSyllableRows(vocal("본문 (애드리브)! 다음 가사")).rows.map(mainText)).toEqual(["본문!", "다음 가사"]);
 
 		const unsplit = buildSyllableRows(vocal("본문 (애드리브), 다음 가사"), undefined, { splitParentheticals: false });
 		expect(unsplit.rows.map(mainText)).toEqual(["본문 (애드리브), 다음 가사"]);
+
+		const unsplitTokens = buildSyllableRows(
+			{
+				startTime: 0,
+				endTime: 3,
+				syllables: [
+					{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+					{ text: "(", startTime: 1, endTime: 1.1, isPartOfWord: false },
+					{ text: "애드리브", startTime: 1.1, endTime: 2, isPartOfWord: false },
+					{ text: ")", startTime: 2, endTime: 2.1, isPartOfWord: false },
+					{ text: "다음", startTime: 2.1, endTime: 3, isPartOfWord: false },
+				],
+			},
+			undefined,
+			{ splitParentheticals: false }
+		);
+		expect(unsplitTokens.rows.map(mainText)).toEqual(["본문(애드리브)다음"]);
+		expect(unsplitTokens.rows.map(echoText)).toEqual([""]);
+		expect(unsplitTokens.hasParenthetical).toBe(false);
+		expect(
+			unsplitTokens.rows[0].main.words.flatMap((word) =>
+				word.tokens.map((token) => ({ text: token.text, startTime: token.metadata.startTime, endTime: token.metadata.endTime }))
+			)
+		).toEqual([
+			{ text: "본문", startTime: 0, endTime: 1 },
+			{ text: "(", startTime: 1, endTime: 1.1 },
+			{ text: "애드리브", startTime: 1.1, endTime: 2 },
+			{ text: ")", startTime: 2, endTime: 2.1 },
+			{ text: "다음", startTime: 2.1, endTime: 3 },
+		]);
+	});
+
+	test.each(["!", "?", "…"])("preserves %s when stacking a short Latin ad-lib", (punctuation) => {
+		const model = buildSyllableRows(vocal(`본문 (hey)${punctuation} 다음`, 0, 4));
+
+		expect(model.rows.map(mainText)).toEqual([`본문${punctuation}`, "", "다음"]);
+		expect(model.rows.map(echoText)).toEqual(["", "hey", ""]);
+	});
+
+	test("keeps trailing punctuation metadata without overlapping the previous main row", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 3,
+			syllables: [
+				{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+				{ text: "(hey)", startTime: 1, endTime: 2, isPartOfWord: false },
+				{ text: "!", startTime: 2, endTime: 2.3, isPartOfWord: false },
+				{ text: "다음", startTime: 2.3, endTime: 3, isPartOfWord: false },
+			],
+		});
+
+		expect(model.rows.map(({ startTime, endTime, holdEndTime }) => ({ startTime, endTime, holdEndTime }))).toEqual([
+			{ startTime: 0, endTime: 1, holdEndTime: 1 },
+			{ startTime: 1, endTime: 2.3, holdEndTime: 2.3 },
+			{ startTime: 2.3, endTime: 3, holdEndTime: 3 },
+		]);
+		expect(model.rows[0].main.words.at(-1)?.tokens.at(-1)).toMatchObject({
+			text: "!",
+			metadata: { startTime: 2, endTime: 2.3 },
+		});
+	});
+
+	test("retains terminal punctuation timing after a closed short ad-lib", () => {
+		const model = buildSyllableRows({
+			startTime: 0,
+			endTime: 2.3,
+			syllables: [
+				{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+				{ text: "(hey)", startTime: 1, endTime: 2, isPartOfWord: false },
+				{ text: "!", startTime: 2, endTime: 2.3, isPartOfWord: false },
+			],
+		});
+
+		expect(model.rows).toHaveLength(1);
+		expect(mainText(model.rows[0])).toBe("본문!");
+		expect(echoText(model.rows[0])).toBe("hey");
+		expect(model.rows[0]).toMatchObject({ endTime: 2.3, holdEndTime: 2.3 });
+		expect(model.rows[0].main.words.at(-1)?.tokens.at(-1)).toMatchObject({
+			text: "!",
+			metadata: { startTime: 2, endTime: 2.3 },
+		});
+	});
+
+	test("does not mutate provider syllables while normalizing the display model", () => {
+		const source: SyllableVocal = {
+			startTime: 0,
+			endTime: 3,
+			syllables: [
+				{ text: "본문", startTime: 0, endTime: 1, isPartOfWord: false },
+				{ text: "(hey)", startTime: 1, endTime: 2, isPartOfWord: false },
+				{ text: "，! 다음", startTime: 2, endTime: 3, isPartOfWord: false },
+			],
+		};
+		const before = structuredClone(source);
+		for (const item of source.syllables) {
+			Object.freeze(item);
+		}
+		Object.freeze(source.syllables);
+		Object.freeze(source);
+
+		buildSyllableRows(source);
+
+		expect(source).toEqual(before);
 	});
 
 	test("stacks hyphenated English ad-libs before a trailing lyric", () => {

@@ -7,7 +7,11 @@ type ScenarioName =
 	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
+	| "highlight-glow-sweep"
+	| "highlight-long-cjk"
 	| "highlight-marker-wave"
+	| "highlight-multiline-line"
+	| "highlight-ripple"
 	| "interlude-dots"
 	| "interlude-wave"
 	| "line-sync"
@@ -630,17 +634,37 @@ test("marker and wave combine on existing syllable timing", async ({ page }) => 
 	const metrics = await page.evaluate(() => {
 		const scene = document.querySelector<HTMLElement>(".aura-lyrics");
 		const active = document.querySelector<HTMLElement>(".syllable.active");
-		if (!scene || !active) {
+		const highlightTrack = document.querySelector<HTMLElement>(".syllable-row.active > .syllable-main.syllable-highlight-track");
+		const joinedWord = Array.from(highlightTrack?.querySelectorAll<HTMLElement>(".word") ?? []).find((word) => word.textContent === "빛이");
+		const joinedGlyph = joinedWord?.querySelector<HTMLElement>(".syllable");
+		const fragment = highlightTrack?.querySelector<HTMLElement>(".highlight-decoration-fragment");
+		if (!scene || !active || !highlightTrack || !joinedWord || !joinedGlyph || !fragment) {
 			throw new Error("Missing highlighted syllable scene.");
 		}
-		const marker = getComputedStyle(active, "::before");
+		const marker = getComputedStyle(fragment, "::before");
+		const hostMarkerContent = getComputedStyle(highlightTrack, "::before").content;
+		const glyphMarker = getComputedStyle(joinedGlyph, "::before");
+		scene.dataset.highlightEffect = "underline";
+		const underlineContent = getComputedStyle(fragment, "::after").content;
+		const hostUnderlineContent = getComputedStyle(highlightTrack, "::after").content;
+		const glyphUnderlineContent = getComputedStyle(joinedGlyph, "::after").content;
+		scene.dataset.highlightEffect = "marker";
 		return {
 			effect: scene.dataset.highlightEffect,
 			motion: scene.dataset.highlightMotion,
 			progress: active.style.getPropertyValue("--highlight-progress"),
 			transform: active.style.transform,
+			joinedTokenCount: joinedWord.querySelectorAll(":scope > .syllable").length,
+			trackProgress: highlightTrack.style.getPropertyValue("--highlight-track-progress-ratio"),
+			fragmentCount: highlightTrack.querySelectorAll(".highlight-decoration-fragment").length,
+			fragmentProgress: fragment.style.getPropertyValue("--highlight-fragment-progress-ratio"),
 			markerContent: marker.content,
 			markerBackground: marker.backgroundColor,
+			hostMarkerContent,
+			glyphMarkerContent: glyphMarker.content,
+			underlineContent,
+			hostUnderlineContent,
+			glyphUnderlineContent,
 		};
 	});
 
@@ -648,9 +672,246 @@ test("marker and wave combine on existing syllable timing", async ({ page }) => 
 	expect(metrics.motion).toBe("wave");
 	expect(Number.parseFloat(metrics.progress)).toBeGreaterThan(0);
 	expect(metrics.transform).toContain("rotate(");
+	expect(metrics.joinedTokenCount).toBe(2);
+	expect(Number.parseFloat(metrics.trackProgress)).toBeGreaterThan(0.2);
+	expect(Number.parseFloat(metrics.trackProgress)).toBeLessThan(0.4);
+	expect(metrics.fragmentCount).toBe(1);
+	expect(Number.parseFloat(metrics.fragmentProgress)).toBeCloseTo(Number.parseFloat(metrics.trackProgress), 6);
 	expect(metrics.markerContent).toBe('""');
 	expect(metrics.markerBackground).not.toBe("rgba(0, 0, 0, 0)");
+	expect(metrics.hostMarkerContent).toBe("none");
+	expect(metrics.glyphMarkerContent).toBe("none");
+	expect(metrics.underlineContent).toBe('""');
+	expect(metrics.hostUnderlineContent).toBe("none");
+	expect(metrics.glyphUnderlineContent).toBe("none");
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("highlight-marker-wave.png", screenshotTolerance);
+});
+
+test("multiline line marker and underline follow visual rows in reading order", async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 360 });
+	await renderScenario(page, "highlight-multiline-line");
+
+	const metrics = await page.evaluate(() => {
+		const scene = document.querySelector<HTMLElement>(".aura-lyrics");
+		const host = document.querySelector<HTMLElement>(".line-group.active .line.highlight-layout-host");
+		const glyphLayer = host?.querySelector<HTMLElement>(":scope > .highlight-glyph-layer");
+		const fragments = Array.from(host?.querySelectorAll<HTMLElement>(".highlight-decoration-fragment") ?? []);
+		if (!scene || !host || !glyphLayer || fragments.length === 0) {
+			throw new Error("Missing multiline line highlight fragments.");
+		}
+		const rowTops: number[] = [];
+		for (const token of Array.from(glyphLayer.querySelectorAll<HTMLElement>(".line-token"))) {
+			for (const rect of Array.from(token.getClientRects())) {
+				if (!rowTops.some((top) => Math.abs(top - rect.top) <= 1)) {
+					rowTops.push(rect.top);
+				}
+			}
+		}
+		rowTops.sort((left, right) => left - right);
+		const fragmentRatios = fragments.map((fragment) => Number.parseFloat(fragment.style.getPropertyValue("--highlight-fragment-progress-ratio")));
+		const fragmentStates = fragments.map((fragment) => fragment.dataset.highlightState ?? null);
+		const marker = getComputedStyle(fragments[0], "::before");
+		const glyphMarkerContent = getComputedStyle(glyphLayer, "::before").content;
+		const hostMarkerContent = getComputedStyle(host, "::before").content;
+		scene.dataset.highlightEffect = "underline";
+		const underlineContent = getComputedStyle(fragments[0], "::after").content;
+		const underlineHeight = Number.parseFloat(getComputedStyle(fragments[0], "::after").height);
+		const glyphUnderlineContent = getComputedStyle(glyphLayer, "::after").content;
+		scene.dataset.highlightEffect = "marker";
+		return {
+			fragmentCount: fragments.length,
+			fragmentRatios,
+			fragmentStates,
+			glyphMarkerContent,
+			glyphUnderlineContent,
+			hostMarkerContent,
+			layoutReady: host.dataset.highlightLayoutReady,
+			markerBackground: marker.backgroundColor,
+			markerContent: marker.content,
+			rowCount: rowTops.length,
+			trackProgress: Number.parseFloat(host.style.getPropertyValue("--highlight-track-progress-ratio")),
+			underlineContent,
+			underlineHeight,
+		};
+	});
+
+	expect(metrics.layoutReady).toBe("true");
+	expect(metrics.trackProgress).toBeCloseTo(0.5, 6);
+	expect(metrics.fragmentCount).toBe(metrics.rowCount);
+	expect(metrics.fragmentCount).toBeGreaterThanOrEqual(3);
+	const partialIndex = metrics.fragmentStates.indexOf("partial");
+	expect(partialIndex).toBeGreaterThan(0);
+	expect(metrics.fragmentStates.slice(0, partialIndex).every((state) => state === "full")).toBe(true);
+	expect(metrics.fragmentStates.slice(partialIndex + 1).every((state) => state === "empty")).toBe(true);
+	expect(metrics.fragmentRatios[partialIndex]).toBeGreaterThan(0);
+	expect(metrics.fragmentRatios[partialIndex]).toBeLessThan(1);
+	expect(metrics.markerContent).toBe('""');
+	expect(metrics.markerBackground).not.toBe("rgba(0, 0, 0, 0)");
+	expect(metrics.underlineContent).toBe('""');
+	expect(metrics.underlineHeight).toBeGreaterThanOrEqual(2);
+	expect(metrics.hostMarkerContent).toBe("none");
+	expect(metrics.glyphMarkerContent).toBe("none");
+	expect(metrics.glyphUnderlineContent).toBe("none");
+});
+
+test("char-synced CJK remeasures into row fragments and RTL grows from the right", async ({ page }) => {
+	const cjkText = "가사하이라이트는좁은화면에서도자연스럽게이어져요";
+	await page.setViewportSize({ width: 720, height: 420 });
+	await renderScenario(page, "highlight-long-cjk");
+
+	const readMetrics = () =>
+		page.evaluate((targetText) => {
+			const activeRow = document.querySelector<HTMLElement>(".syllable-row.active");
+			const main = activeRow?.querySelector<HTMLElement>(":scope > .syllable-main");
+			const track = main?.matches(".syllable-highlight-track") ? main : main?.querySelector<HTMLElement>(".syllable-highlight-track");
+			const glyphs = Array.from(main?.querySelectorAll<HTMLElement>(".syllable") ?? []);
+			const fragments = Array.from(track?.querySelectorAll<HTMLElement>(".highlight-decoration-fragment") ?? []);
+			const rtlHost = Array.from(document.querySelectorAll<HTMLElement>(".syllable-highlight-track")).find((track) => track.textContent === "مرحبا");
+			const rtlFragments = Array.from(rtlHost?.querySelectorAll<HTMLElement>(".highlight-decoration-fragment") ?? []);
+			if (
+				!activeRow ||
+				!main ||
+				!track ||
+				activeRow.textContent !== targetText ||
+				fragments.length === 0 ||
+				glyphs.length === 0 ||
+				!rtlHost ||
+				rtlFragments.length === 0
+			) {
+				throw new Error("Missing char-synced CJK or RTL highlight fragments.");
+			}
+			const glyphRects = glyphs.map((glyph) => glyph.getBoundingClientRect());
+			const visualRowTops: number[] = [];
+			for (const rect of glyphRects) {
+				if (!visualRowTops.some((top) => Math.abs(top - rect.top) <= 1)) {
+					visualRowTops.push(rect.top);
+				}
+			}
+			return {
+				fragmentCount: fragments.length,
+				fragmentHeights: fragments.map((fragment) => Number.parseFloat(fragment.style.height)),
+				fragmentWidths: fragments.map((fragment) => Number.parseFloat(fragment.style.width)),
+				glyphCount: glyphs.length,
+				glyphFontSizes: glyphs.map((glyph) => Number.parseFloat(getComputedStyle(glyph).fontSize)),
+				glyphWidths: glyphRects.map((rect) => rect.width),
+				layoutReady: track.dataset.highlightLayoutReady === "true",
+				mainWidth: main.getBoundingClientRect().width,
+				rtl: {
+					direction: getComputedStyle(rtlHost).direction,
+					fragmentDirections: rtlFragments.map((fragment) => fragment.dataset.direction),
+					transformOrigins: rtlFragments.map((fragment) => fragment.style.transformOrigin),
+				},
+				underlineContents: fragments.map((fragment) => getComputedStyle(fragment, "::after").content),
+				visualRowCount: visualRowTops.length,
+			};
+		}, cjkText);
+
+	const wide = await readMetrics();
+	await page.setViewportSize({ width: 360, height: 420 });
+	await expect.poll(async () => (await readMetrics()).fragmentCount).toBeGreaterThan(wide.fragmentCount);
+	const narrow = await readMetrics();
+
+	expect(narrow.layoutReady).toBe(true);
+	expect(narrow.glyphCount).toBe(Array.from(cjkText).length);
+	expect(narrow.fragmentCount).toBe(narrow.visualRowCount);
+	expect(narrow.fragmentCount).toBeLessThan(narrow.glyphCount);
+	expect(narrow.mainWidth).toBeLessThan(wide.mainWidth);
+	expect(narrow.fragmentWidths.every((width) => width > 0 && width <= narrow.mainWidth + 1)).toBe(true);
+	expect(Math.max(...narrow.fragmentWidths)).toBeGreaterThan(Math.max(...narrow.glyphWidths) * 2);
+	expect(narrow.fragmentHeights.every((height) => height <= Math.max(...narrow.glyphFontSizes) * 1.25)).toBe(true);
+	expect(narrow.underlineContents.every((content) => content === '""')).toBe(true);
+	expect(narrow.rtl.direction).toBe("rtl");
+	expect(narrow.rtl.fragmentDirections.every((direction) => direction === "rtl")).toBe(true);
+	expect(narrow.rtl.transformOrigins.every((origin) => origin === "right center")).toBe(true);
+});
+
+test("marker ripple filter stays on the active glyph instead of the decoration box", async ({ page }) => {
+	await renderScenario(page, "highlight-ripple");
+
+	const metrics = await page.evaluate(() => {
+		const track = document.querySelector<HTMLElement>(".syllable-row.active > .syllable-main.syllable-highlight-track");
+		const active = track?.querySelector<HTMLElement>(".syllable.active");
+		const layer = track?.querySelector<HTMLElement>(":scope > .highlight-decoration-layer");
+		const fragment = layer?.querySelector<HTMLElement>(":scope > .highlight-decoration-fragment");
+		if (!track || !active || !layer || !fragment) {
+			throw new Error("Missing marker ripple layers.");
+		}
+		const glyphStyle = getComputedStyle(active);
+		return {
+			decorationFilter: getComputedStyle(layer).filter,
+			fragmentFilter: getComputedStyle(fragment).filter,
+			glyphBoxShadow: glyphStyle.boxShadow,
+			glyphFilter: glyphStyle.filter,
+			markerContent: getComputedStyle(fragment, "::before").content,
+			trackFilter: getComputedStyle(track).filter,
+		};
+	});
+
+	expect(metrics.glyphBoxShadow).toBe("none");
+	expect(metrics.glyphFilter).toContain("drop-shadow(");
+	expect(metrics.trackFilter).toBe("none");
+	expect(metrics.decorationFilter).toBe("none");
+	expect(metrics.fragmentFilter).toBe("none");
+	expect(metrics.markerContent).toBe('""');
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("highlight-ripple.png", screenshotTolerance);
+});
+
+test("glow sweep and spotlight keep idle, sung, and context glyphs neutral", async ({ page }) => {
+	await renderScenario(page, "highlight-glow-sweep");
+
+	const metrics = await page.evaluate(() => {
+		const scene = document.querySelector<HTMLElement>(".aura-lyrics");
+		const row = document.querySelector<HTMLElement>(".syllable-row.active");
+		const active = row?.querySelector<HTMLElement>(".syllable.active");
+		const idle = row?.querySelector<HTMLElement>(".syllable.idle");
+		const sung = document.querySelector<HTMLElement>(".syllable-row.sung.context-previous .highlight-target");
+		const contextNext = document.querySelector<HTMLElement>(".syllable-row.context-next .highlight-target");
+		if (!scene || !active || !idle || !sung || !contextNext) {
+			throw new Error("Missing active, idle, sung, or context highlight glyphs.");
+		}
+		const activeStyle = getComputedStyle(active);
+		const idleStyle = getComputedStyle(idle);
+		scene.dataset.highlightEffect = "spotlight";
+		const neutralStyle = (element: HTMLElement) => {
+			const style = getComputedStyle(element);
+			return {
+				backgroundImage: style.backgroundImage,
+				boxShadow: style.boxShadow,
+				color: style.color,
+				filter: style.filter,
+				textShadow: style.textShadow,
+			};
+		};
+		const decorationOpacity = (element: HTMLElement): string | null => {
+			const layer = element.closest<HTMLElement>(".syllable-highlight-track")?.querySelector<HTMLElement>(".highlight-decoration-layer");
+			return layer ? getComputedStyle(layer).opacity : null;
+		};
+		return {
+			activeBackgroundImage: activeStyle.backgroundImage,
+			idleBackgroundImage: idleStyle.backgroundImage,
+			idleColor: idleStyle.color,
+			idleTextShadow: idleStyle.textShadow,
+			spotlightIdle: neutralStyle(idle),
+			spotlightSung: neutralStyle(sung),
+			spotlightContextNext: neutralStyle(contextNext),
+			sungDecorationOpacity: decorationOpacity(sung),
+			contextDecorationOpacity: decorationOpacity(contextNext),
+		};
+	});
+
+	expect(metrics.activeBackgroundImage).toContain("linear-gradient(");
+	expect(metrics.idleBackgroundImage).toBe("none");
+	expect(metrics.idleColor).not.toBe("rgba(0, 0, 0, 0)");
+	expect(metrics.idleTextShadow).toBe("none");
+	for (const neutral of [metrics.spotlightIdle, metrics.spotlightSung, metrics.spotlightContextNext]) {
+		expect(neutral.backgroundImage).toBe("none");
+		expect(neutral.boxShadow).toBe("none");
+		expect(neutral.color).not.toBe("rgba(0, 0, 0, 0)");
+		expect(neutral.filter).not.toContain("drop-shadow(");
+		expect(neutral.textShadow).toBe("none");
+	}
+	expect(metrics.sungDecorationOpacity).toBe("0");
+	expect(metrics.contextDecorationOpacity).toBe("0");
 });
 
 test("parenthetical echoes stay right aligned and keep stable flow before and during interaction", async ({ page }) => {

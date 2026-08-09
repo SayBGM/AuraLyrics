@@ -5,6 +5,7 @@ import { sampleHighlightMotion } from "../animation/highlightMotion";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
 import { SPRING_PROFILES, springTuningForSoftness } from "../animation/springTuning";
+import { HighlightDecorationTrack, type HighlightDecorationTrackProvider } from "../highlight/HighlightDecorationLayout";
 import { melismaBoostForProgress } from "../lyrics/koreanTail";
 import { buildSyllableRows, type SyllableRowsOptions, type SyllableVisualGroup } from "../lyrics/syllableRows";
 
@@ -15,6 +16,16 @@ type LiveSyllable = {
 	yOffset: Spring;
 	glow: Spring;
 	index: number;
+	highlightUnits: number;
+	progress: number;
+};
+
+type LiveHighlightTrack = {
+	element: HTMLSpanElement;
+	syllables: LiveSyllable[];
+	startTime: number;
+	endTime: number;
+	decoration: HighlightDecorationTrack;
 };
 
 type LiveRow = {
@@ -30,10 +41,11 @@ type SyllableRow = {
 	echo: HTMLSpanElement;
 };
 
-export class SyllableVocals {
+export class SyllableVocals implements HighlightDecorationTrackProvider {
 	public readonly element: HTMLDivElement;
 	public hasParenthetical = false;
 	private readonly liveSyllables: LiveSyllable[] = [];
+	private readonly liveHighlightTracks: LiveHighlightTrack[] = [];
 	private readonly liveRows: LiveRow[] = [];
 	private motionIntensity = 1;
 	private glowStrength = 0.8;
@@ -73,7 +85,7 @@ export class SyllableVocals {
 			const scale = motion.scale;
 			const yOffset = motion.yOffset;
 			const glow = motion.glow;
-			if (immediate) {
+			if (immediate || deltaTime <= 0) {
 				live.scale.set(scale);
 				live.yOffset.set(yOffset);
 				live.glow.set(glow);
@@ -104,7 +116,21 @@ export class SyllableVocals {
 			live.element.style.setProperty("--highlight-progress-ratio", String(progress));
 			live.element.style.setProperty("--gradient-progress", `${progress * 100}%`);
 			live.element.style.setProperty("--highlight-ripple", String(motion.ripple));
+			live.progress = progress;
 		}
+
+		for (const track of this.liveHighlightTracks) {
+			track.decoration.updateProgressFromPieces();
+			const progress = track.decoration.getProgress();
+			track.element.classList.toggle("active", progress > 0 && progress < 1);
+			track.element.classList.toggle("sung", timestamp > track.endTime);
+			track.element.classList.toggle("idle", timestamp <= track.startTime);
+			track.element.style.setProperty("--highlight-track-progress-ratio", String(progress));
+		}
+	}
+
+	public getHighlightDecorationTracks(): readonly HighlightDecorationTrack[] {
+		return this.liveHighlightTracks.map((track) => track.decoration);
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
@@ -149,36 +175,66 @@ export class SyllableVocals {
 	}
 
 	private appendGroup(parent: HTMLSpanElement, group: SyllableVisualGroup): void {
+		const syllables: LiveSyllable[] = [];
 		for (const wordModel of group.words) {
 			const word = createWord(wordModel.isParenthetical, this.ownerDocument);
 			for (const className of wordModel.extraClasses) {
 				word.classList.add(className);
 			}
 			for (const token of wordModel.tokens) {
-				this.appendLiveSyllable(word, token.text, token.metadata, token.isParenthetical, token.extraClasses);
+				syllables.push(this.appendLiveSyllable(word, token.text, token.metadata, token.isParenthetical, token.extraClasses));
 			}
 			parent.append(word);
 		}
+		if (syllables.length === 0) {
+			return;
+		}
+		parent.classList.add("syllable-highlight-track", "idle");
+		parent.dir = "auto";
+		const decoration = new HighlightDecorationTrack({
+			host: parent,
+			pieces: syllables.map((syllable) => ({
+				element: syllable.element,
+				getProgress: () => syllable.progress,
+				fallbackWeight: syllable.highlightUnits,
+			})),
+		});
+		this.liveHighlightTracks.push({
+			element: parent,
+			syllables,
+			startTime: Math.min(...syllables.map((syllable) => syllable.metadata.startTime)),
+			endTime: Math.max(...syllables.map((syllable) => syllable.metadata.endTime)),
+			decoration,
+		});
 	}
 
-	private appendLiveSyllable(word: HTMLSpanElement, text: string, metadata: Syllable, isParenthetical: boolean, extraClasses: string[] = []): void {
+	private appendLiveSyllable(
+		word: HTMLSpanElement,
+		text: string,
+		metadata: Syllable,
+		isParenthetical: boolean,
+		extraClasses: string[] = []
+	): LiveSyllable {
 		const span = this.ownerDocument.createElement("span");
-		span.className = "lyric syllable synced highlight-target";
+		span.className = "lyric syllable synced highlight-target highlight-glyph-target idle";
 		span.textContent = text;
-		span.dir = "auto";
 		span.classList.toggle("parenthetical-syllable", isParenthetical);
 		for (const className of extraClasses) {
 			span.classList.add(className);
 		}
 		word.append(span);
-		this.liveSyllables.push({
+		const live = {
 			metadata,
 			element: span,
 			scale: new Spring(1, SPRING_PROFILES.scale.dampingRatio, SPRING_PROFILES.scale.frequency),
 			yOffset: new Spring(0, SPRING_PROFILES.yOffset.dampingRatio, SPRING_PROFILES.yOffset.frequency),
 			glow: new Spring(0, SPRING_PROFILES.glow.dampingRatio, SPRING_PROFILES.glow.frequency),
 			index: this.liveSyllables.length,
-		});
+			highlightUnits: textUnits(text),
+			progress: 0,
+		} satisfies LiveSyllable;
+		this.liveSyllables.push(live);
+		return live;
 	}
 }
 
@@ -214,3 +270,5 @@ const createWord = (isParenthetical: boolean, ownerDocument: Document): HTMLSpan
 	word.className = `word${isParenthetical ? " parenthetical-word" : ""}`;
 	return word;
 };
+
+const textUnits = (text: string): number => Math.max([...text].length, 1);

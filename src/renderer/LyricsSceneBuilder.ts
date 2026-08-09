@@ -6,12 +6,14 @@ import { InterludeView } from "./components/Interlude";
 import { LineVocals } from "./components/LineVocals";
 import { createProviderCreditElement, ProviderCredit } from "./components/ProviderCredit";
 import { SyllableVocals } from "./components/SyllableVocals";
+import type { HighlightDecorationTrack } from "./highlight/HighlightDecorationLayout";
 import { interludeKey } from "./interludeProgress";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { applyHoldTiming, createTranslationElement, syllableToLine } from "./lyricsTrackHelpers";
 
 export type LyricsScene = {
 	groups: AnimatedGroup[];
+	highlightTracks: HighlightDecorationTrack[];
 	mode: "static" | "timed";
 };
 
@@ -28,6 +30,7 @@ export type LyricsSceneOptions = {
 export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneOptions): LyricsScene => {
 	const { lyrics, settings, waveforms = {}, rhythm } = options;
 	const groups: AnimatedGroup[] = [];
+	const highlightTracks: HighlightDecorationTrack[] = [];
 	const ownerDocument = lyricsTrack.ownerDocument;
 	if (lyrics.type === "static") {
 		for (const line of lyrics.lines) {
@@ -53,7 +56,7 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 				})
 			);
 		}
-		return { groups, mode: "static" };
+		return { groups, highlightTracks, mode: "static" };
 	}
 
 	if (lyrics.type === "line") {
@@ -64,11 +67,12 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 			}
 			const line = new LineVocals(item, settings, ownerDocument);
 			groups.push(line);
+			highlightTracks.push(...line.getHighlightDecorationTracks());
 			lyricsTrack.append(line.element);
 		}
 		applyHoldTiming(groups);
 		appendTimedCredit(groups, lyricsTrack, lyrics.endTime, options);
-		return { groups, mode: "timed" };
+		return { groups, highlightTracks, mode: "timed" };
 	}
 
 	for (const item of lyrics.content) {
@@ -79,6 +83,7 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 		if (settings.syncPreference === "line-only") {
 			const line = new LineVocals(syllableToLine(item), settings, ownerDocument);
 			groups.push(line);
+			highlightTracks.push(...line.getHighlightDecorationTracks());
 			lyricsTrack.append(line.element);
 			continue;
 		}
@@ -95,7 +100,11 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 		const vocalRanges = [item.lead, ...(item.background ?? [])];
 		const startTime = Math.min(...vocalRanges.map((vocal) => vocal.startTime));
 		const endTime = Math.max(...vocalRanges.map((vocal) => vocal.endTime));
-		group.classList.toggle("has-parenthetical", lead.hasParenthetical);
+		group.classList.toggle("has-parenthetical", lead.hasParenthetical || backgrounds.some((background) => background.hasParenthetical));
+		highlightTracks.push(...lead.getHighlightDecorationTracks());
+		for (const background of backgrounds) {
+			highlightTracks.push(...background.getHighlightDecorationTracks());
+		}
 		group.append(lead.element, ...backgrounds.map((background) => background.element));
 		if (translatedText) {
 			group.append(createTranslationElement(translatedText, ownerDocument));
@@ -131,7 +140,7 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 	}
 	applyHoldTiming(groups);
 	appendTimedCredit(groups, lyricsTrack, lyrics.endTime, options);
-	return { groups, mode: "timed" };
+	return { groups, highlightTracks, mode: "timed" };
 };
 
 const appendInterlude = (

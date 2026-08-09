@@ -14,8 +14,13 @@ const line: LineVocal = {
 describe("LineVocals highlighting", () => {
 	test("derives line-wide progress from the existing line range without word timing", () => {
 		const vocals = new LineVocals(line, DEFAULT_SETTINGS);
-		const target = vocals.element.querySelector<HTMLElement>(".line.highlight-target");
+		const target = vocals.element.querySelector<HTMLElement>(".line.highlight-layout-host");
+		const glyphLayer = vocals.element.querySelector<HTMLElement>(".highlight-glyph-layer.highlight-target");
 		vocals.setHoldEndTime(8);
+		expect(target?.classList.contains("idle")).toBe(true);
+		expect(vocals.getHighlightDecorationTracks()).toHaveLength(1);
+		expect(vocals.getHighlightDecorationTracks()[0].host).toBe(target);
+		expect(glyphLayer?.contains(vocals.getHighlightDecorationTracks()[0].decorationLayer)).toBe(false);
 
 		vocals.animate(4);
 		expect(target?.style.getPropertyValue("--line-progress")).toBe("50%");
@@ -40,12 +45,12 @@ describe("LineVocals highlighting", () => {
 
 	test("changes motion live without replacing the line DOM", () => {
 		const vocals = new LineVocals(line, DEFAULT_SETTINGS);
-		const target = vocals.element.querySelector<HTMLElement>(".line.highlight-target");
+		const target = vocals.element.querySelector<HTMLElement>(".line.highlight-layout-host");
 
 		vocals.applySettings({ ...DEFAULT_SETTINGS, highlightMotion: "wave" });
 		vocals.animate(4);
 
-		expect(vocals.element.querySelector(".line.highlight-target")).toBe(target);
+		expect(vocals.element.querySelector(".line.highlight-layout-host")).toBe(target);
 		expect(target?.style.transform).toContain("rotate(");
 		vocals.applySettings({ ...DEFAULT_SETTINGS, highlightMotion: "wave", reduceMotion: true });
 		vocals.animate(4);
