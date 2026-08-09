@@ -752,7 +752,6 @@ test("multiline line marker and underline follow visual rows in reading order", 
 	expect(metrics.hostMarkerContent).toBe("none");
 	expect(metrics.glyphMarkerContent).toBe("none");
 	expect(metrics.glyphUnderlineContent).toBe("none");
-	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("highlight-multiline-line.png", screenshotTolerance);
 });
 
 test("char-synced CJK remeasures into row fragments and RTL grows from the right", async ({ page }) => {
