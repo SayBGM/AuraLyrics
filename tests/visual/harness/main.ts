@@ -21,7 +21,11 @@ type ScenarioName =
 	| "aurora-metadata-light"
 	| "background-opposite"
 	| "frame-interlude"
+	| "highlight-glow-sweep"
+	| "highlight-long-cjk"
 	| "highlight-marker-wave"
+	| "highlight-multiline-line"
+	| "highlight-ripple"
 	| "interlude-dots"
 	| "interlude-wave"
 	| "line-sync"
@@ -344,7 +348,7 @@ const scenarios: Record<ScenarioName, Scenario> = {
 		},
 	},
 	"highlight-marker-wave": {
-		timestamp: 4.35,
+		timestamp: 3.85,
 		settings: {
 			...settingsForVisuals,
 			highlightEffect: "marker",
@@ -368,6 +372,71 @@ const scenarios: Record<ScenarioName, Scenario> = {
 				["밤", 4.9, 5.8],
 			],
 			[["돌아와", 6, 8]],
+		]),
+	},
+	"highlight-multiline-line": {
+		timestamp: 6,
+		settings: {
+			...settingsForVisuals,
+			alignmentMode: "left",
+			highlightEffect: "marker",
+			highlightMotion: "spring",
+			visibleContextLines: 1,
+		},
+		lyrics: lineLyrics([
+			["이전 가사", 0, 2],
+			["여러 줄로 이어지는 긴 가사는 읽는 순서대로 자연스럽게 강조되어야 합니다", 3, 9],
+			["다음 가사", 10, 12],
+		]),
+	},
+	"highlight-long-cjk": {
+		timestamp: 6,
+		settings: {
+			...settingsForVisuals,
+			alignmentMode: "left",
+			fontScale: 1.08,
+			highlightEffect: "underline",
+			highlightMotion: "spring",
+			visibleContextLines: 1,
+		},
+		lyrics: syllableLyrics([[["مرحبا", 0, 2]], timedCharacters("가사하이라이트는좁은화면에서도자연스럽게이어져요", 3, 9), [["다음", 10, 12]]]),
+	},
+	"highlight-ripple": {
+		timestamp: 4.05,
+		settings: {
+			...settingsForVisuals,
+			highlightEffect: "marker",
+			highlightMotion: "ripple",
+			reduceMotion: false,
+		},
+		lyrics: syllableLyrics([
+			[["멀리", 0, 2]],
+			[
+				["번", 3, 3.7],
+				["져", 3.7, 4.4, true],
+				["가는", 4.4, 5.3],
+				["빛", 5.3, 6],
+			],
+			[["돌아와", 6.4, 8.2]],
+		]),
+	},
+	"highlight-glow-sweep": {
+		timestamp: 3.5,
+		settings: {
+			...settingsForVisuals,
+			highlightEffect: "glow-sweep",
+			highlightMotion: "spring",
+			reduceMotion: false,
+		},
+		lyrics: syllableLyrics([
+			[["이전", 0, 2]],
+			[
+				["빛나", 3, 4],
+				["기", 4, 4.6, true],
+				["전", 4.6, 5.2, true],
+				["고요", 5.2, 6.4],
+			],
+			[["다음", 6.8, 8]],
 		]),
 	},
 	"interlude-dots": {
@@ -947,6 +1016,16 @@ function syllableLyrics(groups: Array<Array<[text: string, startTime: number, en
 			},
 		})),
 	};
+}
+
+function timedCharacters(text: string, startTime: number, endTime: number): Array<[string, number, number, boolean?]> {
+	const units = Array.from(text);
+	const duration = Math.max(endTime - startTime, 0);
+	return units.map((unit, index) => {
+		const unitStart = startTime + (duration * index) / units.length;
+		const unitEnd = startTime + (duration * (index + 1)) / units.length;
+		return [unit, unitStart, unitEnd, false];
+	});
 }
 
 function applyTheme(root: HTMLElement, theme: TrackTheme): void {

@@ -5,6 +5,7 @@ import type { RhythmProfile } from "./AudioAnalysisWaveformService";
 import { clamp } from "./animation/Spline";
 import { createStatusScene, type StatusViewModel } from "./components/StatusScene";
 import { createTrackMetadataScene, type TrackMetadataViewModel } from "./components/TrackMetadata";
+import { HighlightDecorationLayoutController } from "./highlight/HighlightDecorationLayout";
 import { InterludeFrameController } from "./InterludeFrameController";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { buildLyricsScene } from "./LyricsSceneBuilder";
@@ -40,7 +41,9 @@ type SceneResources = {
 	lyricsTrack?: HTMLDivElement;
 	groups: AnimatedGroup[];
 	viewportController?: LyricsViewportController;
+	highlightLayoutController?: HighlightDecorationLayoutController;
 	interludeFrameController?: InterludeFrameController;
+	layoutSettings?: Pick<ExtensionSettings, "alignmentMode" | "fontFamily" | "fontScale">;
 	layoutFrame?: number;
 	cleaned: boolean;
 };
@@ -101,6 +104,7 @@ export class LyricsRenderer {
 		lyricsViewport.classList.toggle("static-lyrics-viewport", scene.mode === "static");
 		lyricsTrack.classList.toggle("static-lyrics-track", scene.mode === "static");
 		let viewportController: LyricsViewportController | undefined;
+		let highlightLayoutController: HighlightDecorationLayoutController | undefined;
 		let interludeFrameController: InterludeFrameController | undefined;
 		if (scene.mode === "static") {
 			lyricsViewport.tabIndex = 0;
@@ -112,7 +116,20 @@ export class LyricsRenderer {
 			announcer.setAttribute("aria-live", "polite");
 			announcer.setAttribute("aria-atomic", "true");
 			container.append(announcer);
-			viewportController = new LyricsViewportController(lyricsTrack, lyricsViewport, container, settings, groups, announcer);
+			viewportController = new LyricsViewportController(
+				lyricsTrack,
+				lyricsViewport,
+				container,
+				settings,
+				groups,
+				announcer,
+				scene.highlightTracks.length === 0
+			);
+			if (scene.highlightTracks.length > 0) {
+				highlightLayoutController = new HighlightDecorationLayoutController(lyricsViewport, scene.highlightTracks, {
+					onLayout: () => viewportController?.update(),
+				});
+			}
 			if (settings.showInterludes) {
 				interludeFrameController = new InterludeFrameController(root, container, settings.interludeStyle, groups);
 			}
@@ -124,7 +141,9 @@ export class LyricsRenderer {
 			lyricsTrack,
 			groups,
 			viewportController,
+			highlightLayoutController,
 			interludeFrameController,
+			layoutSettings: layoutSettingsFor(settings),
 			cleaned: false,
 		};
 		const handle = this.presentScene(
@@ -134,7 +153,12 @@ export class LyricsRenderer {
 			this.shouldAnimate(presentation, settings.motionEnabled && !settings.reduceMotion),
 			false
 		);
-		this.scheduleLayoutUpdate(resources);
+		if (highlightLayoutController) {
+			highlightLayoutController.start();
+			highlightLayoutController.flush();
+		} else {
+			this.scheduleLayoutUpdate(resources);
+		}
 		return handle;
 	}
 
@@ -215,11 +239,18 @@ export class LyricsRenderer {
 				scene.lyricsTrack.classList.toggle(`align-${alignment}`, settings.alignmentMode === alignment);
 			}
 		}
+		const layoutChanged = !sameLayoutSettings(scene.layoutSettings, settings);
 		this.finishLayoutUpdate(scene);
 		scene.viewportController?.applySettings(settings);
-		scene.viewportController?.update();
 		for (const group of scene.groups) {
 			group.applySettings?.(settings);
+		}
+		scene.layoutSettings = layoutSettingsFor(settings);
+		if (layoutChanged && scene.highlightLayoutController) {
+			scene.highlightLayoutController.invalidate();
+		} else {
+			scene.highlightLayoutController?.flush();
+			scene.viewportController?.update();
 		}
 	}
 
@@ -263,6 +294,7 @@ export class LyricsRenderer {
 		}
 		if (previous) {
 			this.deactivateInterludeFrame(previous);
+			this.deactivateHighlightLayout(previous);
 			if (animatedReplacement) {
 				this.retiredScenes.add(previous);
 				void handle.settled.then(() => this.releaseRetiredScene(previous, root));
@@ -302,6 +334,7 @@ export class LyricsRenderer {
 			scene.layoutFrame = undefined;
 		}
 		this.deactivateInterludeFrame(scene);
+		this.deactivateHighlightLayout(scene);
 		scene.viewportController?.destroy();
 		scene.scene.remove();
 		scene.groups.length = 0;
@@ -336,6 +369,12 @@ export class LyricsRenderer {
 	private deactivateInterludeFrame(scene: SceneResources): void {
 		const controller = scene.interludeFrameController;
 		scene.interludeFrameController = undefined;
+		controller?.destroy();
+	}
+
+	private deactivateHighlightLayout(scene: SceneResources): void {
+		const controller = scene.highlightLayoutController;
+		scene.highlightLayoutController = undefined;
 		controller?.destroy();
 	}
 
@@ -397,6 +436,15 @@ export class LyricsRenderer {
 }
 
 const roundSeconds = (value: number): number => Number(value.toFixed(3));
+
+const layoutSettingsFor = (settings: ExtensionSettings): Pick<ExtensionSettings, "alignmentMode" | "fontFamily" | "fontScale"> => ({
+	alignmentMode: settings.alignmentMode,
+	fontFamily: settings.fontFamily,
+	fontScale: settings.fontScale,
+});
+
+const sameLayoutSettings = (previous: SceneResources["layoutSettings"], next: ExtensionSettings): boolean =>
+	previous?.alignmentMode === next.alignmentMode && previous.fontFamily === next.fontFamily && previous.fontScale === next.fontScale;
 
 const syntheticTimingLabel = (language: ExtensionSettings["language"]): string => {
 	if (language === "ko") return "가상 노래방 싱크";

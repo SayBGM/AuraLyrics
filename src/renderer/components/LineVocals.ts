@@ -2,14 +2,17 @@ import type { LineVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
 import { sampleHighlightMotion } from "../animation/highlightMotion";
 import { clamp } from "../animation/Spline";
+import { HighlightDecorationTrack, type HighlightDecorationTrackProvider } from "../highlight/HighlightDecorationLayout";
 import { createTranslationElement } from "../lyricsTrackHelpers";
 
-export class LineVocals {
+export class LineVocals implements HighlightDecorationTrackProvider {
 	public readonly element: HTMLDivElement;
 	public readonly startTime: number;
 	public readonly endTime: number;
 	private holdEndTime: number;
 	private readonly lineElement: HTMLSpanElement;
+	private readonly glyphLayer: HTMLSpanElement;
+	private readonly highlightDecorationTrack: HighlightDecorationTrack;
 	private highlightMotion: ExtensionSettings["highlightMotion"] = "spring";
 	private motionIntensity = 1;
 	private glowStrength = 0.8;
@@ -29,9 +32,16 @@ export class LineVocals {
 		this.element.dataset.startTime = String(line.startTime);
 		this.element.dataset.endTime = String(line.endTime);
 		this.lineElement = this.ownerDocument.createElement("span");
-		this.lineElement.className = "lyric line highlight-target";
+		this.lineElement.className = "lyric line highlight-layout-host idle";
 		this.lineElement.dir = "auto";
-		appendLineTokens(this.lineElement, line.text, this.ownerDocument);
+		this.glyphLayer = this.ownerDocument.createElement("span");
+		this.glyphLayer.className = "highlight-glyph-layer highlight-target idle";
+		const tokens = appendLineTokens(this.glyphLayer, line.text, this.ownerDocument);
+		this.lineElement.append(this.glyphLayer);
+		this.highlightDecorationTrack = new HighlightDecorationTrack({
+			host: this.lineElement,
+			pieces: tokens.map((element) => ({ element })),
+		});
 		this.element.append(this.lineElement);
 		if (settings.showTranslation && line.translatedText) {
 			this.element.append(createTranslationElement(line.translatedText, this.ownerDocument));
@@ -43,6 +53,10 @@ export class LineVocals {
 		this.holdEndTime = Math.max(this.line.endTime, endTime);
 	}
 
+	public getHighlightDecorationTracks(): readonly HighlightDecorationTrack[] {
+		return [this.highlightDecorationTrack];
+	}
+
 	public animate(timestamp: number): void {
 		const active = timestamp >= this.line.startTime && timestamp < this.holdEndTime;
 		const sung = timestamp >= this.holdEndTime;
@@ -51,19 +65,26 @@ export class LineVocals {
 		this.element.classList.toggle("active", active);
 		this.element.classList.toggle("sung", sung);
 		this.element.classList.toggle("idle", !active && !sung);
-		this.lineElement.classList.toggle("active", progress > 0 && progress < 1);
-		this.lineElement.classList.toggle("sung", timestamp >= this.line.endTime);
-		this.lineElement.classList.toggle("idle", timestamp <= this.line.startTime);
+		const highlightActive = progress > 0 && progress < 1;
+		const highlightSung = timestamp >= this.line.endTime;
+		const highlightIdle = timestamp <= this.line.startTime;
+		this.lineElement.classList.toggle("active", highlightActive);
+		this.lineElement.classList.toggle("sung", highlightSung);
+		this.lineElement.classList.toggle("idle", highlightIdle);
+		this.glyphLayer.classList.toggle("active", highlightActive);
+		this.glyphLayer.classList.toggle("sung", highlightSung);
+		this.glyphLayer.classList.toggle("idle", highlightIdle);
 		this.lineElement.style.scale = String(motion.scale);
 		this.lineElement.style.transform = `translateY(calc(var(--lyrics-size) * ${motion.yOffset})) rotate(${motion.rotationDeg}deg) scaleX(${motion.scaleX}) scaleY(${motion.scaleY})`;
 		this.lineElement.style.setProperty("--highlight-progress", `${progress * 100}%`);
 		this.lineElement.style.setProperty("--highlight-progress-ratio", String(progress));
 		this.lineElement.style.setProperty("--gradient-progress", `${progress * 100}%`);
 		this.lineElement.style.setProperty("--line-progress", `${progress * 100}%`);
-		this.lineElement.style.setProperty("--highlight-ripple", String(motion.ripple));
+		this.glyphLayer.style.setProperty("--highlight-ripple", String(motion.ripple));
 		const effectiveGlow = motion.glow * (this.glowStrength / 0.8);
-		this.lineElement.style.setProperty("--text-shadow-opacity", `${effectiveGlow * 100}%`);
-		this.lineElement.style.setProperty("--text-shadow-blur-radius", `${4 + effectiveGlow * 8}px`);
+		this.glyphLayer.style.setProperty("--text-shadow-opacity", `${effectiveGlow * 100}%`);
+		this.glyphLayer.style.setProperty("--text-shadow-blur-radius", `${4 + effectiveGlow * 8}px`);
+		this.highlightDecorationTrack.setProgress(progress);
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
@@ -75,8 +96,9 @@ export class LineVocals {
 	}
 }
 
-const appendLineTokens = (line: HTMLSpanElement, text: string, ownerDocument: Document): void => {
+const appendLineTokens = (line: HTMLSpanElement, text: string, ownerDocument: Document): HTMLElement[] => {
 	const parts = text.match(/\S+|\s+/gu) ?? [];
+	const tokens: HTMLElement[] = [];
 	for (const part of parts) {
 		if (/^\s+$/u.test(part)) {
 			line.append(ownerDocument.createTextNode(part));
@@ -89,5 +111,7 @@ const appendLineTokens = (line: HTMLSpanElement, text: string, ownerDocument: Do
 		token.textContent = part;
 		word.append(token);
 		line.append(word);
+		tokens.push(token);
 	}
+	return tokens;
 };

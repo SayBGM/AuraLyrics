@@ -927,7 +927,7 @@ describe("LyricsRenderer", () => {
 		renderer.update(5, 1 / 60);
 
 		const activeLine = root.querySelector<HTMLElement>(".vocals-group.active");
-		const line = activeLine?.querySelector<HTMLElement>(".line.highlight-target");
+		const line = activeLine?.querySelector<HTMLElement>(".line.highlight-layout-host");
 		expect(line?.style.getPropertyValue("--line-progress")).toBe("50%");
 		expect(line?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(root.querySelector(".line-group")).not.toBeNull();
@@ -964,8 +964,8 @@ describe("LyricsRenderer", () => {
 		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
 
 		const line = root.querySelector<HTMLElement>(".line");
-		const words = Array.from(line?.querySelectorAll<HTMLElement>(":scope > .word") ?? []);
-		const tokens = Array.from(line?.querySelectorAll<HTMLElement>(":scope > .word > .lyric.line-token") ?? []);
+		const words = Array.from(line?.querySelectorAll<HTMLElement>(":scope > .highlight-glyph-layer > .word") ?? []);
+		const tokens = Array.from(line?.querySelectorAll<HTMLElement>(":scope > .highlight-glyph-layer > .word > .lyric.line-token") ?? []);
 		expect(line?.classList.contains("lyric")).toBe(true);
 		expect(line?.textContent).toBe("바람아 내게 봄");
 		expect(words).toHaveLength(3);
@@ -1143,7 +1143,7 @@ describe("LyricsRenderer", () => {
 		expect(root.querySelector<HTMLElement>(".lyrics-track")?.style.transform).toBe("translate3d(0, -20px, 0)");
 	});
 
-	test("does not split parentheticals inside syllable-level continuation tokens", () => {
+	test("splits parentheticals inside syllable-level continuation tokens without breaking word grouping", () => {
 		const root = document.createElement("div");
 		const lyrics: SyllableLyrics = {
 			type: "syllable",
@@ -1170,11 +1170,11 @@ describe("LyricsRenderer", () => {
 
 		const lead = root.querySelector<HTMLElement>(".vocals.lead");
 		const rows = Array.from(lead?.querySelectorAll<HTMLElement>(".syllable-row") ?? []);
-		expect(rows).toHaveLength(1);
-		expect(rows[0].querySelector(".syllable-main")?.textContent).toBe("괜찮아 (괜찮아) 언젠가 (언젠가)");
-		expect(rows[0].querySelector(".syllable-echo")?.textContent).toBe("");
-		expect(lead?.textContent).toContain("(");
-		expect(lead?.textContent).toContain(")");
+		expect(rows).toHaveLength(2);
+		expect(rows.map((row) => row.querySelector(".syllable-main")?.textContent)).toEqual(["괜찮아", "언젠가"]);
+		expect(rows.map((row) => row.querySelector(".syllable-echo")?.textContent)).toEqual(["괜찮아", "언젠가"]);
+		expect(lead?.textContent).not.toContain("(");
+		expect(lead?.textContent).not.toContain(")");
 	});
 
 	test("keeps standalone parenthetical word-synced rows right aligned at full lyric size", () => {

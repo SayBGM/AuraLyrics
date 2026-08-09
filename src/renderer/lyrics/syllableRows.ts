@@ -1,7 +1,12 @@
 import type { Syllable, SyllableVocal } from "../../lyrics/types";
 import type { RhythmProfile } from "../AudioAnalysisWaveformService";
 import { koreanTailSplitForSegment, melismaSustainClassesForFinalSyllable } from "./koreanTail";
-import { type ParentheticalSegment, parseWordLevelParentheticals, type TimedParentheticalSegment, withSegmentTiming } from "./parentheticalSegments";
+import {
+	type ParentheticalVocalItem,
+	type TimedParentheticalSegment,
+	type TimedParentheticalText,
+	tokenizeParentheticalSyllables,
+} from "./parentheticalSegments";
 
 export type SyllableVisualToken = {
 	text: string;
@@ -40,67 +45,48 @@ export type SyllableRowsOptions = {
 	splitParentheticals?: boolean;
 };
 
-type ParsedTimedSegment = {
-	syllable: Syllable;
-	segment: TimedParentheticalSegment;
-};
-
 export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile, options?: SyllableRowsOptions): SyllableRowsModel => {
 	const rows: SyllableVisualRow[] = [];
 	let row: SyllableVisualRow | undefined;
 	let word: SyllableVisualWord | undefined;
 	let wordIsParenthetical = false;
 	let hasParenthetical = false;
-	let stripNextMainPrefix = false;
-	const timedSegments = parseTimedSegments(vocal, options?.splitParentheticals ?? true);
+	const items = parentheticalItemsFor(vocal, options?.splitParentheticals ?? true);
 
-	for (const [index, item] of timedSegments.entries()) {
-		const stacksWithNextMain = shouldStackWithNextMain(item.segment, timedSegments, index);
-		const segment = normalizeMainSegment(item.segment, stripNextMainPrefix);
-		if (stacksWithNextMain && row && !isGroupTextEmpty(row.main)) {
-			stripTrailingSeparatorFromGroup(row.main);
-			row = undefined;
-			word = undefined;
-		}
-		if (!segment) {
-			continue;
-		}
-		if (!segment.isParenthetical) {
-			stripNextMainPrefix = false;
-		}
+	const resetRow = (): void => {
+		row = undefined;
+		word = undefined;
+	};
+	const ensureRow = (): SyllableVisualRow => {
 		if (!row) {
 			row = createSyllableRow();
 			rows.push(row);
+			word = undefined;
 		}
-		markRowTiming(row, segment);
+		return row;
+	};
+	const appendText = (item: TimedParentheticalText, isParenthetical: boolean): void => {
+		const activeRow = ensureRow();
+		const segment = item.segment;
+		markRowTiming(activeRow, segment);
 		// Group consecutive in-word syllables (isPartOfWord) into one .word so synthesized
 		// karaoke keeps word spacing/wrapping. Real karaoke always has isPartOfWord=false,
 		// so each token stays its own word (unchanged).
 		const startsNewWord = !item.syllable.isPartOfWord;
-		if (!word || wordIsParenthetical !== segment.isParenthetical || startsNewWord) {
-			word = createWord(segment.isParenthetical);
-			wordIsParenthetical = segment.isParenthetical;
-			const group = segment.isParenthetical ? row.echo : row.main;
+		if (!word || wordIsParenthetical !== isParenthetical || startsNewWord) {
+			word = createWord(isParenthetical);
+			wordIsParenthetical = isParenthetical;
+			const group = isParenthetical ? activeRow.echo : activeRow.main;
 			group.words.push(word);
 		}
-		if (segment.isParenthetical && isGroupTextEmpty(row.main)) {
-			addRowClass(row, "parenthetical-only");
-			if (!stacksWithNextMain) {
-				addRowClass(row, "standalone-parenthetical");
-			}
-		}
-		if (segment.isParenthetical) {
-			addRowClass(row, "has-parenthetical-echo");
-		}
-		hasParenthetical = hasParenthetical || segment.isParenthetical;
-
-		const koreanTail = segment.isParenthetical ? undefined : koreanTailSplitForSegment(segment, item.syllable, vocal.syllables, rhythm);
+		const activeWord = word;
+		const koreanTail = isParenthetical ? undefined : koreanTailSplitForSegment(segment, item.syllable, vocal.syllables, rhythm);
 		if (koreanTail) {
-			addWordClass(word, "korean-tail-word");
+			addWordClass(activeWord, "korean-tail-word");
 			if (koreanTail.melisma) {
-				addWordClass(word, "korean-melisma-word");
+				addWordClass(activeWord, "korean-melisma-word");
 			}
-			word.tokens.push(
+			activeWord.tokens.push(
 				createToken(koreanTail.baseText, { ...item.syllable, startTime: segment.startTime, endTime: koreanTail.tailStartTime }, false, [
 					"korean-tail-base",
 				]),
@@ -111,101 +97,100 @@ export const buildSyllableRows = (vocal: SyllableVocal, rhythm?: RhythmProfile, 
 					koreanTail.melisma ? ["korean-tail-sustain", "korean-melisma-sustain"] : ["korean-tail-sustain"]
 				)
 			);
-		} else {
-			const melismaClasses = segment.isParenthetical
-				? undefined
-				: melismaSustainClassesForFinalSyllable(segment, item.syllable, vocal.syllables, rhythm);
-			if (melismaClasses) {
-				addWordClass(word, "korean-tail-word");
-				if (melismaClasses.includes("korean-melisma-sustain")) {
-					addWordClass(word, "korean-melisma-word");
-				}
-			}
-			word.tokens.push(
-				createToken(
-					segment.text,
-					{ ...item.syllable, startTime: segment.startTime, endTime: segment.endTime },
-					segment.isParenthetical,
-					melismaClasses
-				)
-			);
+			return;
 		}
-		if (segment.isParenthetical && !segment.continues) {
-			row = undefined;
-			word = undefined;
-			if (stacksWithNextMain) {
-				stripNextMainPrefix = true;
+
+		const melismaClasses = isParenthetical ? undefined : melismaSustainClassesForFinalSyllable(segment, item.syllable, vocal.syllables, rhythm);
+		if (melismaClasses) {
+			addWordClass(activeWord, "korean-tail-word");
+			if (melismaClasses.includes("korean-melisma-sustain")) {
+				addWordClass(activeWord, "korean-melisma-word");
 			}
+		}
+		activeWord.tokens.push(
+			createToken(segment.text, { ...item.syllable, startTime: segment.startTime, endTime: segment.endTime }, isParenthetical, melismaClasses)
+		);
+	};
+	const appendTrailingPunctuation = (item: TimedParentheticalText, isParenthetical = false): void => {
+		const activeRow = ensureRow();
+		const targetGroup = isParenthetical ? activeRow.echo : activeRow.main;
+		const targetWord = targetGroup.words.at(-1) ?? createWord(isParenthetical);
+		if (targetGroup.words.length === 0) {
+			targetGroup.words.push(targetWord);
+		}
+		targetWord.tokens.push(
+			createToken(item.segment.text, { ...item.syllable, startTime: item.segment.startTime, endTime: item.segment.endTime }, isParenthetical)
+		);
+		word = targetWord;
+		wordIsParenthetical = isParenthetical;
+	};
+
+	for (const [index, item] of items.entries()) {
+		if (item.kind === "main") {
+			appendText(item.text, false);
+			for (const punctuation of item.trailingPunctuation ?? []) {
+				appendTrailingPunctuation(punctuation);
+			}
+			continue;
+		}
+
+		const stacksWithNextMain = shouldStackWithNextMain(item, items, index);
+		if (stacksWithNextMain && row && !isGroupTextEmpty(row.main)) {
+			resetRow();
+		}
+		const activeRow = ensureRow();
+		if (isGroupTextEmpty(activeRow.main)) {
+			addRowClass(activeRow, "parenthetical-only");
+			if (!stacksWithNextMain) {
+				addRowClass(activeRow, "standalone-parenthetical");
+			}
+		}
+		addRowClass(activeRow, "has-parenthetical-echo");
+		hasParenthetical = true;
+		for (const segment of item.segments) {
+			appendText(segment, true);
+		}
+		for (const punctuation of item.trailingPunctuation ?? []) {
+			appendTrailingPunctuation(punctuation, true);
+		}
+		markRowTailTiming(activeRow, item.tailEndTime);
+		if (item.closed) {
+			resetRow();
 		}
 	}
+
 	applyRowHoldTiming(rows);
 	return { hasParenthetical, rows };
 };
 
-const parseTimedSegments = (vocal: SyllableVocal, splitParentheticals: boolean): ParsedTimedSegment[] => {
-	const parsed: ParsedTimedSegment[] = [];
-	let isInsideParenthetical = false;
-	for (const syllable of vocal.syllables) {
-		const text = syllable.text;
-		const segments: ParentheticalSegment[] =
-			!splitParentheticals || syllable.isPartOfWord
-				? [{ text, isParenthetical: false, continues: false }]
-				: parseWordLevelParentheticals(text, isInsideParenthetical);
-		isInsideParenthetical = segments.at(-1)?.continues ?? false;
-		for (const segment of withSegmentTiming(syllable, segments)) {
-			parsed.push({ syllable, segment });
-		}
+const parentheticalItemsFor = (vocal: SyllableVocal, splitParentheticals: boolean): ParentheticalVocalItem[] => {
+	if (splitParentheticals) {
+		return tokenizeParentheticalSyllables(vocal.syllables);
 	}
-	return splitParentheticals ? removeAsciiCommaAfterClosedParenthetical(parsed) : parsed;
+	return vocal.syllables.map((syllable) => ({
+		kind: "main",
+		text: {
+			syllable,
+			segment: {
+				text: syllable.text,
+				isParenthetical: false,
+				continues: false,
+				startTime: syllable.startTime,
+				endTime: syllable.endTime,
+			},
+		},
+	}));
 };
 
-const removeAsciiCommaAfterClosedParenthetical = (segments: ParsedTimedSegment[]): ParsedTimedSegment[] => {
-	const normalizedSegments: ParsedTimedSegment[] = [];
-	let previousWasClosedParenthetical = false;
-	for (const item of segments) {
-		const shouldRemoveComma = previousWasClosedParenthetical && !item.segment.isParenthetical && item.segment.text.startsWith(",");
-		const text = shouldRemoveComma ? item.segment.text.slice(1).trimStart() : item.segment.text;
-		if (text.length > 0) {
-			normalizedSegments.push(text === item.segment.text ? item : { ...item, segment: { ...item.segment, text } });
-		}
-		previousWasClosedParenthetical = item.segment.isParenthetical && !item.segment.continues;
-	}
-	return normalizedSegments;
-};
-
-const normalizeMainSegment = (segment: TimedParentheticalSegment, stripPrefix: boolean): TimedParentheticalSegment | undefined => {
-	if (segment.isParenthetical || !stripPrefix) {
-		return segment;
-	}
-	const text = stripLeadingSeparator(segment.text);
-	return text ? { ...segment, text } : undefined;
-};
-
-const shouldStackWithNextMain = (segment: TimedParentheticalSegment, segments: ParsedTimedSegment[], index: number): boolean => {
-	if (!segment.isParenthetical || segment.continues || !isStackableAdLib(segment.text)) {
+const shouldStackWithNextMain = (
+	group: Extract<ParentheticalVocalItem, { kind: "parenthetical" }>,
+	items: ParentheticalVocalItem[],
+	index: number
+): boolean => {
+	if (!group.closed || !isStackableAdLib(group.segments.map((item) => item.segment.text).join(" "))) {
 		return false;
 	}
-	return segments.slice(index + 1).some(({ segment: nextSegment }) => {
-		if (nextSegment.isParenthetical) {
-			return false;
-		}
-		return stripLeadingSeparator(nextSegment.text).length > 0;
-	});
-};
-
-const stripLeadingSeparator = (text: string): string => text.replace(/^[,，、;:!?！？.。]+\s*/u, "").trim();
-
-const stripTrailingSeparatorFromGroup = (group: SyllableVisualGroup): void => {
-	for (let wordIndex = group.words.length - 1; wordIndex >= 0; wordIndex -= 1) {
-		const word = group.words[wordIndex];
-		for (let tokenIndex = word.tokens.length - 1; tokenIndex >= 0; tokenIndex -= 1) {
-			const token = word.tokens[tokenIndex];
-			if (token.text.trim().length > 0) {
-				token.text = token.text.replace(/[,，、;:!?！？.。]+\s*$/u, "").trimEnd();
-				return;
-			}
-		}
-	}
+	return items.slice(index + 1).some((item) => item.kind === "main" && /[\p{L}\p{N}]/u.test(item.text.segment.text));
 };
 
 const isStackableAdLib = (text: string): boolean => /^[A-Za-z][A-Za-z'’ -]{0,15}$/.test(text.trim());
@@ -235,6 +220,11 @@ const createToken = (text: string, metadata: Syllable, isParenthetical: boolean,
 const markRowTiming = (row: SyllableVisualRow, segment: TimedParentheticalSegment): void => {
 	row.startTime = Math.min(row.startTime, segment.startTime);
 	row.endTime = Math.max(row.endTime, segment.endTime);
+	row.holdEndTime = row.endTime;
+};
+
+const markRowTailTiming = (row: SyllableVisualRow, tailEndTime: number): void => {
+	row.endTime = Math.max(row.endTime, tailEndTime);
 	row.holdEndTime = row.endTime;
 };
 

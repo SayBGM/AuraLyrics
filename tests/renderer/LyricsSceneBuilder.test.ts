@@ -152,4 +152,35 @@ describe("buildLyricsScene", () => {
 		expect(track.querySelector(".line-group")?.textContent).toBe("Line번역");
 		expect(track.querySelector(".syllable-group")).toBeNull();
 	});
+
+	test("marks the group when only a background vocal has a parenthetical", () => {
+		const track = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [{ text: "Main", startTime: 0, endTime: 4, isPartOfWord: false }],
+					},
+					background: [
+						{
+							startTime: 1,
+							endTime: 3,
+							syllables: [{ text: "(echo)", startTime: 1, endTime: 3, isPartOfWord: false }],
+						},
+					],
+				},
+			],
+		};
+
+		buildLyricsScene(track, { lyrics, settings: DEFAULT_SETTINGS });
+
+		expect(track.querySelector(".syllable-group")?.classList.contains("has-parenthetical")).toBe(true);
+	});
 });

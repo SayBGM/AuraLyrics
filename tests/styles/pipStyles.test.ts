@@ -425,10 +425,90 @@ describe("pipStyles", () => {
 
 		expect(wordRule).toContain("column-gap: 0");
 		expect(sustainRule).toContain("transform-origin: center");
-		expect(activeRule).toContain("filter: saturate(1.08)");
+		expect(activeRule).toContain("--highlight-saturation: 1.08");
+		expect(activeRule).toContain("filter: saturate(var(--highlight-saturation))");
 		expect(activeRule).toContain("text-shadow");
-		expect(melismaActiveRule).toContain("filter: saturate(calc(1.08 + var(--melisma-step, 0) * 0.025))");
+		expect(melismaActiveRule).toContain("--highlight-saturation: calc(1.08 + var(--melisma-step, 0) * 0.025)");
+		expect(melismaActiveRule).toContain("filter: saturate(var(--highlight-saturation))");
 		expect(melismaActiveRule).toContain("text-shadow");
+	});
+
+	test("draws measured underline and marker fragments outside the glyph filter layer", () => {
+		const hostRule = lyricsStyles.match(/\.highlight-layout-host \{[^}]+\}/)?.[0] ?? "";
+		const layerRule = lyricsStyles.match(/\.highlight-decoration-layer \{[^}]+\}/)?.[0] ?? "";
+		const fragmentRule = lyricsStyles.match(/\.highlight-decoration-fragment \{[^}]+\}/)?.[0] ?? "";
+		const underlineRule =
+			lyricsStyles.match(/\.aura-lyrics\[data-highlight-effect="underline"\] \.highlight-decoration-fragment::after \{[^}]+\}/)?.[0] ?? "";
+		const markerRule =
+			Array.from(lyricsStyles.matchAll(/\.aura-lyrics\[data-highlight-effect="marker"\] \.highlight-decoration-fragment::before \{[^}]+\}/g)).at(
+				-1
+			)?.[0] ?? "";
+		const measuringRule = lyricsStyles.match(/\.highlight-layout-measuring \.vocals-group,[\s\S]+?\{[^}]+\}/)?.[0] ?? "";
+
+		expect(hostRule).toContain("position: relative");
+		expect(hostRule).toContain("isolation: isolate");
+		expect(layerRule).toContain("position: absolute");
+		expect(layerRule).toContain("pointer-events: none");
+		expect(fragmentRule).toContain("--highlight-fragment-progress-ratio");
+		expect(underlineRule).toContain("--highlight-decoration-font-size");
+		expect(markerRule).toContain("--highlight-decoration-font-size");
+		expect(measuringRule).toContain(".highlight-layout-measuring .highlight-glyph-target");
+		expect(measuringRule).toContain("transform: none !important");
+		expect(lyricsStyles).not.toContain(".highlight-target::after");
+		expect(lyricsStyles).not.toContain(".highlight-target::before");
+	});
+
+	test("uses glyph-shaped ripple shadows without leaking the glow sweep into idle text", () => {
+		const rippleRule = lyricsStyles.match(/\.aura-lyrics\[data-highlight-motion="ripple"\] \.highlight-target\.active \{[^}]+\}/)?.[0] ?? "";
+		const idleGlowRule = lyricsStyles.match(/\.aura-lyrics\[data-highlight-effect="glow-sweep"\] \.highlight-target\.idle \{[^}]+\}/)?.[0] ?? "";
+		const idleSpotlightRule = lyricsStyles.match(/\.aura-lyrics\[data-highlight-effect="spotlight"\] \.highlight-target\.idle \{[^}]+\}/)?.[0] ?? "";
+		const reducedRule =
+			lyricsStyles.match(/\.aura-lyrics\.reduce-motion \.highlight-target,\n\.aura-lyrics\.motion-disabled \.highlight-target \{[^}]+\}/)?.[0] ?? "";
+
+		expect(rippleRule).toContain("box-shadow: none");
+		expect(rippleRule).toContain("drop-shadow(");
+		expect(rippleRule).not.toContain("border-radius");
+		expect(idleGlowRule).toContain("background: none");
+		expect(idleGlowRule).toContain("color: var(--pip-muted-foreground-color)");
+		expect(idleGlowRule).toContain("text-shadow: none");
+		expect(idleSpotlightRule).toContain("background: none");
+		expect(idleSpotlightRule).toContain("color: var(--pip-muted-foreground-color)");
+		expect(idleSpotlightRule).toContain("text-shadow: none");
+		expect(reducedRule).toContain("--highlight-ripple: 0 !important");
+		expect(reducedRule).toContain("filter: saturate(var(--highlight-saturation, 1)) !important");
+		expect(reducedRule).not.toContain("drop-shadow(");
+	});
+
+	test("neutralizes completed and context targets without muting completed syllables in the active row", () => {
+		const neutralStart = lyricsStyles.indexOf(".aura-lyrics .syllable-group.sung .highlight-target,");
+		const neutralEnd = lyricsStyles.indexOf("}", neutralStart);
+		const neutralRule = neutralStart >= 0 && neutralEnd >= 0 ? lyricsStyles.slice(neutralStart, neutralEnd + 1) : "";
+		const selectors = neutralRule
+			.slice(0, neutralRule.indexOf("{"))
+			.split(",")
+			.map((selector) => selector.trim());
+
+		expect(selectors).toEqual([
+			".aura-lyrics .syllable-group.sung .highlight-target",
+			".aura-lyrics .syllable-row.sung .highlight-target",
+			".aura-lyrics .syllable-row.context-previous .highlight-target",
+			".aura-lyrics .syllable-row.context-next .highlight-target",
+			".aura-lyrics .syllable-row.out-of-context .highlight-target",
+			".aura-lyrics .line-group.sung .highlight-target",
+			".aura-lyrics .line-group.context-previous .highlight-target",
+			".aura-lyrics .line-group.context-next .highlight-target",
+			".aura-lyrics .line-group.out-of-context .highlight-target",
+		]);
+		expect(neutralRule).toContain("background: none");
+		expect(neutralRule).toContain("color: var(--pip-muted-foreground-color)");
+		expect(neutralRule).toContain("-webkit-text-stroke: 0");
+		expect(neutralRule).toContain("text-shadow: none");
+		expect(neutralRule).toContain("box-shadow: none");
+		expect(neutralRule).toContain("filter: saturate(var(--highlight-saturation, 1))");
+		expect(neutralRule).not.toContain(".highlight-target.sung");
+		expect(neutralStart).toBeGreaterThan(
+			lyricsStyles.indexOf('.aura-lyrics[data-highlight-effect="spotlight"] .highlight-glyph-layer.highlight-target')
+		);
 	});
 
 	test("scopes the contrast-safe progress wake and additive halo to active synthetic syllables", () => {

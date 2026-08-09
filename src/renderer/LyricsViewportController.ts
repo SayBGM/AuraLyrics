@@ -51,11 +51,12 @@ export class LyricsViewportController {
 		private readonly container: HTMLElement,
 		settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">,
 		private readonly groups: AnimatedGroup[],
-		private readonly announcer?: HTMLElement
+		private readonly announcer?: HTMLElement,
+		observeResize = true
 	) {
 		this.settings = settings;
 		const ResizeObserverConstructor = this.lyricsViewport.ownerDocument.defaultView?.ResizeObserver;
-		if (ResizeObserverConstructor) {
+		if (observeResize && ResizeObserverConstructor) {
 			this.resizeObserver = new ResizeObserverConstructor(() => this.update());
 			this.resizeObserver.observe(this.lyricsViewport);
 		}

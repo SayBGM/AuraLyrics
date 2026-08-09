@@ -363,6 +363,46 @@ export const lyricsStyles = `
 	word-break: keep-all;
 }
 
+.highlight-layout-host {
+	position: relative;
+	isolation: isolate;
+}
+
+.highlight-decoration-layer {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	opacity: 0;
+}
+
+.highlight-decoration-fragment {
+	position: absolute;
+	display: block;
+	pointer-events: none;
+	transform: scaleX(var(--highlight-fragment-progress-ratio, 0));
+}
+
+.highlight-decoration-fragment[data-highlight-state="empty"] {
+	opacity: 0;
+}
+
+.aura-lyrics[data-highlight-effect="underline"] .highlight-layout-host[data-highlight-layout-ready="true"] > .highlight-decoration-layer,
+.aura-lyrics[data-highlight-effect="marker"] .highlight-layout-host[data-highlight-layout-ready="true"] > .highlight-decoration-layer {
+	opacity: 1;
+}
+
+.highlight-layout-measuring .vocals-group,
+.highlight-layout-measuring .highlight-layout-host,
+.highlight-layout-measuring .highlight-glyph-target,
+.highlight-layout-measuring .highlight-glyph-layer {
+	transform: none !important;
+	scale: 1 !important;
+	filter: none !important;
+	animation: none !important;
+	transition: none !important;
+}
+
 .line .word .lyric,
 .line .word .syllable {
 	letter-spacing: inherit;
@@ -384,14 +424,16 @@ export const lyricsStyles = `
 }
 
 .korean-tail-sustain.active {
-	filter: saturate(1.08);
+	--highlight-saturation: 1.08;
+	filter: saturate(var(--highlight-saturation));
 	text-shadow:
 		0 0 calc(var(--text-shadow-blur-radius, 8px) * 1.25) rgba(var(--pip-glow-rgb), var(--text-shadow-opacity, 0%)),
 		0 10px 28px rgba(var(--pip-glow-rgb), 0.12);
 }
 
 .korean-melisma-sustain.active {
-	filter: saturate(calc(1.08 + var(--melisma-step, 0) * 0.025));
+	--highlight-saturation: calc(1.08 + var(--melisma-step, 0) * 0.025);
+	filter: saturate(var(--highlight-saturation));
 	text-shadow:
 		0 0 calc(var(--text-shadow-blur-radius, 8px) * (1.25 + var(--melisma-step, 0) * 0.08)) rgba(var(--pip-glow-rgb), var(--text-shadow-opacity, 0%)),
 		0 10px 34px rgba(var(--pip-glow-rgb), calc(0.12 + var(--melisma-step, 0) * 0.025));
@@ -439,7 +481,7 @@ export const lyricsStyles = `
 	will-change: transform, scale;
 }
 
-.line.highlight-target {
+.line.highlight-layout-host {
 	--highlight-angle: 90deg;
 	position: relative;
 	isolation: isolate;
@@ -470,7 +512,7 @@ export const lyricsStyles = `
 	background-clip: text;
 }
 
-.aura-lyrics[data-highlight-effect="fill"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="fill"] .highlight-glyph-layer.highlight-target,
 .aura-lyrics[data-highlight-effect="fill"] .syllable.highlight-target {
 	background: linear-gradient(
 		var(--highlight-angle),
@@ -482,7 +524,7 @@ export const lyricsStyles = `
 	color: transparent;
 }
 
-.aura-lyrics[data-highlight-effect="glow-sweep"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="glow-sweep"] .highlight-glyph-layer.highlight-target,
 .aura-lyrics[data-highlight-effect="glow-sweep"] .syllable.highlight-target {
 	background: linear-gradient(
 		var(--highlight-angle),
@@ -498,9 +540,15 @@ export const lyricsStyles = `
 		0 0 calc(var(--lyrics-size) * 0.28) rgba(var(--pip-glow-rgb), calc(var(--highlight-progress-ratio, 0) * 0.2));
 }
 
-.aura-lyrics[data-highlight-effect="underline"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="glow-sweep"] .highlight-target.idle {
+	background: none;
+	color: var(--pip-muted-foreground-color);
+	text-shadow: none;
+}
+
+.aura-lyrics[data-highlight-effect="underline"] .highlight-glyph-layer.highlight-target,
 .aura-lyrics[data-highlight-effect="underline"] .syllable.highlight-target,
-.aura-lyrics[data-highlight-effect="marker"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="marker"] .highlight-glyph-layer.highlight-target,
 .aura-lyrics[data-highlight-effect="marker"] .syllable.highlight-target {
 	background: linear-gradient(
 		var(--highlight-angle),
@@ -512,40 +560,36 @@ export const lyricsStyles = `
 	color: transparent;
 }
 
-.aura-lyrics[data-highlight-effect="underline"] .highlight-target::after,
-.aura-lyrics[data-highlight-effect="marker"] .highlight-target::before {
+.aura-lyrics[data-highlight-effect="underline"] .highlight-decoration-fragment::after,
+.aura-lyrics[data-highlight-effect="marker"] .highlight-decoration-fragment::before {
 	content: "";
 	position: absolute;
 	left: 0;
 	right: 0;
-	z-index: -1;
 	pointer-events: none;
-	transform: scaleX(var(--highlight-progress-ratio, 0));
-	transform-origin: left center;
 }
 
-.aura-lyrics[data-highlight-effect="underline"] .highlight-target:dir(rtl)::after,
-.aura-lyrics[data-highlight-effect="marker"] .highlight-target:dir(rtl)::before {
-	transform-origin: right center;
-}
-
-.aura-lyrics[data-highlight-effect="underline"] .highlight-target::after {
-	bottom: -0.08em;
-	height: max(2px, 0.07em);
+.aura-lyrics[data-highlight-effect="underline"] .highlight-decoration-fragment::after {
+	bottom: calc(var(--highlight-decoration-font-size, 16px) * -0.08);
+	height: max(2px, calc(var(--highlight-decoration-font-size, 16px) * 0.07));
 	border-radius: 999px;
 	background: var(--pip-synthetic-wake-color);
-	box-shadow: 0 0 0.24em rgba(var(--pip-glow-rgb), 0.32);
+	box-shadow: 0 0 calc(var(--highlight-decoration-font-size, 16px) * 0.24) rgba(var(--pip-glow-rgb), 0.32);
 }
 
-.aura-lyrics[data-highlight-effect="marker"] .highlight-target::before {
+.aura-lyrics[data-highlight-effect="marker"] .highlight-decoration-fragment::before {
 	top: 48%;
-	bottom: 0.02em;
-	border-radius: 0.14em 0.24em 0.18em 0.1em;
+	bottom: calc(var(--highlight-decoration-font-size, 16px) * 0.02);
+	border-radius:
+		calc(var(--highlight-decoration-font-size, 16px) * 0.14)
+		calc(var(--highlight-decoration-font-size, 16px) * 0.24)
+		calc(var(--highlight-decoration-font-size, 16px) * 0.18)
+		calc(var(--highlight-decoration-font-size, 16px) * 0.1);
 	background: rgba(var(--pip-accent-rgb), 0.34);
-	box-shadow: 0 0 0.18em rgba(var(--pip-glow-rgb), 0.14);
+	box-shadow: 0 0 calc(var(--highlight-decoration-font-size, 16px) * 0.18) rgba(var(--pip-glow-rgb), 0.14);
 }
 
-.aura-lyrics[data-highlight-effect="outline-fill"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="outline-fill"] .highlight-glyph-layer.highlight-target,
 .aura-lyrics[data-highlight-effect="outline-fill"] .syllable.highlight-target {
 	background: linear-gradient(
 		var(--highlight-angle),
@@ -558,7 +602,7 @@ export const lyricsStyles = `
 	-webkit-text-stroke: max(1px, 0.025em) rgba(var(--pip-muted-rgb), 0.92);
 }
 
-.aura-lyrics[data-highlight-effect="spotlight"] .line.highlight-target,
+.aura-lyrics[data-highlight-effect="spotlight"] .highlight-glyph-layer.highlight-target,
 .aura-lyrics[data-highlight-effect="spotlight"] .syllable.highlight-target {
 	background: linear-gradient(
 		var(--highlight-angle),
@@ -572,38 +616,53 @@ export const lyricsStyles = `
 	color: transparent;
 }
 
-.aura-lyrics[data-highlight-motion="ripple"] .highlight-target.active {
-	box-shadow:
-		0 0 0 calc(var(--lyrics-size) * var(--highlight-ripple, 0) * 0.08) rgba(var(--pip-glow-rgb), calc(var(--highlight-ripple, 0) * 0.18)),
-		0 0 calc(var(--lyrics-size) * var(--highlight-ripple, 0) * 0.32) rgba(var(--pip-glow-rgb), calc(var(--highlight-ripple, 0) * 0.2));
-	border-radius: 0.18em;
+.aura-lyrics[data-highlight-effect="spotlight"] .highlight-target.idle {
+	background: none;
+	color: var(--pip-muted-foreground-color);
+	text-shadow: none;
 }
 
-.syllable-group.sung .highlight-target,
-.syllable-row.context-previous .highlight-target,
-.syllable-row.context-next .highlight-target,
-.line-group.sung .highlight-target,
-.line-group.context-previous .highlight-target,
-.line-group.context-next .highlight-target {
+.aura-lyrics[data-highlight-motion="ripple"] .highlight-target.active {
+	box-shadow: none;
+	filter:
+		saturate(var(--highlight-saturation, 1))
+		drop-shadow(
+			0 0 calc(var(--lyrics-size) * var(--highlight-ripple, 0) * 0.1)
+				rgba(var(--pip-glow-rgb), calc(var(--highlight-ripple, 0) * 0.2))
+		)
+		drop-shadow(
+			0 0 calc(var(--lyrics-size) * var(--highlight-ripple, 0) * 0.28)
+				rgba(var(--pip-glow-rgb), calc(var(--highlight-ripple, 0) * 0.16))
+		);
+}
+
+.aura-lyrics .syllable-group.sung .highlight-target,
+.aura-lyrics .syllable-row.sung .highlight-target,
+.aura-lyrics .syllable-row.context-previous .highlight-target,
+.aura-lyrics .syllable-row.context-next .highlight-target,
+.aura-lyrics .syllable-row.out-of-context .highlight-target,
+.aura-lyrics .line-group.sung .highlight-target,
+.aura-lyrics .line-group.context-previous .highlight-target,
+.aura-lyrics .line-group.context-next .highlight-target,
+.aura-lyrics .line-group.out-of-context .highlight-target {
 	background: none;
 	box-shadow: none;
 	color: var(--pip-muted-foreground-color);
+	filter: saturate(var(--highlight-saturation, 1));
+	text-shadow: none;
 	-webkit-text-stroke: 0;
 }
 
-.syllable-group.sung .highlight-target::before,
-.syllable-group.sung .highlight-target::after,
-.syllable-row.context-previous .highlight-target::before,
-.syllable-row.context-previous .highlight-target::after,
-.syllable-row.context-next .highlight-target::before,
-.syllable-row.context-next .highlight-target::after,
-.line-group.sung .highlight-target::before,
-.line-group.sung .highlight-target::after,
-.line-group.context-previous .highlight-target::before,
-.line-group.context-previous .highlight-target::after,
-.line-group.context-next .highlight-target::before,
-.line-group.context-next .highlight-target::after {
-	display: none;
+.aura-lyrics .syllable-group.sung .highlight-decoration-layer,
+.aura-lyrics .syllable-row.sung .highlight-decoration-layer,
+.aura-lyrics .syllable-row.context-previous .highlight-decoration-layer,
+.aura-lyrics .syllable-row.context-next .highlight-decoration-layer,
+.aura-lyrics .syllable-row.out-of-context .highlight-decoration-layer,
+.aura-lyrics .line-group.sung .highlight-decoration-layer,
+.aura-lyrics .line-group.context-previous .highlight-decoration-layer,
+.aura-lyrics .line-group.context-next .highlight-decoration-layer,
+.aura-lyrics .line-group.out-of-context .highlight-decoration-layer {
+	opacity: 0 !important;
 }
 
 .aura-lyrics.synthetic-timing .vocals-group.syllable-group.active {
@@ -709,9 +768,11 @@ export const lyricsStyles = `
 
 .aura-lyrics.reduce-motion .highlight-target,
 .aura-lyrics.motion-disabled .highlight-target {
+	--highlight-ripple: 0 !important;
 	transform: none !important;
 	scale: 1 !important;
 	box-shadow: none !important;
+	filter: saturate(var(--highlight-saturation, 1)) !important;
 }
 
 .aura-lyrics.motion-disabled .lyrics-track,

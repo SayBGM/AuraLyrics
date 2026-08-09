@@ -2,6 +2,8 @@
 // token, so the gradient text-fill sweeps the entire word at once instead of letter by
 // letter. Split those tokens into per-character syllables, distributing the word's real
 // start/end proportionally by linguistic weight (reusing pseudoKaraoke's getUnitWeight).
+
+import { scanParentheticalText } from "./parentheticalScanner";
 import { getUnitWeight } from "./pseudoKaraoke/unitWeights";
 import type { Syllable, SyllableLyrics, SyllableVocal, SyllableVocalSet } from "./types";
 
@@ -23,26 +25,16 @@ export const splitHangulSyllables = (lyrics: SyllableLyrics): SyllableLyrics => 
 });
 
 const splitVocal = (vocal: SyllableVocal): SyllableVocal => {
-	let isInsideParenthetical = false;
+	let parentheticalDepth = 0;
 	const syllables = vocal.syllables.flatMap((syllable) => {
-		const text = syllable.text;
-		const isParentheticalToken = isInsideParenthetical || text.includes("(") || text.includes(")");
-		isInsideParenthetical = parentheticalStateAfter(text, isInsideParenthetical);
+		const depthBefore = parentheticalDepth;
+		const scan = scanParentheticalText(syllable.text, depthBefore);
+		parentheticalDepth = scan.depthAfter;
+		const isParentheticalToken =
+			depthBefore > 0 || scan.containsDelimiter || scan.events.some((event) => event.kind === "text" && event.role === "parenthetical");
 		return isParentheticalToken ? [syllable] : splitSyllable(syllable);
 	});
 	return { ...vocal, syllables };
-};
-
-const parentheticalStateAfter = (text: string, initialState: boolean): boolean => {
-	let isInsideParenthetical = initialState;
-	for (const char of text) {
-		if (char === "(" && !isInsideParenthetical) {
-			isInsideParenthetical = true;
-		} else if (char === ")" && isInsideParenthetical) {
-			isInsideParenthetical = false;
-		}
-	}
-	return isInsideParenthetical;
 };
 
 const splitSyllable = (syllable: Syllable): Syllable[] => {
