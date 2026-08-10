@@ -15,7 +15,7 @@ import type { SettingsSection } from "../../../src/settings/settingsViewTypes";
 import { pipStyles } from "../../../src/styles/pipStyles";
 
 type ScenarioName =
-	| "album-art-instrumental"
+	| "instrumental-metadata"
 	| "aurora-intro-ready"
 	| "aurora-loading-dark"
 	| "aurora-metadata-light"
@@ -218,9 +218,29 @@ let controlledTransition:
 setCoverAndLoad(defaultVisualCover, false);
 
 const scenarios: Record<ScenarioName, Scenario> = {
-	"album-art-instrumental": {
+	"instrumental-metadata": {
 		timestamp: 0,
-		mode: "album-art",
+		mode: "metadata",
+		metadata: {
+			mode: "persistent",
+			track: {
+				uri: "spotify:track:visual-instrumental",
+				title: "Quiet Horizon",
+				artist: "Haneul Park",
+				album: "Afterglow",
+				durationMs: 196_000,
+				coverUrl: darkAuroraCover,
+				isLocal: false,
+			},
+		},
+		theme: buildTrackTheme({
+			DARK_VIBRANT: "#102d3a",
+			DESATURATED: "#3c6870",
+			LIGHT_VIBRANT: "#8ce6e3",
+			PROMINENT: "#102d3a",
+			VIBRANT: "#63d2d5",
+			VIBRANT_NON_ALARMING: "#63d2d5",
+		}),
 	},
 	"aurora-loading-dark": {
 		timestamp: 0,

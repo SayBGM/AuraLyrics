@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
 import type { IntroPresentationGate } from "../../src/app/IntroPresentationGate";
+import type { MusicStateMachine } from "../../src/app/MusicStateMachine";
 import type { OutroPresentationController } from "../../src/app/OutroPresentationController";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
@@ -1581,27 +1582,23 @@ describe("ExtensionApp", () => {
 			name: "provider error",
 			track: metadataTrack("spotify:track:refresh-error"),
 			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "error", track, message: "offline" }),
-			expected: "metadata",
 		},
 		{
 			name: "missing lyrics",
 			track: metadataTrack("spotify:track:refresh-empty"),
 			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "no-lyrics" }),
-			expected: "metadata",
 		},
 		{
 			name: "instrumental",
 			track: metadataTrack("spotify:track:refresh-instrumental"),
 			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "instrumental" }),
-			expected: "instrumental",
 		},
 		{
 			name: "unsupported local track",
 			track: metadataTrack("spotify:local:aura:refresh:local:180", { isLocal: true }),
 			finalState: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "unsupported-local" }),
-			expected: "metadata",
 		},
-	])("keeps lyrics while a refresh is pending, then renders the final $name presentation", async ({ track, finalState, expected }) => {
+	])("keeps lyrics while a refresh is pending, then renders the final $name presentation", async ({ track, finalState }) => {
 		const { spicetify } = createSpicetify();
 		spicetify.Player.getProgress = () => 8_000;
 		const app = new ExtensionApp(spicetify);
@@ -1632,15 +1629,12 @@ describe("ExtensionApp", () => {
 		await refreshing;
 
 		expect(root.querySelector(".lyrics-track")).toBeNull();
-		if (expected === "instrumental") {
-			expect(root.classList.contains("album-art-mode")).toBe(true);
-			expect(root.children).toHaveLength(1);
-			expect(root.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
-			expect(root.querySelector(".aura-lyrics, .status-card, .track-metadata-scene")).toBeNull();
-		} else {
-			expect(root.querySelector(".track-metadata-scene.persistent")).not.toBeNull();
-			expect(root.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
-		}
+		expect(root.classList.contains("album-art-mode")).toBe(false);
+		expect(root.querySelector(".album-art-scene")).toBeNull();
+		expect(root.querySelector(".track-metadata-scene.persistent")).not.toBeNull();
+		expect(root.querySelector<HTMLImageElement>(".track-metadata-cover")?.src).toBe(track.coverUrl);
+		expect(root.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
+		expect(root.querySelector(".track-metadata-byline")?.textContent).toBe(`${track.artist} · ${track.album}`);
 		app.destroy();
 	});
 
@@ -3776,16 +3770,22 @@ describe("ExtensionApp", () => {
 		);
 	});
 
-	test("shows instrumental tracks as plain album art instead of a status card", async () => {
+	test("shows instrumental tracks as persistent track metadata without entering the intro gate", async () => {
 		const { spicetify } = createSpicetify();
+		const track = metadataTrack("spotify:track:instrumental", {
+			title: "Instrumental Track",
+			artist: "Aura",
+			album: "Still Cover",
+			coverUrl: "https://i.scdn.co/image/cover",
+		});
 		spicetify.Player.data = {
 			item: {
-				uri: "spotify:track:instrumental",
+				uri: track.uri,
 				metadata: {
-					title: "Instrumental Track",
-					artist_name: "Aura",
-					album_title: "Still Cover",
-					duration: "180000",
+					title: track.title,
+					artist_name: track.artist,
+					album_title: track.album,
+					duration: String(track.durationMs),
 					image_url: "https://i.scdn.co/image/cover",
 				},
 			},
@@ -3798,6 +3798,8 @@ describe("ExtensionApp", () => {
 		const pipRoot = document.createElement("div");
 		const content = document.createElement("main");
 		pipRoot.append(content);
+		pipRoot.classList.add("album-art-mode");
+		content.classList.add("album-art-mode");
 		const setCover = vi.fn();
 		const internals = app as unknown as {
 			session: {
@@ -3806,8 +3808,9 @@ describe("ExtensionApp", () => {
 				applyTheme: (theme?: TrackTheme) => void;
 			};
 			lyricsService: {
-				load: () => Promise<{ status: "empty"; reason: "instrumental"; track: { title: string; coverUrl?: string } }>;
+				load: () => Promise<LyricsLoadState>;
 			};
+			stateMachine: MusicStateMachine;
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
 		internals.session = {
@@ -3816,25 +3819,23 @@ describe("ExtensionApp", () => {
 			applyTheme: vi.fn(),
 		};
 		internals.lyricsService = {
-			load: vi.fn(
-				async () =>
-					({
-						status: "empty",
-						reason: "instrumental",
-						track: { title: "Instrumental Track", coverUrl: "https://i.scdn.co/image/cover" },
-					}) as const
-			),
+			load: vi.fn(async () => ({ status: "empty", reason: "instrumental", track }) as const),
 		};
 		const acceptIntro = vi.spyOn(introGateOf(app), "accept");
+		const dispatchState = vi.spyOn(internals.stateMachine, "dispatch");
 
 		await internals.loadCurrentTrack(false);
 
-		expect(setCover).toHaveBeenCalledWith("https://i.scdn.co/image/cover");
-		expect(pipRoot.classList.contains("album-art-mode")).toBe(true);
+		expect(setCover).toHaveBeenCalledWith(track.coverUrl);
+		expect(pipRoot.classList.contains("album-art-mode")).toBe(false);
+		expect(content.classList.contains("album-art-mode")).toBe(false);
 		expect(content.children).toHaveLength(1);
-		expect(content.firstElementChild?.classList.contains("album-art-scene")).toBe(true);
-		expect(content.querySelector(".aura-lyrics, .status-card, .track-metadata-scene")).toBeNull();
-		expect(content.textContent).not.toContain("Instrumental");
+		expect(content.querySelector(".track-metadata-scene.persistent")).not.toBeNull();
+		expect(content.querySelector<HTMLImageElement>(".track-metadata-cover")?.src).toBe(track.coverUrl);
+		expect(content.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
+		expect(content.querySelector(".track-metadata-byline")?.textContent).toBe(`${track.artist} · ${track.album}`);
+		expect(content.querySelector(".lyrics-track, .status-card, .album-art-scene")).toBeNull();
+		expect(dispatchState).toHaveBeenCalledWith({ type: "noLyrics", message: "instrumental" });
 		expect(acceptIntro).not.toHaveBeenCalled();
 	});
 
@@ -4528,7 +4529,7 @@ describe("ExtensionApp", () => {
 			{
 				name: "instrumental",
 				state: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "instrumental" }),
-				selector: ".album-art-scene",
+				selector: ".track-metadata-scene.persistent",
 			},
 			{
 				name: "unsupported local",
@@ -4565,6 +4566,11 @@ describe("ExtensionApp", () => {
 				expect(root.querySelector(`[data-scene-plane="incoming"] ${selector}`)).toBeNull();
 				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
 				expect(root.querySelector(selector)).not.toBeNull();
+				expect(root.classList.contains("album-art-mode")).toBe(false);
+				expect(root.querySelector(".album-art-scene")).toBeNull();
+				expect(root.querySelector<HTMLImageElement>(".track-metadata-cover")?.src).toBe(incoming.coverUrl);
+				expect(root.querySelector(".track-metadata-title")?.textContent).toBe(incoming.title);
+				expect(root.querySelector(".track-metadata-byline")?.textContent).toBe(`${incoming.artist} · ${incoming.album}`);
 				app.destroy();
 			} finally {
 				vi.useRealTimers();

@@ -488,7 +488,7 @@ export class ExtensionApp {
 				return;
 			case "instrumental":
 				this.stateMachine.dispatch({ type: "noLyrics", message: "instrumental" });
-				this.renderer.showAlbumArt(this.session.root);
+				this.renderer.showTrackMetadata(this.session.root, { mode: "persistent", track: state.track }, this.settings.get());
 				return;
 			case "metadata":
 				if (state.reason === "error") {

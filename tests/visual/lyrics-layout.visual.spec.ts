@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 type ScenarioName =
-	| "album-art-instrumental"
+	| "instrumental-metadata"
 	| "aurora-intro-ready"
 	| "aurora-loading-dark"
 	| "aurora-metadata-light"
@@ -1151,38 +1151,64 @@ test("frame interlude stays balanced in a wide short PiP", async ({ page }) => {
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("frame-interlude-wide-short.png", screenshotTolerance);
 });
 
-test("instrumental album art mode hides lyrics and shows the cover cleanly", async ({ page }) => {
-	await page.setViewportSize({ width: 600, height: 600 });
-	await renderScenario(page, "album-art-instrumental");
+test("instrumental metadata stays visible over the regular cover background in a wide PiP", async ({ page }) => {
+	await page.setViewportSize({ width: 720, height: 420 });
+	await renderScenario(page, "instrumental-metadata");
 
 	const metrics = await page.evaluate(() => {
 		const pipRoot = document.querySelector<HTMLElement>("#aura-lyrics-root");
-		const cover = document.querySelector<HTMLImageElement>(".pip-cover");
+		const backgroundCover = document.querySelector<HTMLImageElement>("#aura-lyrics-root > .pip-cover-layer > .pip-cover");
+		const scrim = document.querySelector<HTMLElement>("#aura-lyrics-root > .pip-scrim");
+		const vignette = document.querySelector<HTMLElement>("#aura-lyrics-root > .pip-vignette");
 		const content = document.querySelector<HTMLElement>("#aura-visual-root");
-		if (!pipRoot || !cover || !content) {
-			throw new Error("Missing album art elements.");
+		const metadataScene = content?.querySelector<HTMLElement>(":scope > .track-metadata-scene.persistent");
+		const thumbnail = metadataScene?.querySelector<HTMLImageElement>(".track-metadata-cover");
+		const title = metadataScene?.querySelector<HTMLElement>(".track-metadata-title");
+		const byline = metadataScene?.querySelector<HTMLElement>(".track-metadata-byline");
+		if (!pipRoot || !backgroundCover || !scrim || !vignette || !content || !metadataScene || !thumbnail || !title || !byline) {
+			throw new Error("Missing instrumental metadata elements.");
 		}
-		const coverRect = cover.getBoundingClientRect();
+		const backgroundRect = backgroundCover.getBoundingClientRect();
+		const thumbnailRect = thumbnail.getBoundingClientRect();
 
 		return {
 			albumArtMode: pipRoot.classList.contains("album-art-mode"),
+			contentAlbumArtMode: content.classList.contains("album-art-mode"),
 			contentChildren: content.children.length,
 			albumArtSentinelCount: content.querySelectorAll(":scope > .album-art-scene[aria-hidden='true']").length,
-			coverWidth: Math.round(coverRect.width),
-			coverHeight: Math.round(coverRect.height),
-			coverOpacity: getComputedStyle(cover).opacity,
-			objectFit: getComputedStyle(cover).objectFit,
+			backgroundWidth: Math.round(backgroundRect.width),
+			backgroundHeight: Math.round(backgroundRect.height),
+			backgroundOpacity: getComputedStyle(backgroundCover).opacity,
+			backgroundObjectFit: getComputedStyle(backgroundCover).objectFit,
+			backgroundFilter: getComputedStyle(backgroundCover).filter,
+			scrimOpacity: getComputedStyle(scrim).opacity,
+			vignetteOpacity: getComputedStyle(vignette).opacity,
+			title: title.textContent,
+			byline: byline.textContent,
+			thumbnailWidth: Math.round(thumbnailRect.width),
+			thumbnailHeight: Math.round(thumbnailRect.height),
+			thumbnailObjectFit: getComputedStyle(thumbnail).objectFit,
 		};
 	});
 
-	expect(metrics.albumArtMode).toBe(true);
+	expect(metrics.albumArtMode).toBe(false);
+	expect(metrics.contentAlbumArtMode).toBe(false);
 	expect(metrics.contentChildren).toBe(1);
-	expect(metrics.albumArtSentinelCount).toBe(1);
-	expect(metrics.coverWidth).toBe(600);
-	expect(metrics.coverHeight).toBe(600);
-	expect(metrics.coverOpacity).toBe("1");
-	expect(metrics.objectFit).toBe("contain");
-	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("album-art-instrumental.png", screenshotTolerance);
+	expect(metrics.albumArtSentinelCount).toBe(0);
+	expect(metrics.backgroundWidth).toBe(720);
+	expect(metrics.backgroundHeight).toBe(420);
+	expect(metrics.backgroundOpacity).toBe("0.95");
+	expect(metrics.backgroundObjectFit).toBe("cover");
+	expect(metrics.backgroundFilter).not.toBe("none");
+	expect(metrics.backgroundFilter).toContain("blur(");
+	expect(metrics.scrimOpacity).toBe("1");
+	expect(metrics.vignetteOpacity).toBe("1");
+	expect(metrics.title).toBe("Quiet Horizon");
+	expect(metrics.byline).toBe("Haneul Park · Afterglow");
+	expect(metrics.thumbnailWidth).toBeGreaterThan(60);
+	expect(metrics.thumbnailHeight).toBe(metrics.thumbnailWidth);
+	expect(metrics.thumbnailObjectFit).toBe("cover");
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("instrumental-metadata-wide.png", screenshotTolerance);
 });
 
 test("background opposite vocals stay secondary and opposite aligned", async ({ page }) => {
@@ -1369,10 +1395,6 @@ const renderScenario = async (page: Page, name: ScenarioName, timestamp?: number
 	);
 	if (name.startsWith("settings-")) {
 		await expect(page.locator(".aura-lyrics-settings")).toBeVisible();
-		return;
-	}
-	if (name === "album-art-instrumental") {
-		await expect(page.locator("#aura-lyrics-root.album-art-mode")).toBeVisible();
 		return;
 	}
 	await expect(page.locator(".aura-lyrics")).toBeVisible();
