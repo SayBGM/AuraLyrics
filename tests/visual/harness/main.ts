@@ -50,6 +50,7 @@ type ScenarioName =
 type Scenario = {
 	lyrics?: LyricsDocument;
 	settings?: Partial<ExtensionSettings>;
+	showProviderCredit?: boolean;
 	timestamp: number;
 	timingSource?: "native" | "synthetic";
 	mode?: "album-art" | "lyrics" | "metadata" | "settings";
@@ -376,6 +377,7 @@ const scenarios: Record<ScenarioName, Scenario> = {
 	},
 	"highlight-multiline-line": {
 		timestamp: 6,
+		showProviderCredit: false,
 		settings: {
 			...settingsForVisuals,
 			alignmentMode: "left",
@@ -750,7 +752,7 @@ window.auraVisualHarness = {
 				...structuredClone(DEFAULT_SETTINGS),
 				...scenario.settings,
 			},
-			provider: "lrclib",
+			provider: scenario.showProviderCredit === false ? undefined : "lrclib",
 			timingSource: scenario.timingSource,
 		});
 		for (let frame = 0; frame < 3; frame += 1) {

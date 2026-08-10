@@ -480,7 +480,7 @@ describe("pipStyles", () => {
 	});
 
 	test("neutralizes completed and context targets without muting completed syllables in the active row", () => {
-		const neutralStart = lyricsStyles.indexOf(".aura-lyrics .syllable-group.sung .highlight-target,");
+		const neutralStart = lyricsStyles.indexOf(".aura-lyrics .syllable-row.sung:not(.context-current) .highlight-target,");
 		const neutralEnd = lyricsStyles.indexOf("}", neutralStart);
 		const neutralRule = neutralStart >= 0 && neutralEnd >= 0 ? lyricsStyles.slice(neutralStart, neutralEnd + 1) : "";
 		const selectors = neutralRule
@@ -489,12 +489,11 @@ describe("pipStyles", () => {
 			.map((selector) => selector.trim());
 
 		expect(selectors).toEqual([
-			".aura-lyrics .syllable-group.sung .highlight-target",
-			".aura-lyrics .syllable-row.sung .highlight-target",
+			".aura-lyrics .syllable-row.sung:not(.context-current) .highlight-target",
 			".aura-lyrics .syllable-row.context-previous .highlight-target",
 			".aura-lyrics .syllable-row.context-next .highlight-target",
 			".aura-lyrics .syllable-row.out-of-context .highlight-target",
-			".aura-lyrics .line-group.sung .highlight-target",
+			".aura-lyrics .line-group.sung:not(.context-current) .highlight-target",
 			".aura-lyrics .line-group.context-previous .highlight-target",
 			".aura-lyrics .line-group.context-next .highlight-target",
 			".aura-lyrics .line-group.out-of-context .highlight-target",
@@ -506,6 +505,10 @@ describe("pipStyles", () => {
 		expect(neutralRule).toContain("box-shadow: none");
 		expect(neutralRule).toContain("filter: saturate(var(--highlight-saturation, 1))");
 		expect(neutralRule).not.toContain(".highlight-target.sung");
+		expect(neutralRule).not.toContain(".syllable-group.sung");
+		expect(lyricsStyles).toContain(".line-group.sung:not(.context-current) .line");
+		expect(lyricsStyles).toContain(".syllable-row.sung:not(.context-current) .highlight-decoration-layer");
+		expect(lyricsStyles).toContain(".line-group.sung:not(.context-current) .highlight-decoration-layer");
 		expect(neutralStart).toBeGreaterThan(
 			lyricsStyles.indexOf('.aura-lyrics[data-highlight-effect="spotlight"] .highlight-glyph-layer.highlight-target')
 		);
