@@ -105,7 +105,7 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 				live.element.style.setProperty("--melisma-step", String(melisma.step));
 			}
 			live.element.classList.toggle("active", progress > 0 && progress < 1);
-			live.element.classList.toggle("sung", timestamp > live.metadata.endTime);
+			live.element.classList.toggle("sung", timestamp >= live.metadata.endTime);
 			live.element.classList.toggle("idle", timestamp <= live.metadata.startTime);
 			live.element.style.scale = nextScale.toString();
 			live.element.style.transform = `translateY(calc(var(--lyrics-size) * ${nextYOffset})) rotate(${motion.rotationDeg}deg) scaleX(${motion.scaleX}) scaleY(${motion.scaleY})`;
@@ -123,7 +123,7 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 			track.decoration.updateProgressFromPieces();
 			const progress = track.decoration.getProgress();
 			track.element.classList.toggle("active", progress > 0 && progress < 1);
-			track.element.classList.toggle("sung", timestamp > track.endTime);
+			track.element.classList.toggle("sung", timestamp >= track.endTime);
 			track.element.classList.toggle("idle", timestamp <= track.startTime);
 			track.element.style.setProperty("--highlight-track-progress-ratio", String(progress));
 		}

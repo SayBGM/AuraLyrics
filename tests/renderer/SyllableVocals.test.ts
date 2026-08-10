@@ -105,6 +105,19 @@ describe("SyllableVocals live spring tuning", () => {
 		expect(syllable?.className).not.toContain("synthetic-wake");
 	});
 
+	test("marks the syllable and its highlight track as sung the instant progress reaches 100%, without a state gap", () => {
+		const vocals = new SyllableVocals(vocal, false, DEFAULT_SETTINGS);
+		const syllable = vocals.element.querySelector<HTMLElement>(".syllable.synced");
+		const track = vocals.element.querySelector<HTMLElement>(".syllable-highlight-track");
+
+		vocals.animate(vocal.endTime, 1 / 60, true);
+
+		expect(syllable?.classList.contains("active")).toBe(false);
+		expect(syllable?.classList.contains("sung")).toBe(true);
+		expect(track?.classList.contains("active")).toBe(false);
+		expect(track?.classList.contains("sung")).toBe(true);
+	});
+
 	test("keeps live spring identities and state while softness changes their next response", () => {
 		const tuned = new SyllableVocals(vocal, false, DEFAULT_SETTINGS);
 		const control = new SyllableVocals(vocal, false, DEFAULT_SETTINGS);
