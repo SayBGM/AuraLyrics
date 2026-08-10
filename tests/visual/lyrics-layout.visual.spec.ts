@@ -856,6 +856,88 @@ test("marker ripple filter stays on the active glyph instead of the decoration b
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("highlight-ripple.png", screenshotTolerance);
 });
 
+test("completed current lyrics keep every highlight effect until the next row starts", async ({ page }) => {
+	await renderScenario(page, "highlight-marker-wave", 5.8);
+
+	const current = await page.evaluate(() => {
+		const scene = document.querySelector<HTMLElement>(".aura-lyrics");
+		const row = document.querySelector<HTMLElement>(".syllable-row.sung.context-current");
+		const glyph = row?.querySelector<HTMLElement>(".highlight-target");
+		const decoration = row?.querySelector<HTMLElement>(".highlight-decoration-layer");
+		if (!scene || !row || !glyph || !decoration) {
+			throw new Error("Missing completed current syllable highlight elements.");
+		}
+		const effects = ["fill", "glow-sweep", "underline", "marker", "outline-fill", "spotlight"] as const;
+		const styles = effects.map((effect) => {
+			scene.dataset.highlightEffect = effect;
+			const style = getComputedStyle(glyph);
+			return {
+				backgroundImage: style.backgroundImage,
+				color: style.color,
+				effect,
+			};
+		});
+		scene.dataset.highlightEffect = "marker";
+		return {
+			decorationOpacity: getComputedStyle(decoration).opacity,
+			progress: glyph.style.getPropertyValue("--highlight-progress"),
+			styles,
+		};
+	});
+
+	expect(current.progress).toBe("100%");
+	expect(current.decorationOpacity).toBe("1");
+	for (const style of current.styles) {
+		expect(style.backgroundImage, style.effect).toContain("linear-gradient(");
+		expect(style.color, style.effect).toBe("rgba(0, 0, 0, 0)");
+	}
+	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("highlight-completed-current.png", screenshotTolerance);
+
+	await renderScenario(page, "highlight-marker-wave", 6);
+	const previous = await page.evaluate(() => {
+		const row = document.querySelector<HTMLElement>(".syllable-row.sung.context-previous");
+		const glyph = row?.querySelector<HTMLElement>(".highlight-target");
+		const decoration = row?.querySelector<HTMLElement>(".highlight-decoration-layer");
+		if (!row || !glyph || !decoration) {
+			throw new Error("Missing previous completed syllable highlight elements.");
+		}
+		const style = getComputedStyle(glyph);
+		return {
+			backgroundImage: style.backgroundImage,
+			color: style.color,
+			decorationOpacity: getComputedStyle(decoration).opacity,
+		};
+	});
+
+	expect(previous.backgroundImage).toBe("none");
+	expect(previous.color).not.toBe("rgba(0, 0, 0, 0)");
+	expect(previous.decorationOpacity).toBe("0");
+
+	await renderScenario(page, "highlight-multiline-line", 12);
+	await expect(page.locator(".line-group.sung.context-current .highlight-layout-host")).toHaveAttribute("data-highlight-layout-ready", "true");
+	const finalLine = await page.evaluate(() => {
+		const group = document.querySelector<HTMLElement>(".line-group.sung.context-current");
+		const host = group?.querySelector<HTMLElement>(".highlight-layout-host");
+		const glyph = host?.querySelector<HTMLElement>(".highlight-target");
+		const decoration = host?.querySelector<HTMLElement>(".highlight-decoration-layer");
+		if (!group || !host || !glyph || !decoration) {
+			throw new Error("Missing final completed line highlight elements.");
+		}
+		const style = getComputedStyle(glyph);
+		return {
+			backgroundImage: style.backgroundImage,
+			color: style.color,
+			decorationOpacity: getComputedStyle(decoration).opacity,
+			progress: host.style.getPropertyValue("--highlight-progress"),
+		};
+	});
+
+	expect(finalLine.progress).toBe("100%");
+	expect(finalLine.backgroundImage).toContain("linear-gradient(");
+	expect(finalLine.color).toBe("rgba(0, 0, 0, 0)");
+	expect(finalLine.decorationOpacity).toBe("1");
+});
+
 test("glow sweep and spotlight keep idle, sung, and context glyphs neutral", async ({ page }) => {
 	await renderScenario(page, "highlight-glow-sweep");
 

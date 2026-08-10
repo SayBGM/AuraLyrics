@@ -207,7 +207,7 @@ export const lyricsStyles = `
 		0 16px 44px rgba(var(--pip-scrim-rgb), 0.32);
 }
 
-.line-group.sung .line {
+.line-group.sung:not(.context-current) .line {
 	color: var(--pip-muted-foreground-color);
 }
 
@@ -493,7 +493,7 @@ export const lyricsStyles = `
 	--highlight-angle: 270deg;
 }
 
-.syllable-group.sung .syllable,
+.syllable-row.sung:not(.context-current) .syllable,
 .syllable-row.context-previous .syllable,
 .syllable-row.context-next .syllable {
 	background: none;
@@ -636,12 +636,11 @@ export const lyricsStyles = `
 		);
 }
 
-.aura-lyrics .syllable-group.sung .highlight-target,
-.aura-lyrics .syllable-row.sung .highlight-target,
+.aura-lyrics .syllable-row.sung:not(.context-current) .highlight-target,
 .aura-lyrics .syllable-row.context-previous .highlight-target,
 .aura-lyrics .syllable-row.context-next .highlight-target,
 .aura-lyrics .syllable-row.out-of-context .highlight-target,
-.aura-lyrics .line-group.sung .highlight-target,
+.aura-lyrics .line-group.sung:not(.context-current) .highlight-target,
 .aura-lyrics .line-group.context-previous .highlight-target,
 .aura-lyrics .line-group.context-next .highlight-target,
 .aura-lyrics .line-group.out-of-context .highlight-target {
@@ -653,12 +652,11 @@ export const lyricsStyles = `
 	-webkit-text-stroke: 0;
 }
 
-.aura-lyrics .syllable-group.sung .highlight-decoration-layer,
-.aura-lyrics .syllable-row.sung .highlight-decoration-layer,
+.aura-lyrics .syllable-row.sung:not(.context-current) .highlight-decoration-layer,
 .aura-lyrics .syllable-row.context-previous .highlight-decoration-layer,
 .aura-lyrics .syllable-row.context-next .highlight-decoration-layer,
 .aura-lyrics .syllable-row.out-of-context .highlight-decoration-layer,
-.aura-lyrics .line-group.sung .highlight-decoration-layer,
+.aura-lyrics .line-group.sung:not(.context-current) .highlight-decoration-layer,
 .aura-lyrics .line-group.context-previous .highlight-decoration-layer,
 .aura-lyrics .line-group.context-next .highlight-decoration-layer,
 .aura-lyrics .line-group.out-of-context .highlight-decoration-layer {

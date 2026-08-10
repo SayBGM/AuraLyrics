@@ -1474,6 +1474,74 @@ describe("LyricsRenderer", () => {
 		expect(rows[3].classList.contains("context-next")).toBe(true);
 	});
 
+	test("keeps a completed syllable row current until the next row starts", () => {
+		const root = document.createElement("div");
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 5,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 0,
+						endTime: 2,
+						syllables: [{ text: "Complete", startTime: 0, endTime: 2, isPartOfWord: false }],
+					},
+				},
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					lead: {
+						startTime: 3,
+						endTime: 5,
+						syllables: [{ text: "Next", startTime: 3, endTime: 5, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
+		const rows = root.querySelectorAll<HTMLElement>(".syllable-row");
+		const completedGlyph = rows[0].querySelector<HTMLElement>(".highlight-target");
+
+		renderer.update(2, 1 / 60);
+
+		expect(rows[0].classList.contains("sung")).toBe(true);
+		expect(rows[0].classList.contains("context-current")).toBe(true);
+		expect(completedGlyph?.style.getPropertyValue("--highlight-progress")).toBe("100%");
+
+		renderer.update(3, 1 / 60);
+
+		expect(rows[0].classList.contains("context-previous")).toBe(true);
+		expect(rows[1].classList.contains("active")).toBe(true);
+		expect(rows[1].classList.contains("context-current")).toBe(true);
+	});
+
+	test("keeps the final completed line current after its timing ends", () => {
+		const root = document.createElement("div");
+		const lyrics: LineLyrics = {
+			type: "line",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{ type: "vocal", text: "First", startTime: 0, endTime: 2, oppositeAligned: false },
+				{ type: "vocal", text: "Final", startTime: 2, endTime: 4, oppositeAligned: false },
+			],
+		};
+
+		const renderer = new LyricsRenderer();
+		mountRenderer(renderer, root, lyrics, DEFAULT_SETTINGS);
+		renderer.update(4, 1 / 60);
+
+		const final = root.querySelectorAll<HTMLElement>(".line-group")[1];
+		expect(final.classList.contains("sung")).toBe(true);
+		expect(final.classList.contains("context-current")).toBe(true);
+		expect(final.querySelector<HTMLElement>(".highlight-layout-host")?.style.getPropertyValue("--highlight-progress")).toBe("100%");
+	});
+
 	test("renders provider source below the final lyric", () => {
 		const root = document.createElement("div");
 		const lyrics: LineLyrics = {
