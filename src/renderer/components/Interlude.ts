@@ -1,6 +1,7 @@
 import type { Interlude as InterludeMetadata } from "../../lyrics/types";
 import type { InterludeStyle } from "../../settings/SettingsStore";
 import type { UiLanguage } from "../../settings/settingsSchema";
+import { translate } from "../../settings/settingsTranslations";
 import type { AnimatedGroup } from "../AnimatedGroup";
 import type { InterludeWaveform } from "../AudioAnalysisWaveformService";
 import { applyLifecycleClasses, createLifecycleCache } from "../highlight/highlightStyleWriter";
@@ -101,8 +102,4 @@ export const isActiveInterlude = (group: AnimatedGroup): group is InterludeView 
 
 const fallbackBars = (): number[] => [0.24, 0.52, 0.8, 0.42, 0.68, 0.34, 0.58, 0.86, 0.46, 0.64, 0.3, 0.72];
 
-const interludeLabel = (language: UiLanguage): string => {
-	if (language === "ko") return "연주 구간";
-	if (language === "ja") return "間奏";
-	return "Instrumental break";
-};
+const interludeLabel = (language: UiLanguage): string => translate("interludeAriaLabel", language);

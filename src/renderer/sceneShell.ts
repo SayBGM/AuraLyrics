@@ -1,4 +1,5 @@
 import type { ExtensionSettings } from "../settings/SettingsStore";
+import { translate } from "../settings/settingsTranslations";
 
 export type LyricsSceneShell = {
 	container: HTMLDivElement;
@@ -51,14 +52,6 @@ export const createSceneAnnouncer = (ownerDocument: Document): HTMLSpanElement =
 	return announcer;
 };
 
-export const syntheticTimingLabel = (language: ExtensionSettings["language"]): string => {
-	if (language === "ko") return "가상 노래방 싱크";
-	if (language === "ja") return "仮想カラオケ同期";
-	return "Synthesized karaoke sync";
-};
+export const syntheticTimingLabel = (language: ExtensionSettings["language"]): string => translate("syntheticTimingAriaLabel", language);
 
-export const staticLyricsLabel = (language: ExtensionSettings["language"]): string => {
-	if (language === "ko") return "정적 가사 문서";
-	if (language === "ja") return "静的歌詞ドキュメント";
-	return "Static lyrics document";
-};
+export const staticLyricsLabel = (language: ExtensionSettings["language"]): string => translate("staticLyricsAriaLabel", language);
