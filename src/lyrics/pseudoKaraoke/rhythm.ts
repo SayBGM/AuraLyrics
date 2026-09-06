@@ -1,27 +1,33 @@
 // §5.5 / §5.6 — build rhythm anchors and the active line window.
-import type { AudioAnalysisData } from "../../audio/types";
-import type { VocalCandidate } from "./types";
+import type { TrackVocalContext, VocalCandidate } from "./types";
 import { clamp } from "./utils";
 
-const S_TO_MS = 1000;
+// First index whose value is >= target, in an ascending-sorted array (frames.length if none).
+const lowerBoundIndex = (values: number[], target: number): number => {
+	let lo = 0;
+	let hi = values.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if (values[mid] < target) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+	return lo;
+};
 
-export const buildRhythmAnchors = (start: number, end: number, analysis: AudioAnalysisData | undefined): number[] => {
+export const buildRhythmAnchors = (start: number, end: number, context: TrackVocalContext): number[] => {
 	const interval = Math.max(1, end - start);
 	const minGap = clamp(interval / 140, 18, 90);
-	const points: number[] = [];
-	for (const beat of analysis?.beats ?? []) {
-		if ((beat.confidence ?? 0) >= 0.2) {
-			points.push(beat.start * S_TO_MS);
-		}
-	}
-	for (const tatum of analysis?.tatums ?? []) {
-		if ((tatum.confidence ?? 0) >= 0.12) {
-			points.push(tatum.start * S_TO_MS);
-		}
-	}
-	const within = points.filter((time) => time >= start && time <= end).sort((a, b) => a - b);
+	const anchors = context.rhythmAnchors;
 	const result: number[] = [];
-	for (const time of within) {
+	// `anchors` is sorted ascending track-wide, so [start, end] is a contiguous slice.
+	for (let index = lowerBoundIndex(anchors, start); index < anchors.length; index += 1) {
+		const time = anchors[index];
+		if (time > end) {
+			break;
+		}
 		const last = result[result.length - 1];
 		if (last === undefined || time - last >= minGap) {
 			result.push(time);

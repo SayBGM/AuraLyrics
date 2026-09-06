@@ -46,6 +46,8 @@ export type TrackVocalContext = {
 	seedProfile?: SeedProfile;
 	sections: AudioAnalysisSection[];
 	sectionVocality: number[];
+	/** Confidence-filtered beat + tatum onset times (ms), merged and sorted once per track. */
+	rhythmAnchors: number[];
 };
 
 export type LineTimingModel = {

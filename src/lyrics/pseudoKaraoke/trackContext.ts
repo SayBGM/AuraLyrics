@@ -20,7 +20,25 @@ export const buildTrackVocalContext = (analysis: AudioAnalysisData | undefined):
 		seedProfile: buildTrackSeedProfile(scored),
 		sections: analysis?.sections ?? [],
 		sectionVocality: computeSectionVocality(analysis?.sections ?? [], scored),
+		rhythmAnchors: buildSortedRhythmAnchors(analysis),
 	};
+};
+
+// §5.5 (track-wide precompute) — merge confidence-filtered beat + tatum onsets (ms) once per
+// track instead of once per line. `buildRhythmAnchors` binary-searches this sorted array.
+const buildSortedRhythmAnchors = (analysis: AudioAnalysisData | undefined): number[] => {
+	const points: number[] = [];
+	for (const beat of analysis?.beats ?? []) {
+		if ((beat.confidence ?? 0) >= 0.2) {
+			points.push(beat.start * S_TO_MS);
+		}
+	}
+	for (const tatum of analysis?.tatums ?? []) {
+		if ((tatum.confidence ?? 0) >= 0.12) {
+			points.push(tatum.start * S_TO_MS);
+		}
+	}
+	return points.sort((a, b) => a - b);
 };
 
 const buildTrackSeedProfile = (scored: ScoredSegment[]): SeedProfile | undefined => {

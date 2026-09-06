@@ -53,7 +53,7 @@ describe("vocal model module boundaries", () => {
 		const model = buildLineTimingModel(2000, 6000, analysis, context);
 		const sectionVocality = sectionVocalityAt(context, 4000);
 		const candidates = buildVocalCandidates(2000, 6000, context, sectionVocality);
-		const anchors = buildRhythmAnchors(2000, 6000, analysis);
+		const anchors = buildRhythmAnchors(2000, 6000, context);
 		const activeWindow = buildVocalActivityWindow(2000, 6000, candidates, model.confidence);
 		const massCurve = buildVocalMassCurve(activeWindow.activeStart, activeWindow.activeEnd, candidates, anchors, model.confidence);
 

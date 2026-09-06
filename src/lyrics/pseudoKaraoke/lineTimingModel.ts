@@ -11,12 +11,14 @@ import { clamp01 } from "./utils";
 export const buildLineTimingModel = (
 	start: number,
 	end: number,
-	analysis: AudioAnalysisData | undefined,
+	// Kept for call-site/API stability; rhythm anchors now come from the track-wide
+	// precompute on `context` (see buildRhythmAnchors), so this is no longer read directly.
+	_analysis: AudioAnalysisData | undefined,
 	context: TrackVocalContext
 ): LineTimingModel => {
 	const sectionVocality = sectionVocalityAt(context, (start + end) / 2);
 	const candidates = buildVocalCandidates(start, end, context, sectionVocality);
-	const anchors = buildRhythmAnchors(start, end, analysis);
+	const anchors = buildRhythmAnchors(start, end, context);
 
 	const interval = Math.max(1, end - start);
 	const sortedScores = candidates.map((candidate) => candidate.score).sort((a, b) => b - a);
