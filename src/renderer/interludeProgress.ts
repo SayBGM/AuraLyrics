@@ -1,4 +1,5 @@
 import type { Interlude } from "../lyrics/types";
+import { clamp } from "../shared/math";
 
 export type FrameProgress = {
 	top: number;
@@ -21,7 +22,7 @@ export const interludeProgressAt = (timestamp: number, startTime: number, endTim
 	clampProgress((timestamp - startTime) / Math.max(0.001, endTime - startTime));
 
 export const frameSizeForViewport = (dimensions: Pick<FrameProgressDimensions, "width" | "height">): number =>
-	clampValue(Math.min(dimensions.width, dimensions.height) * 0.034, 12, 18);
+	clamp(Math.min(dimensions.width, dimensions.height) * 0.034, 12, 18);
 
 export const splitFrameProgress = (progress: number, dimensions?: FrameProgressDimensions): FrameProgress => {
 	const sideLengths = getFrameSideLengths(dimensions);
@@ -56,9 +57,9 @@ export const splitFrameProgress = (progress: number, dimensions?: FrameProgressD
 
 const roundTime = (value: number): number => Math.round(value * 1000) / 1000;
 
-const clampProgress = (value: number): number => clampValue(value, 0, 1);
-
-const clampValue = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+// Deliberately not `shared/math.clampProgress`: frame progress is fed straight into CSS
+// lengths, where a non-finite input has to stay visible as such rather than read as 0%.
+const clampProgress = (value: number): number => clamp(value, 0, 1);
 
 const getFrameSideLengths = (dimensions: FrameProgressDimensions | undefined): FrameProgress | undefined => {
 	if (dimensions === undefined || dimensions.width <= 0 || dimensions.height <= 0) {

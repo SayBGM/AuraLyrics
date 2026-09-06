@@ -1,3 +1,5 @@
+import { clamp } from "../../shared/math";
+
 export type HighlightDirection = "ltr" | "rtl";
 
 export type HighlightRect = {
@@ -174,5 +176,3 @@ const normalizeRect = (rect: HighlightRect): HighlightRect => {
 const finite = (value: number, fallback: number): number => (Number.isFinite(value) ? value : fallback);
 
 const finitePositive = (value: number, fallback: number): number => (Number.isFinite(value) && value > 0 ? value : fallback);
-
-const clamp = (value: number, minimum: number, maximum: number): number => Math.min(Math.max(value, minimum), maximum);

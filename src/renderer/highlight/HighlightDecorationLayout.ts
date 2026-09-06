@@ -1,3 +1,4 @@
+import { clampProgress } from "../../shared/math";
 import {
 	buildHighlightDecorationLayout,
 	type HighlightDecorationLayout,
@@ -327,5 +328,3 @@ const rectFrom = (rect: Pick<DOMRect, "left" | "right" | "top" | "bottom" | "wid
 });
 
 const positiveWeight = (value: number | undefined): number => (Number.isFinite(value) && (value ?? 0) > 0 ? (value as number) : 1);
-
-const clampProgress = (value: number): number => (Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0);
