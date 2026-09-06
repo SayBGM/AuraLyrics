@@ -1,0 +1,1221 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildPseudoKaraokeLyrics output snapshots > English line 1`] = `
+{
+  "content": [
+    {
+      "lead": {
+        "endTime": 5,
+        "startTime": 1,
+        "syllables": [
+          {
+            "endTime": 2.008,
+            "isPartOfWord": false,
+            "startTime": 1,
+            "text": "hello",
+          },
+          {
+            "endTime": 2.98,
+            "isPartOfWord": false,
+            "startTime": 2.008,
+            "text": "bright",
+          },
+          {
+            "endTime": 3.952,
+            "isPartOfWord": false,
+            "startTime": 2.98,
+            "text": "world",
+          },
+          {
+            "endTime": 5,
+            "isPartOfWord": false,
+            "startTime": 3.952,
+            "text": "tonight",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+  ],
+  "endTime": 5,
+  "startTime": 1,
+  "type": "syllable",
+}
+`;
+
+exports[`buildPseudoKaraokeLyrics output snapshots > Korean line 1`] = `
+{
+  "content": [
+    {
+      "lead": {
+        "endTime": 6,
+        "startTime": 2,
+        "syllables": [
+          {
+            "endTime": 2.2520000000000002,
+            "isPartOfWord": false,
+            "startTime": 2,
+            "text": "별",
+          },
+          {
+            "endTime": 2.504,
+            "isPartOfWord": true,
+            "startTime": 2.2520000000000002,
+            "text": "빛",
+          },
+          {
+            "endTime": 2.7560000000000002,
+            "isPartOfWord": true,
+            "startTime": 2.504,
+            "text": "이",
+          },
+          {
+            "endTime": 3.044,
+            "isPartOfWord": false,
+            "startTime": 2.7560000000000002,
+            "text": "내",
+          },
+          {
+            "endTime": 3.332,
+            "isPartOfWord": true,
+            "startTime": 3.044,
+            "text": "린",
+          },
+          {
+            "endTime": 3.692,
+            "isPartOfWord": false,
+            "startTime": 3.332,
+            "text": "밤",
+          },
+          {
+            "endTime": 4.016,
+            "isPartOfWord": true,
+            "startTime": 3.692,
+            "text": "에",
+          },
+          {
+            "endTime": 4.444000000000002,
+            "isPartOfWord": false,
+            "startTime": 4.016,
+            "text": "우",
+          },
+          {
+            "endTime": 4.844,
+            "isPartOfWord": true,
+            "startTime": 4.444000000000002,
+            "text": "리",
+          },
+          {
+            "endTime": 5.132,
+            "isPartOfWord": true,
+            "startTime": 4.844,
+            "text": "는",
+          },
+          {
+            "endTime": 5.400000000000003,
+            "isPartOfWord": false,
+            "startTime": 5.132,
+            "text": "걸",
+          },
+          {
+            "endTime": 5.644000000000004,
+            "isPartOfWord": true,
+            "startTime": 5.400000000000003,
+            "text": "었",
+          },
+          {
+            "endTime": 6,
+            "isPartOfWord": true,
+            "startTime": 5.644000000000004,
+            "text": "다",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+  ],
+  "endTime": 6,
+  "startTime": 2,
+  "type": "syllable",
+}
+`;
+
+exports[`buildPseudoKaraokeLyrics output snapshots > analysis undefined 1`] = `null`;
+
+exports[`buildPseudoKaraokeLyrics output snapshots > fixture analysis covers only part of the line 1`] = `
+{
+  "content": [
+    {
+      "lead": {
+        "endTime": 6.220000000000004,
+        "startTime": 2,
+        "syllables": [
+          {
+            "endTime": 2.244,
+            "isPartOfWord": false,
+            "startTime": 2,
+            "text": "별",
+          },
+          {
+            "endTime": 2.468,
+            "isPartOfWord": true,
+            "startTime": 2.244,
+            "text": "빛",
+          },
+          {
+            "endTime": 2.684,
+            "isPartOfWord": true,
+            "startTime": 2.468,
+            "text": "이",
+          },
+          {
+            "endTime": 2.936,
+            "isPartOfWord": false,
+            "startTime": 2.684,
+            "text": "내",
+          },
+          {
+            "endTime": 3.332,
+            "isPartOfWord": true,
+            "startTime": 2.936,
+            "text": "린",
+          },
+          {
+            "endTime": 3.7640000000000002,
+            "isPartOfWord": false,
+            "startTime": 3.332,
+            "text": "밤",
+          },
+          {
+            "endTime": 4.088,
+            "isPartOfWord": true,
+            "startTime": 3.7640000000000002,
+            "text": "에",
+          },
+          {
+            "endTime": 4.952,
+            "isPartOfWord": false,
+            "startTime": 4.088,
+            "text": "hello",
+          },
+          {
+            "endTime": 5.444000000000003,
+            "isPartOfWord": false,
+            "startTime": 4.952,
+            "text": "bright",
+          },
+          {
+            "endTime": 6.220000000000004,
+            "isPartOfWord": false,
+            "startTime": 5.444000000000003,
+            "text": "world",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+  ],
+  "endTime": 12,
+  "startTime": 2,
+  "type": "syllable",
+}
+`;
+
+exports[`buildPseudoKaraokeLyrics output snapshots > long ~20-line document 1`] = `
+{
+  "content": [
+    {
+      "lead": {
+        "endTime": 3,
+        "startTime": 0,
+        "syllables": [
+          {
+            "endTime": 0.442,
+            "isPartOfWord": false,
+            "startTime": 0,
+            "text": "별",
+          },
+          {
+            "endTime": 0.844,
+            "isPartOfWord": true,
+            "startTime": 0.442,
+            "text": "빛",
+          },
+          {
+            "endTime": 1.224,
+            "isPartOfWord": true,
+            "startTime": 0.844,
+            "text": "이",
+          },
+          {
+            "endTime": 1.7,
+            "isPartOfWord": false,
+            "startTime": 1.224,
+            "text": "내",
+          },
+          {
+            "endTime": 2.142,
+            "isPartOfWord": true,
+            "startTime": 1.7,
+            "text": "린",
+          },
+          {
+            "endTime": 2.618,
+            "isPartOfWord": false,
+            "startTime": 2.142,
+            "text": "밤",
+          },
+          {
+            "endTime": 3,
+            "isPartOfWord": true,
+            "startTime": 2.618,
+            "text": "에",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 6,
+        "startTime": 3,
+        "syllables": [
+          {
+            "endTime": 3.4000000000000004,
+            "isPartOfWord": false,
+            "startTime": 3,
+            "text": "우",
+          },
+          {
+            "endTime": 3.782,
+            "isPartOfWord": true,
+            "startTime": 3.4000000000000004,
+            "text": "리",
+          },
+          {
+            "endTime": 4.054,
+            "isPartOfWord": true,
+            "startTime": 3.782,
+            "text": "는",
+          },
+          {
+            "endTime": 4.428,
+            "isPartOfWord": false,
+            "startTime": 4.054,
+            "text": "함",
+          },
+          {
+            "endTime": 4.734,
+            "isPartOfWord": true,
+            "startTime": 4.428,
+            "text": "께",
+          },
+          {
+            "endTime": 5.142,
+            "isPartOfWord": false,
+            "startTime": 4.734,
+            "text": "걸",
+          },
+          {
+            "endTime": 5.55,
+            "isPartOfWord": true,
+            "startTime": 5.142,
+            "text": "었",
+          },
+          {
+            "endTime": 6,
+            "isPartOfWord": true,
+            "startTime": 5.55,
+            "text": "다",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 9,
+        "startTime": 6,
+        "syllables": [
+          {
+            "endTime": 7.054,
+            "isPartOfWord": false,
+            "startTime": 6,
+            "text": "hello",
+          },
+          {
+            "endTime": 8.040000000000001,
+            "isPartOfWord": false,
+            "startTime": 7.054,
+            "text": "bright",
+          },
+          {
+            "endTime": 9,
+            "isPartOfWord": false,
+            "startTime": 8.040000000000001,
+            "text": "world",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 12,
+        "startTime": 9,
+        "syllables": [
+          {
+            "endTime": 10.088000000000001,
+            "isPartOfWord": false,
+            "startTime": 9,
+            "text": "singing",
+          },
+          {
+            "endTime": 10.734,
+            "isPartOfWord": false,
+            "startTime": 10.088000000000001,
+            "text": "softly",
+          },
+          {
+            "endTime": 12,
+            "isPartOfWord": false,
+            "startTime": 10.734,
+            "text": "tonight",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 15,
+        "startTime": 12,
+        "syllables": [
+          {
+            "endTime": 12.408,
+            "isPartOfWord": false,
+            "startTime": 12,
+            "text": "그",
+          },
+          {
+            "endTime": 12.843999999999987,
+            "isPartOfWord": true,
+            "startTime": 12.408,
+            "text": "대",
+          },
+          {
+            "endTime": 13.224,
+            "isPartOfWord": true,
+            "startTime": 12.843999999999987,
+            "text": "의",
+          },
+          {
+            "endTime": 13.632,
+            "isPartOfWord": false,
+            "startTime": 13.224,
+            "text": "손",
+          },
+          {
+            "endTime": 13.938,
+            "isPartOfWord": true,
+            "startTime": 13.632,
+            "text": "을",
+          },
+          {
+            "endTime": 14.414,
+            "isPartOfWord": false,
+            "startTime": 13.938,
+            "text": "잡",
+          },
+          {
+            "endTime": 15,
+            "isPartOfWord": true,
+            "startTime": 14.414,
+            "text": "고",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 18,
+        "startTime": 15,
+        "syllables": [
+          {
+            "endTime": 15.408,
+            "isPartOfWord": false,
+            "startTime": 15,
+            "text": "저",
+          },
+          {
+            "endTime": 15.782,
+            "isPartOfWord": false,
+            "startTime": 15.408,
+            "text": "멀",
+          },
+          {
+            "endTime": 16.19,
+            "isPartOfWord": true,
+            "startTime": 15.782,
+            "text": "리",
+          },
+          {
+            "endTime": 16.564,
+            "isPartOfWord": false,
+            "startTime": 16.19,
+            "text": "별",
+          },
+          {
+            "endTime": 16.938,
+            "isPartOfWord": true,
+            "startTime": 16.564,
+            "text": "들",
+          },
+          {
+            "endTime": 17.482,
+            "isPartOfWord": false,
+            "startTime": 16.938,
+            "text": "아",
+          },
+          {
+            "endTime": 18,
+            "isPartOfWord": true,
+            "startTime": 17.482,
+            "text": "래",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 21,
+        "startTime": 18,
+        "syllables": [
+          {
+            "endTime": 19.02,
+            "isPartOfWord": false,
+            "startTime": 18,
+            "text": "walking",
+          },
+          {
+            "endTime": 19.938,
+            "isPartOfWord": false,
+            "startTime": 19.02,
+            "text": "through",
+          },
+          {
+            "endTime": 20.24399999999996,
+            "isPartOfWord": false,
+            "startTime": 19.938,
+            "text": "the",
+          },
+          {
+            "endTime": 21,
+            "isPartOfWord": false,
+            "startTime": 20.24399999999996,
+            "text": "rain",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 24,
+        "startTime": 21,
+        "syllables": [
+          {
+            "endTime": 22.394000000000002,
+            "isPartOfWord": false,
+            "startTime": 21,
+            "text": "dreaming",
+          },
+          {
+            "endTime": 22.734,
+            "isPartOfWord": false,
+            "startTime": 22.394000000000002,
+            "text": "of",
+          },
+          {
+            "endTime": 24,
+            "isPartOfWord": false,
+            "startTime": 22.734,
+            "text": "tomorrow",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 27,
+        "startTime": 24,
+        "syllables": [
+          {
+            "endTime": 24.408,
+            "isPartOfWord": false,
+            "startTime": 24,
+            "text": "내",
+          },
+          {
+            "endTime": 24.816,
+            "isPartOfWord": false,
+            "startTime": 24.408,
+            "text": "마",
+          },
+          {
+            "endTime": 25.19,
+            "isPartOfWord": true,
+            "startTime": 24.816,
+            "text": "음",
+          },
+          {
+            "endTime": 25.53,
+            "isPartOfWord": true,
+            "startTime": 25.19,
+            "text": "속",
+          },
+          {
+            "endTime": 25.938,
+            "isPartOfWord": false,
+            "startTime": 25.53,
+            "text": "깊",
+          },
+          {
+            "endTime": 26.278000000000002,
+            "isPartOfWord": true,
+            "startTime": 25.938,
+            "text": "은",
+          },
+          {
+            "endTime": 26.652,
+            "isPartOfWord": false,
+            "startTime": 26.278000000000002,
+            "text": "곳",
+          },
+          {
+            "endTime": 27,
+            "isPartOfWord": true,
+            "startTime": 26.652,
+            "text": "에",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 30,
+        "startTime": 27,
+        "syllables": [
+          {
+            "endTime": 27.399999999999935,
+            "isPartOfWord": false,
+            "startTime": 27,
+            "text": "언",
+          },
+          {
+            "endTime": 27.816,
+            "isPartOfWord": true,
+            "startTime": 27.399999999999935,
+            "text": "제",
+          },
+          {
+            "endTime": 28.243999999999932,
+            "isPartOfWord": true,
+            "startTime": 27.816,
+            "text": "나",
+          },
+          {
+            "endTime": 28.632,
+            "isPartOfWord": false,
+            "startTime": 28.243999999999932,
+            "text": "함",
+          },
+          {
+            "endTime": 28.972,
+            "isPartOfWord": true,
+            "startTime": 28.632,
+            "text": "께",
+          },
+          {
+            "endTime": 29.346,
+            "isPartOfWord": true,
+            "startTime": 28.972,
+            "text": "할",
+          },
+          {
+            "endTime": 30,
+            "isPartOfWord": true,
+            "startTime": 29.346,
+            "text": "게",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 33,
+        "startTime": 30,
+        "syllables": [
+          {
+            "endTime": 30.544,
+            "isPartOfWord": false,
+            "startTime": 30,
+            "text": "you",
+          },
+          {
+            "endTime": 30.999999999999925,
+            "isPartOfWord": false,
+            "startTime": 30.544,
+            "text": "and",
+          },
+          {
+            "endTime": 31.564,
+            "isPartOfWord": false,
+            "startTime": 30.999999999999925,
+            "text": "I",
+          },
+          {
+            "endTime": 33,
+            "isPartOfWord": false,
+            "startTime": 31.564,
+            "text": "together",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 36,
+        "startTime": 33,
+        "syllables": [
+          {
+            "endTime": 34.292,
+            "isPartOfWord": false,
+            "startTime": 33,
+            "text": "under",
+          },
+          {
+            "endTime": 34.7,
+            "isPartOfWord": false,
+            "startTime": 34.292,
+            "text": "the",
+          },
+          {
+            "endTime": 35.754,
+            "isPartOfWord": false,
+            "startTime": 34.7,
+            "text": "same",
+          },
+          {
+            "endTime": 36,
+            "isPartOfWord": false,
+            "startTime": 35.754,
+            "text": "sky",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 39,
+        "startTime": 36,
+        "syllables": [
+          {
+            "endTime": 36.476,
+            "isPartOfWord": false,
+            "startTime": 36,
+            "text": "바",
+          },
+          {
+            "endTime": 36.952,
+            "isPartOfWord": true,
+            "startTime": 36.476,
+            "text": "람",
+          },
+          {
+            "endTime": 37.326,
+            "isPartOfWord": true,
+            "startTime": 36.952,
+            "text": "이",
+          },
+          {
+            "endTime": 37.79999999999999,
+            "isPartOfWord": false,
+            "startTime": 37.326,
+            "text": "불",
+          },
+          {
+            "endTime": 38.312,
+            "isPartOfWord": true,
+            "startTime": 37.79999999999999,
+            "text": "어",
+          },
+          {
+            "endTime": 38.754,
+            "isPartOfWord": true,
+            "startTime": 38.312,
+            "text": "와",
+          },
+          {
+            "endTime": 39,
+            "isPartOfWord": true,
+            "startTime": 38.754,
+            "text": "도",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 42,
+        "startTime": 39,
+        "syllables": [
+          {
+            "endTime": 39.544000000000004,
+            "isPartOfWord": false,
+            "startTime": 39,
+            "text": "우",
+          },
+          {
+            "endTime": 40.02,
+            "isPartOfWord": true,
+            "startTime": 39.544000000000004,
+            "text": "린",
+          },
+          {
+            "endTime": 40.564,
+            "isPartOfWord": false,
+            "startTime": 40.02,
+            "text": "서",
+          },
+          {
+            "endTime": 40.972,
+            "isPartOfWord": true,
+            "startTime": 40.564,
+            "text": "로",
+          },
+          {
+            "endTime": 41.346000000000004,
+            "isPartOfWord": true,
+            "startTime": 40.972,
+            "text": "를",
+          },
+          {
+            "endTime": 41.644000000000055,
+            "isPartOfWord": false,
+            "startTime": 41.346000000000004,
+            "text": "믿",
+          },
+          {
+            "endTime": 42,
+            "isPartOfWord": true,
+            "startTime": 41.644000000000055,
+            "text": "어",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 45,
+        "startTime": 42,
+        "syllables": [
+          {
+            "endTime": 43.044000000000075,
+            "isPartOfWord": false,
+            "startTime": 42,
+            "text": "through",
+          },
+          {
+            "endTime": 43.326,
+            "isPartOfWord": false,
+            "startTime": 43.044000000000075,
+            "text": "the",
+          },
+          {
+            "endTime": 44.550000000000004,
+            "isPartOfWord": false,
+            "startTime": 43.326,
+            "text": "darkest",
+          },
+          {
+            "endTime": 45,
+            "isPartOfWord": false,
+            "startTime": 44.550000000000004,
+            "text": "night",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 48,
+        "startTime": 45,
+        "syllables": [
+          {
+            "endTime": 45.400000000000105,
+            "isPartOfWord": false,
+            "startTime": 45,
+            "text": "we",
+          },
+          {
+            "endTime": 46.292,
+            "isPartOfWord": false,
+            "startTime": 45.400000000000105,
+            "text": "will",
+          },
+          {
+            "endTime": 47.142,
+            "isPartOfWord": false,
+            "startTime": 46.292,
+            "text": "find",
+          },
+          {
+            "endTime": 47.38,
+            "isPartOfWord": false,
+            "startTime": 47.142,
+            "text": "the",
+          },
+          {
+            "endTime": 48,
+            "isPartOfWord": false,
+            "startTime": 47.38,
+            "text": "light",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 51,
+        "startTime": 48,
+        "syllables": [
+          {
+            "endTime": 48.442,
+            "isPartOfWord": false,
+            "startTime": 48,
+            "text": "눈",
+          },
+          {
+            "endTime": 48.80000000000015,
+            "isPartOfWord": true,
+            "startTime": 48.442,
+            "text": "을",
+          },
+          {
+            "endTime": 49.24400000000016,
+            "isPartOfWord": false,
+            "startTime": 48.80000000000015,
+            "text": "감",
+          },
+          {
+            "endTime": 49.734,
+            "isPartOfWord": true,
+            "startTime": 49.24400000000016,
+            "text": "고",
+          },
+          {
+            "endTime": 50.142,
+            "isPartOfWord": false,
+            "startTime": 49.734,
+            "text": "느",
+          },
+          {
+            "endTime": 50.550000000000004,
+            "isPartOfWord": true,
+            "startTime": 50.142,
+            "text": "껴",
+          },
+          {
+            "endTime": 51,
+            "isPartOfWord": true,
+            "startTime": 50.550000000000004,
+            "text": "봐",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 54,
+        "startTime": 51,
+        "syllables": [
+          {
+            "endTime": 51.34,
+            "isPartOfWord": false,
+            "startTime": 51,
+            "text": "이",
+          },
+          {
+            "endTime": 51.782000000000004,
+            "isPartOfWord": false,
+            "startTime": 51.34,
+            "text": "순",
+          },
+          {
+            "endTime": 52.200000000000195,
+            "isPartOfWord": true,
+            "startTime": 51.782000000000004,
+            "text": "간",
+          },
+          {
+            "endTime": 52.564,
+            "isPartOfWord": true,
+            "startTime": 52.200000000000195,
+            "text": "이",
+          },
+          {
+            "endTime": 52.904,
+            "isPartOfWord": false,
+            "startTime": 52.564,
+            "text": "영",
+          },
+          {
+            "endTime": 53.312,
+            "isPartOfWord": true,
+            "startTime": 52.904,
+            "text": "원",
+          },
+          {
+            "endTime": 53.686,
+            "isPartOfWord": true,
+            "startTime": 53.312,
+            "text": "하",
+          },
+          {
+            "endTime": 54,
+            "isPartOfWord": true,
+            "startTime": 53.686,
+            "text": "길",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 57,
+        "startTime": 54,
+        "syllables": [
+          {
+            "endTime": 54.782000000000004,
+            "isPartOfWord": false,
+            "startTime": 54,
+            "text": "hold",
+          },
+          {
+            "endTime": 55.156,
+            "isPartOfWord": false,
+            "startTime": 54.782000000000004,
+            "text": "me",
+          },
+          {
+            "endTime": 55.938,
+            "isPartOfWord": false,
+            "startTime": 55.156,
+            "text": "close",
+          },
+          {
+            "endTime": 57,
+            "isPartOfWord": false,
+            "startTime": 55.938,
+            "text": "tonight",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "lead": {
+        "endTime": 60,
+        "startTime": 57,
+        "syllables": [
+          {
+            "endTime": 58.394,
+            "isPartOfWord": false,
+            "startTime": 57,
+            "text": "never",
+          },
+          {
+            "endTime": 58.972,
+            "isPartOfWord": false,
+            "startTime": 58.394,
+            "text": "let",
+          },
+          {
+            "endTime": 59.550000000000004,
+            "isPartOfWord": false,
+            "startTime": 58.972,
+            "text": "me",
+          },
+          {
+            "endTime": 60,
+            "isPartOfWord": false,
+            "startTime": 59.550000000000004,
+            "text": "go",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+  ],
+  "endTime": 60,
+  "startTime": 0,
+  "type": "syllable",
+}
+`;
+
+exports[`buildPseudoKaraokeLyrics output snapshots > mixed Korean/English line with interlude 1`] = `
+{
+  "content": [
+    {
+      "lead": {
+        "endTime": 6,
+        "startTime": 2,
+        "syllables": [
+          {
+            "endTime": 2.576,
+            "isPartOfWord": false,
+            "startTime": 2,
+            "text": "별",
+          },
+          {
+            "endTime": 3.08,
+            "isPartOfWord": true,
+            "startTime": 2.576,
+            "text": "빛",
+          },
+          {
+            "endTime": 3.548,
+            "isPartOfWord": true,
+            "startTime": 3.08,
+            "text": "이",
+          },
+          {
+            "endTime": 4.16,
+            "isPartOfWord": false,
+            "startTime": 3.548,
+            "text": "내",
+          },
+          {
+            "endTime": 4.736,
+            "isPartOfWord": true,
+            "startTime": 4.16,
+            "text": "린",
+          },
+          {
+            "endTime": 5.444000000000003,
+            "isPartOfWord": false,
+            "startTime": 4.736,
+            "text": "밤",
+          },
+          {
+            "endTime": 6,
+            "isPartOfWord": true,
+            "startTime": 5.444000000000003,
+            "text": "에",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+    {
+      "endTime": 7,
+      "startTime": 6,
+      "type": "interlude",
+    },
+    {
+      "lead": {
+        "endTime": 9,
+        "startTime": 7,
+        "syllables": [
+          {
+            "endTime": 7.69,
+            "isPartOfWord": false,
+            "startTime": 7,
+            "text": "hello",
+          },
+          {
+            "endTime": 8.311,
+            "isPartOfWord": false,
+            "startTime": 7.69,
+            "text": "bright",
+          },
+          {
+            "endTime": 9,
+            "isPartOfWord": false,
+            "startTime": 8.311,
+            "text": "world",
+          },
+        ],
+      },
+      "oppositeAligned": false,
+      "translatedText": undefined,
+      "type": "vocal",
+    },
+  ],
+  "endTime": 9,
+  "startTime": 2,
+  "type": "syllable",
+}
+`;
