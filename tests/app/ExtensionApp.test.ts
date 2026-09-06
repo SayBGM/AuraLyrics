@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
 import type { IntroPresentationGate } from "../../src/app/IntroPresentationGate";
 import type { OutroPresentationController } from "../../src/app/OutroPresentationController";
+import type { TrackEpoch } from "../../src/app/TrackEpoch";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
 import type { TrackTransitionDirectionController } from "../../src/app/TrackTransitionDirectionController";
@@ -228,6 +229,17 @@ const outroControllerOf = (app: ExtensionApp): OutroPresentationController =>
 const internalsSettingsOf = (app: ExtensionApp): ExtensionSettings =>
 	(app as unknown as { settings: { get: () => ExtensionSettings } }).settings.get();
 
+/** Builds the staleness token `ExtensionApp` would have created for `track` at this point in time. */
+const trackEpochOf = (app: ExtensionApp, session: unknown, track: TrackIdentity): TrackEpoch => {
+	const internals = app as unknown as { playbackTrackEpoch: number; themeGeneration: number };
+	return {
+		id: internals.playbackTrackEpoch,
+		uri: track.uri,
+		session: session as TrackEpoch["session"],
+		themeGeneration: internals.themeGeneration,
+	};
+};
+
 const beginIntroEpoch = (app: ExtensionApp): void => {
 	introGateOf(app).beginTrackEpoch();
 };
@@ -431,8 +443,7 @@ describe("ExtensionApp", () => {
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
-				track: TrackIdentity,
-				activeSession: typeof session
+				epoch: TrackEpoch
 			) => Promise<void>;
 		};
 		internals.session = session;
@@ -448,7 +459,7 @@ describe("ExtensionApp", () => {
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
 
-		await internals.renderEnrichment(Promise.resolve(enriched), initial, track, session);
+		await internals.renderEnrichment(Promise.resolve(enriched), initial, trackEpochOf(app, session, track));
 
 		expect(events).toEqual([
 			["mount", enriched],
@@ -615,8 +626,7 @@ describe("ExtensionApp", () => {
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
-				track: TrackIdentity,
-				activeSession: typeof session
+				epoch: TrackEpoch
 			) => Promise<void>;
 		};
 		internals.session = session;
@@ -632,7 +642,7 @@ describe("ExtensionApp", () => {
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
 
-		await internals.renderEnrichment(Promise.resolve(enriched), initial, track, session);
+		await internals.renderEnrichment(Promise.resolve(enriched), initial, trackEpochOf(app, session, track));
 
 		expect(events).toEqual([
 			["mount", enriched],
@@ -678,8 +688,7 @@ describe("ExtensionApp", () => {
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
-				track: TrackIdentity,
-				activeSession: typeof session
+				epoch: TrackEpoch
 			) => Promise<void>;
 			tick: (deltaTimeSec: number) => void;
 		};
@@ -701,7 +710,7 @@ describe("ExtensionApp", () => {
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
 
-		await internals.renderEnrichment(Promise.resolve(enriched), initial, track, session);
+		await internals.renderEnrichment(Promise.resolve(enriched), initial, trackEpochOf(app, session, track));
 		expect(events).toEqual([]);
 		internals.tick(5);
 		expect(events.some(([event]) => event === "mount")).toBe(false);
@@ -734,8 +743,7 @@ describe("ExtensionApp", () => {
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
-				track: TrackIdentity,
-				activeSession: typeof session
+				epoch: TrackEpoch
 			) => Promise<void>;
 		};
 		internals.session = session;
@@ -744,7 +752,7 @@ describe("ExtensionApp", () => {
 		internals.renderer = { destroy: vi.fn(), update: vi.fn() };
 		internals.mountReadySnapshot = mount;
 
-		const rendering = internals.renderEnrichment(enrichment.promise, initial, oldTrack, session);
+		const rendering = internals.renderEnrichment(enrichment.promise, initial, trackEpochOf(app, session, oldTrack));
 		internals.currentTrack = newTrack;
 		enrichment.resolve(enriched);
 		await rendering;
@@ -3277,8 +3285,7 @@ describe("ExtensionApp", () => {
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
-				track: TrackIdentity,
-				activeSession: typeof session
+				epoch: TrackEpoch
 			) => Promise<void>;
 			tick: (deltaTimeSec: number) => void;
 		};
@@ -3293,7 +3300,7 @@ describe("ExtensionApp", () => {
 
 		internals.presentReadySnapshot(initial);
 		expect(showTrackMetadata).toHaveBeenCalledOnce();
-		await internals.renderEnrichment(Promise.resolve(enriched), initial, track, session);
+		await internals.renderEnrichment(Promise.resolve(enriched), initial, trackEpochOf(app, session, track));
 
 		expect(mount).toHaveBeenCalledWith(enriched);
 		expect(update).toHaveBeenCalledWith(11, 0);
@@ -4744,8 +4751,7 @@ describe("ExtensionApp", () => {
 					renderEnrichment: (
 						enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 						initial: ReadyTrackSessionSnapshot,
-						track: TrackIdentity,
-						activeSession: typeof session
+						epoch: TrackEpoch
 					) => Promise<void>;
 					applySettings: () => Promise<void>;
 					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
@@ -4766,7 +4772,7 @@ describe("ExtensionApp", () => {
 					invalidate: vi.fn(),
 				};
 
-				await internals.renderEnrichment(Promise.resolve(enriched), initial, incoming, session);
+				await internals.renderEnrichment(Promise.resolve(enriched), initial, trackEpochOf(app, session, incoming));
 				internals.settings.update({ showTranslation: false });
 				await internals.applySettings();
 				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
@@ -4806,8 +4812,7 @@ describe("ExtensionApp", () => {
 					renderEnrichment: (
 						enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 						initial: ReadyTrackSessionSnapshot,
-						track: TrackIdentity,
-						activeSession: typeof session
+						epoch: TrackEpoch
 					) => Promise<void>;
 					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 				};
@@ -4837,7 +4842,7 @@ describe("ExtensionApp", () => {
 					invalidate: vi.fn(),
 				};
 
-				await internals.renderEnrichment(Promise.resolve(enriched), initial, incoming, session);
+				await internals.renderEnrichment(Promise.resolve(enriched), initial, trackEpochOf(app, session, incoming));
 				expect(mount).not.toHaveBeenCalled();
 				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
 

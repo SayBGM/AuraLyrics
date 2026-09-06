@@ -26,6 +26,7 @@ import { IntroPresentationGate } from "./IntroPresentationGate";
 import { OutroPresentationController, type OutroPresentationResult } from "./OutroPresentationController";
 import { rendererSettingsChange } from "./SettingsChange";
 import { TopbarController } from "./TopbarController";
+import { sameTrackEpoch, type TrackEpoch } from "./TrackEpoch";
 import { presentationStateForSnapshot, type TrackPresentationState } from "./TrackPresentationState";
 import {
 	type ReadyTrackSessionSnapshot,
@@ -48,10 +49,8 @@ const SNAP_DELTA_TIME = 0;
 type OutroRenderOutcome = "none" | "lyrics-rendered";
 
 type ActiveTrackTransition = {
-	session: PipSession;
-	playbackTrackEpoch: number;
+	epoch: TrackEpoch;
 	transitionGeneration: number;
-	uri: string;
 };
 
 type PendingTrackPresentation = { kind: "load-state"; snapshot: TrackSessionSnapshot } | { kind: "ready"; snapshot: ReadyTrackSessionSnapshot };
@@ -92,7 +91,6 @@ export class ExtensionApp {
 	private appliedSettings: ExtensionSettings;
 	private settingsPresentationGeneration = 0;
 	private revealedSnapshot?: ReadyTrackSessionSnapshot;
-	private outroEpochUri?: string;
 	private playbackTrackEpoch = 0;
 	private activeTrackTransition?: ActiveTrackTransition;
 	private pendingTrackPresentation?: PendingTrackPresentation;
@@ -189,7 +187,7 @@ export class ExtensionApp {
 		this.discardTrackTransitionPresentation();
 		this.trackSession.invalidate();
 		this.introGate.endTrackEpoch();
-		this.endOutroTrackEpoch();
+		this.outroController.endTrackEpoch();
 		this.revealedSnapshot = undefined;
 		this.themeGeneration += 1;
 		this.cancelPendingSettingsFrame();
@@ -256,8 +254,8 @@ export class ExtensionApp {
 				if (!this.introGate.hasActiveEpoch()) {
 					this.introGate.beginTrackEpoch();
 				}
-				if (this.outroEpochUri !== this.currentTrack.uri) {
-					this.beginOutroTrackEpoch(this.currentTrack.uri);
+				if (this.outroController.activeTrackUri() !== this.currentTrack.uri) {
+					this.outroController.beginTrackEpoch(this.currentTrack.uri);
 				}
 			}
 			const revealedSnapshot = this.revealedSnapshotFor(this.currentTrack);
@@ -301,11 +299,11 @@ export class ExtensionApp {
 		this.revealedSnapshot = undefined;
 		if (track) {
 			this.introGate.beginTrackEpoch();
-			this.beginOutroTrackEpoch(track.uri);
+			this.outroController.beginTrackEpoch(track.uri);
 		} else {
 			this.directionController.clear();
 			this.introGate.endTrackEpoch();
-			this.endOutroTrackEpoch();
+			this.outroController.endTrackEpoch();
 		}
 		if (!this.session) {
 			return;
@@ -322,7 +320,7 @@ export class ExtensionApp {
 			return;
 		}
 		const session = this.session;
-		const playbackTrackEpoch = trackChange?.playbackTrackEpoch ?? this.playbackTrackEpoch;
+		const epochId = trackChange?.playbackTrackEpoch ?? this.playbackTrackEpoch;
 		const themeGeneration = ++this.themeGeneration;
 		const track = this.currentTrack ?? this.player.getCurrentTrack();
 		this.currentTrack = track;
@@ -331,32 +329,26 @@ export class ExtensionApp {
 			this.discardTrackTransitionPresentation();
 			this.trackSession.invalidate();
 			this.introGate.endTrackEpoch();
-			this.endOutroTrackEpoch();
+			this.outroController.endTrackEpoch();
 			this.revealedSnapshot = undefined;
 			this.session.setCover(undefined);
 			this.session.applyTheme(undefined);
 			this.showStatus("Waiting for music", "Start playing a Spotify track.");
 			return;
 		}
+		const epoch: TrackEpoch = { id: epochId, uri: track.uri, session, themeGeneration };
 		const revealedSnapshot = this.revealedSnapshotFor(track);
 		if (!revealedSnapshot) {
 			if (trackChange) {
-				this.beginTrackTransition(track, session, trackChange);
-			} else if (!this.hasActiveTrackTransitionFor(track, session, playbackTrackEpoch)) {
+				this.beginTrackTransition(track, epoch, trackChange.direction);
+			} else if (!this.hasActiveTrackTransitionFor(epoch)) {
 				this.renderPresentationState({ kind: "loading", track });
 			}
 		}
 		session.setCover(track.coverUrl);
-		void this.applyTrackTheme(track, themeGeneration, playbackTrackEpoch, session);
+		void this.applyTrackTheme(track, epoch);
 		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh);
-		if (
-			!snapshot ||
-			!this.trackSession.isCurrent(snapshot) ||
-			this.session !== session ||
-			this.currentTrack?.uri !== track.uri ||
-			this.playbackTrackEpoch !== playbackTrackEpoch
-		)
-			return;
+		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.isCurrentEpoch(epoch)) return;
 		this.playbackSynchronizer.resync();
 		if (!isReadyTrackSessionSnapshot(snapshot)) {
 			this.revealedSnapshot = undefined;
@@ -366,7 +358,7 @@ export class ExtensionApp {
 		this.renderLoadState(snapshot);
 		const enrichment = this.trackSession.enrichmentFor(snapshot);
 		if (enrichment && isReadyTrackSessionSnapshot(snapshot)) {
-			void this.renderEnrichment(enrichment, snapshot, track, this.session);
+			void this.renderEnrichment(enrichment, snapshot, epoch);
 		}
 	}
 
@@ -507,14 +499,9 @@ export class ExtensionApp {
 		}
 	}
 
-	private async renderEnrichment(
-		enrichment: TrackSessionEnrichment,
-		initialSnapshot: ReadyTrackSessionSnapshot,
-		track: TrackIdentity,
-		session: PipSession
-	): Promise<void> {
+	private async renderEnrichment(enrichment: TrackSessionEnrichment, initialSnapshot: ReadyTrackSessionSnapshot, epoch: TrackEpoch): Promise<void> {
 		const snapshot = await enrichment;
-		if (!snapshot || !this.trackSession.isCurrent(snapshot) || this.session !== session || this.currentTrack?.uri !== track.uri) {
+		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.isCurrentEpoch(epoch)) {
 			return;
 		}
 		if (!hasRenderableEnrichmentChanges(initialSnapshot, snapshot, this.settings.get())) {
@@ -541,24 +528,8 @@ export class ExtensionApp {
 		);
 	}
 
-	private async applyTrackTheme(
-		track: TrackIdentity,
-		generation: number,
-		playbackTrackEpoch: number,
-		session: PipSession | undefined = this.session
-	): Promise<void> {
-		if (!session) {
-			return;
-		}
-		await this.trackThemeService.apply(
-			track,
-			session,
-			() =>
-				this.themeGeneration === generation &&
-				this.playbackTrackEpoch === playbackTrackEpoch &&
-				this.session === session &&
-				this.currentTrack?.uri === track.uri
-		);
+	private async applyTrackTheme(track: TrackIdentity, epoch: TrackEpoch): Promise<void> {
+		await this.trackThemeService.apply(track, epoch.session, () => this.themeGeneration === epoch.themeGeneration && this.isCurrentEpoch(epoch));
 	}
 
 	private tick(deltaTime: number): void {
@@ -748,30 +719,19 @@ export class ExtensionApp {
 		);
 	}
 
-	private beginTrackTransition(track: TrackIdentity, session: PipSession, options: TrackChangeLoadOptions): void {
+	private beginTrackTransition(track: TrackIdentity, epoch: TrackEpoch, direction: SceneTransitionDirection): void {
 		this.pendingTrackPresentation = undefined;
-		const handle = this.renderer.showTrackMetadata(session.root, { mode: "loading", track }, this.settings.get(), {
-			direction: options.direction,
+		const handle = this.renderer.showTrackMetadata(epoch.session.root, { mode: "loading", track }, this.settings.get(), {
+			direction,
 			animate: true,
 		});
-		const active: ActiveTrackTransition = {
-			session,
-			playbackTrackEpoch: options.playbackTrackEpoch,
-			transitionGeneration: handle.generation,
-			uri: track.uri,
-		};
+		const active: ActiveTrackTransition = { epoch, transitionGeneration: handle.generation };
 		this.activeTrackTransition = active;
 		void handle.settled.then((result) => this.settleTrackTransition(active, result));
 	}
 
 	private settleTrackTransition(active: ActiveTrackTransition, result: { generation: number; completed: boolean }): void {
-		if (
-			this.activeTrackTransition !== active ||
-			result.generation !== active.transitionGeneration ||
-			this.session !== active.session ||
-			this.playbackTrackEpoch !== active.playbackTrackEpoch ||
-			this.currentTrack?.uri !== active.uri
-		) {
+		if (this.activeTrackTransition !== active || result.generation !== active.transitionGeneration || !this.isCurrentEpoch(active.epoch)) {
 			return;
 		}
 
@@ -784,11 +744,9 @@ export class ExtensionApp {
 
 		this.playbackSynchronizer.resync();
 		if (
-			this.session !== active.session ||
-			this.playbackTrackEpoch !== active.playbackTrackEpoch ||
-			this.currentTrack?.uri !== active.uri ||
+			!this.isCurrentEpoch(active.epoch) ||
 			!this.trackSession.isCurrent(pending.snapshot) ||
-			trackUriForSnapshot(pending.snapshot) !== active.uri
+			trackUriForSnapshot(pending.snapshot) !== active.epoch.uri
 		) {
 			return;
 		}
@@ -801,13 +759,7 @@ export class ExtensionApp {
 
 	private deferTrackPresentation(presentation: PendingTrackPresentation): boolean {
 		const active = this.activeTrackTransition;
-		if (
-			!active ||
-			this.session !== active.session ||
-			this.playbackTrackEpoch !== active.playbackTrackEpoch ||
-			this.currentTrack?.uri !== active.uri ||
-			trackUriForSnapshot(presentation.snapshot) !== active.uri
-		) {
+		if (!active || !this.isCurrentEpoch(active.epoch) || trackUriForSnapshot(presentation.snapshot) !== active.epoch.uri) {
 			return false;
 		}
 		this.pendingTrackPresentation = presentation;
@@ -821,9 +773,18 @@ export class ExtensionApp {
 		this.deferTrackPresentation({ kind: "ready", snapshot });
 	}
 
-	private hasActiveTrackTransitionFor(track: TrackIdentity, session: PipSession, playbackTrackEpoch: number): boolean {
+	private hasActiveTrackTransitionFor(epoch: TrackEpoch): boolean {
 		const active = this.activeTrackTransition;
-		return active?.session === session && active.playbackTrackEpoch === playbackTrackEpoch && active.uri === track.uri;
+		return active !== undefined && sameTrackEpoch(active.epoch, epoch);
+	}
+
+	/**
+	 * Single staleness check for every async continuation scoped to a track: the PiP session is still
+	 * the one the work started in, no track change has happened since, and the player is still on that
+	 * track. Replaces the 5-6 condition guards this class used to repeat at each await boundary.
+	 */
+	private isCurrentEpoch(epoch: TrackEpoch): boolean {
+		return this.session === epoch.session && this.playbackTrackEpoch === epoch.id && this.currentTrack?.uri === epoch.uri;
 	}
 
 	private discardTrackTransitionPresentation(): void {
@@ -831,21 +792,11 @@ export class ExtensionApp {
 		this.pendingTrackPresentation = undefined;
 	}
 
-	private beginOutroTrackEpoch(uri: string): void {
-		this.outroEpochUri = uri;
-		this.outroController.beginTrackEpoch(uri);
-	}
-
-	private endOutroTrackEpoch(): void {
-		this.outroEpochUri = undefined;
-		this.outroController.endTrackEpoch();
-	}
-
 	private ensureOutroTrackEpoch(uri: string): boolean {
-		if (this.outroEpochUri === undefined) {
-			this.beginOutroTrackEpoch(uri);
+		if (this.outroController.activeTrackUri() === undefined) {
+			this.outroController.beginTrackEpoch(uri);
 		}
-		return this.outroEpochUri === uri;
+		return this.outroController.activeTrackUri() === uri;
 	}
 }
 

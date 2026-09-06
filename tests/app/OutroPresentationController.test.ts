@@ -233,4 +233,25 @@ describe("OutroPresentationController", () => {
 		controller.beginTrackEpoch("spotify:track:a");
 		expect(controller.accept(snapshot, settings(), 10)).toEqual({ kind: "show-metadata", snapshot });
 	});
+
+	test("activeTrackUri reports the epoch the controller is scoped to", () => {
+		const controller = new OutroPresentationController();
+		const snapshot = readySnapshot(lineLyrics(8));
+
+		expect(controller.activeTrackUri()).toBeUndefined();
+
+		controller.beginTrackEpoch("spotify:track:a");
+		expect(controller.activeTrackUri()).toBe("spotify:track:a");
+
+		// A discarded session keeps the epoch: only endTrackEpoch clears the active URI.
+		controller.accept(snapshot, settings(), 0);
+		controller.discardSession();
+		expect(controller.activeTrackUri()).toBe("spotify:track:a");
+
+		controller.beginTrackEpoch("spotify:track:b");
+		expect(controller.activeTrackUri()).toBe("spotify:track:b");
+
+		controller.endTrackEpoch();
+		expect(controller.activeTrackUri()).toBeUndefined();
+	});
 });
