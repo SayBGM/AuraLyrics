@@ -79,10 +79,12 @@ export const lyricsStyles = `
 	filter: blur(0);
 	transform: translate3d(0, 0.12em, 0) scale(0.94);
 	transform-origin: center;
-	transition: opacity 420ms ease, transform 680ms cubic-bezier(.16, 1, .3, 1), filter 420ms ease;
+	visibility: visible;
+	transition: opacity 420ms ease, transform 680ms cubic-bezier(.16, 1, .3, 1), filter 420ms ease, visibility 0s;
 	white-space: normal;
 	overflow-wrap: break-word;
 	word-break: keep-all;
+	contain: layout paint;
 }
 
 .lyrics-track.align-left .vocals-group,
@@ -151,9 +153,11 @@ export const lyricsStyles = `
 
 .vocals-group.out-of-context {
 	opacity: 0;
-	filter: blur(calc(var(--inactive-blur) * 1.8));
+	/* Hidden only once the fade has finished, so nothing is painted or hit-tested afterwards. */
+	visibility: hidden;
 	transform: scale(0.92);
 	pointer-events: none;
+	transition: opacity 420ms ease, transform 680ms cubic-bezier(.16, 1, .3, 1), visibility 0s linear 420ms;
 }
 
 .static-line {
@@ -282,7 +286,9 @@ export const lyricsStyles = `
 	padding: 0;
 	opacity: 1;
 	filter: blur(0);
-	transition: opacity 420ms ease, filter 420ms ease;
+	visibility: visible;
+	transition: opacity 420ms ease, filter 420ms ease, visibility 0s;
+	contain: layout paint;
 }
 
 .syllable-row.has-parenthetical-echo {
@@ -316,8 +322,10 @@ export const lyricsStyles = `
 
 .syllable-row.out-of-context {
 	opacity: 0;
-	filter: blur(calc(var(--inactive-blur) * 1.8));
+	/* Hidden only once the fade has finished, so nothing is painted or hit-tested afterwards. */
+	visibility: hidden;
 	pointer-events: none;
+	transition: opacity 420ms ease, visibility 0s linear 420ms;
 }
 
 .syllable-main,
@@ -478,6 +486,11 @@ export const lyricsStyles = `
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
+}
+
+/* Only the rows that actually move get their own compositing layer. */
+.syllable-row.active .syllable,
+.syllable-row.context-current .syllable {
 	will-change: transform, scale;
 }
 
@@ -486,6 +499,9 @@ export const lyricsStyles = `
 	position: relative;
 	isolation: isolate;
 	transform-origin: center;
+}
+
+.line-group.active .line.highlight-layout-host {
 	will-change: transform, scale;
 }
 

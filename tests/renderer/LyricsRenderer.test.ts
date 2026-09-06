@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { LineLyrics, StaticLyrics, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
+import type { AnimatedGroup } from "../../src/renderer/AnimatedGroup";
 import { interludeKey, LyricsRenderer } from "../../src/renderer/LyricsRenderer";
 import { SCENE_TRANSITION_DURATION_MS } from "../../src/renderer/SceneTransitionController";
 import { DEFAULT_SETTINGS } from "../../src/settings/SettingsStore";
@@ -699,7 +700,7 @@ describe("LyricsRenderer", () => {
 			[3, "75%"],
 		] as const) {
 			renderer.update(timestamp, 1 / 60);
-			expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe(expectedProgress);
+			expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe(expectedProgress);
 		}
 		expect(scene?.matches(".aura-lyrics.synthetic-timing[data-timing-source='synthetic']")).toBe(true);
 		expect(scene?.style.getPropertyValue("--motion-intensity")).toBe("0");
@@ -708,7 +709,7 @@ describe("LyricsRenderer", () => {
 
 		renderer.applySettings({ ...DEFAULT_SETTINGS, motionEnabled: false });
 		expect(scene?.classList.contains("reduce-motion")).toBe(true);
-		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("75%");
+		expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe("75%");
 
 		renderer.applySettings({ ...DEFAULT_SETTINGS, reduceMotion: true });
 		expect(scene?.classList.contains("reduce-motion")).toBe(true);
@@ -739,7 +740,7 @@ describe("LyricsRenderer", () => {
 		const syllable = root.querySelector<HTMLElement>(".syllable.synced");
 
 		expect(scene?.classList.contains("synthetic-timing")).toBe(false);
-		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("50%");
+		expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(syllable?.style.getPropertyValue("--synthetic-wake-progress")).toBe("");
 		expect(syllable?.className).not.toContain("synthetic-wake");
 		expect(root.querySelector(".synthetic-wake-halo")).toBeNull();
@@ -928,7 +929,7 @@ describe("LyricsRenderer", () => {
 
 		const activeLine = root.querySelector<HTMLElement>(".vocals-group.active");
 		const line = activeLine?.querySelector<HTMLElement>(".line.highlight-layout-host");
-		expect(line?.style.getPropertyValue("--line-progress")).toBe("50%");
+		expect(line?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(line?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(root.querySelector(".line-group")).not.toBeNull();
 	});
@@ -2059,5 +2060,76 @@ describe("LyricsRenderer", () => {
 		mountRenderer(renderer, root, lyrics, { ...DEFAULT_SETTINGS, syncPreference: "line-only" });
 
 		expect(root.querySelector(".line-group .lyric-translation")?.textContent).toBe("너의 모든 것을 사랑해");
+	});
+
+	describe("animation window", () => {
+		const windowedLyrics = (): LineLyrics => ({
+			type: "line",
+			startTime: 0,
+			endTime: 604,
+			content: [
+				{ type: "vocal", text: "First", startTime: 0, endTime: 4, oppositeAligned: false },
+				{ type: "vocal", text: "Second", startTime: 4, endTime: 8, oppositeAligned: false },
+				{ type: "vocal", text: "Far", startTime: 600, endTime: 604, oppositeAligned: false },
+			],
+		});
+
+		const sceneGroups = (renderer: LyricsRenderer): AnimatedGroup[] =>
+			(renderer as unknown as { currentScene: { groups: AnimatedGroup[] } }).currentScene.groups;
+
+		test("skips groups far outside the playhead window and still settles the ones leaving it", () => {
+			const root = document.createElement("div");
+			const renderer = new LyricsRenderer();
+			mountRenderer(renderer, root, windowedLyrics(), DEFAULT_SETTINGS);
+			const groups = sceneGroups(renderer);
+			const spies = groups.map((group) => vi.spyOn(group, "animate"));
+
+			// The first update after mount always runs a full pass.
+			renderer.update(1, 1 / 60);
+			expect(spies.map((spy) => spy.mock.calls.length)).toEqual([1, 1, 1]);
+
+			for (const spy of spies) {
+				spy.mockClear();
+			}
+			renderer.update(1.5, 1 / 60);
+
+			expect(spies[0]).toHaveBeenCalledTimes(1);
+			expect(spies[1]).toHaveBeenCalledTimes(1);
+			expect(spies[2]).not.toHaveBeenCalled();
+
+			// The first line leaves the window: it gets one last pass and then stops.
+			for (const spy of spies) {
+				spy.mockClear();
+			}
+			renderer.update(2.4, 1 / 60);
+			renderer.update(3.3, 1 / 60);
+			renderer.update(4.2, 1 / 60);
+			expect(spies[2]).not.toHaveBeenCalled();
+			expect(root.querySelector(".vocals-group.active")?.textContent).toContain("Second");
+		});
+
+		test("runs a full pass after a seek so every group re-derives its state", () => {
+			const root = document.createElement("div");
+			const renderer = new LyricsRenderer();
+			mountRenderer(renderer, root, windowedLyrics(), DEFAULT_SETTINGS);
+			const groups = sceneGroups(renderer);
+			renderer.update(1, 1 / 60);
+			const spies = groups.map((group) => vi.spyOn(group, "animate"));
+
+			renderer.update(601, 1 / 60);
+
+			expect(spies.map((spy) => spy.mock.calls.length)).toEqual([1, 1, 1]);
+			expect(root.querySelector(".vocals-group.active")?.textContent).toContain("Far");
+			expect(root.querySelectorAll(".vocals-group.sung")).toHaveLength(2);
+
+			for (const spy of spies) {
+				spy.mockClear();
+			}
+			renderer.update(0.5, 1 / 60);
+
+			expect(spies.map((spy) => spy.mock.calls.length)).toEqual([1, 1, 1]);
+			expect(root.querySelector(".vocals-group.active")?.textContent).toContain("First");
+			expect(root.querySelectorAll(".vocals-group.sung")).toHaveLength(0);
+		});
 	});
 });

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { contextStateForRow, focusedRowIndex, LyricsViewportController } from "../../src/renderer/LyricsViewportController";
 
 describe("lyrics viewport model", () => {
@@ -71,6 +71,46 @@ describe("lyrics viewport model", () => {
 
 		expect(lyric.classList.contains("out-of-context")).toBe(true);
 		expect(credit.classList.contains("context-current")).toBe(true);
+		controller.destroy();
+	});
+
+	test("writes no classes, measurements or transform while the focused row is unchanged", () => {
+		const container = document.createElement("div");
+		const viewport = document.createElement("div");
+		const track = document.createElement("div");
+		viewport.append(track);
+		container.append(viewport);
+		Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 400 });
+		const rows = [0, 1, 2].map((index) => {
+			const row = document.createElement("div");
+			row.className = `vocals-group${index === 1 ? " active" : ""}`;
+			Object.defineProperty(row, "offsetTop", { configurable: true, value: index * 180 });
+			Object.defineProperty(row, "clientHeight", { configurable: true, value: 80 });
+			track.append(row);
+			return row;
+		});
+		const controller = new LyricsViewportController(track, viewport, container, { interludeStyle: "dots", visibleContextLines: 2 }, []);
+
+		controller.update();
+		const transform = track.style.transform;
+		const toggles = rows.map((row) => vi.spyOn(row.classList, "toggle"));
+		const heights = rows.map((row) => vi.spyOn(row, "getBoundingClientRect"));
+		track.style.transform = "sentinel";
+
+		controller.update();
+		controller.update();
+
+		expect(toggles.every((toggle) => toggle.mock.calls.length === 0)).toBe(true);
+		expect(heights.every((height) => height.mock.calls.length === 0)).toBe(true);
+		expect(track.style.transform).toBe("sentinel");
+
+		rows[1].classList.remove("active");
+		rows[2].classList.add("active");
+		controller.update();
+
+		expect(toggles[2]).toHaveBeenCalled();
+		expect(track.style.transform).not.toBe("sentinel");
+		expect(track.style.transform).not.toBe(transform);
 		controller.destroy();
 	});
 });

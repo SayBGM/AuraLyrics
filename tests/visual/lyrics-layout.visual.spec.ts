@@ -505,7 +505,7 @@ test("synthetic karaoke uses the themed syllable wake without a visible timing m
 		const syntheticStyleSource = Array.from(document.querySelectorAll("style"))
 			.map((style) => style.textContent ?? "")
 			.find((source) => source.includes('.aura-lyrics.synthetic-timing[data-highlight-effect="fill"] .syllable.active'));
-		const gradientProgress = activeSyllable.style.getPropertyValue("--gradient-progress");
+		const gradientProgress = activeSyllable.style.getPropertyValue("--highlight-progress");
 		return {
 			hasSyntheticClass: lyrics.classList.contains("synthetic-timing"),
 			timingSource: lyrics.dataset.timingSource,
@@ -1398,6 +1398,18 @@ const renderScenario = async (page: Page, name: ScenarioName, timestamp?: number
 		return;
 	}
 	await expect(page.locator(".aura-lyrics")).toBeVisible();
+	await settleHighlightLayout(page);
+};
+
+// The highlight decoration layout re-measures once fonts have loaded, on an animation
+// frame. Wait for that pass so assertions never read a half-invalidated layout.
+const settleHighlightLayout = async (page: Page): Promise<void> => {
+	await page.evaluate(async () => {
+		await document.fonts.ready;
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+	});
 };
 
 const metadataMetrics = async (page: Page) =>

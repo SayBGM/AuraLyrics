@@ -46,7 +46,17 @@ type SceneResources = {
 	layoutSettings?: Pick<ExtensionSettings, "alignmentMode" | "fontFamily" | "fontScale">;
 	layoutFrame?: number;
 	cleaned: boolean;
+	/** Indices animated on the previous frame, so leaving groups still get one settling pass. */
+	animatedIndices?: Set<number>;
+	lastAnimatedTimestamp?: number;
 };
+
+// Groups are visited in a window around the playhead: far enough ahead that a group is
+// already idle before it can matter, and far enough behind that it has settled into `sung`.
+const ANIMATION_LOOKAHEAD_SEC = 4;
+const ANIMATION_SETTLE_SEC = 4;
+// Anything larger than a plausible frame delta is a seek and forces a full pass.
+const ANIMATION_SEEK_THRESHOLD_SEC = 1;
 
 const ROOT_PRESENTATION_CLASSES = [
 	"interlude-active",
@@ -127,7 +137,7 @@ export class LyricsRenderer {
 			);
 			if (scene.highlightTracks.length > 0) {
 				highlightLayoutController = new HighlightDecorationLayoutController(lyricsViewport, scene.highlightTracks, {
-					onLayout: () => viewportController?.update(),
+					onLayout: () => viewportController?.update(true),
 				});
 			}
 			if (settings.showInterludes) {
@@ -216,11 +226,43 @@ export class LyricsRenderer {
 		if (!scene || scene.cleaned) {
 			return;
 		}
-		for (const group of scene.groups) {
-			group.animate(timestamp, deltaTime);
-		}
+		this.animateGroups(scene, timestamp, deltaTime);
 		scene.interludeFrameController?.update();
 		scene.viewportController?.update();
+	}
+
+	private animateGroups(scene: SceneResources, timestamp: number, deltaTime: number): void {
+		const groups = scene.groups;
+		if (groups.length === 0) {
+			return;
+		}
+		const previous = scene.animatedIndices;
+		const lastTimestamp = scene.lastAnimatedTimestamp;
+		scene.lastAnimatedTimestamp = timestamp;
+		if (previous === undefined || lastTimestamp === undefined || Math.abs(timestamp - lastTimestamp) > ANIMATION_SEEK_THRESHOLD_SEC) {
+			// First frame after mount, or a seek: every group has to re-derive its state.
+			for (const group of groups) {
+				group.animate(timestamp, deltaTime);
+			}
+			scene.animatedIndices = windowIndices(groups, timestamp);
+			return;
+		}
+		const next = windowIndices(groups, timestamp);
+		for (const index of next) {
+			groups[index].animate(timestamp, deltaTime);
+		}
+		for (const index of previous) {
+			if (next.has(index)) {
+				continue;
+			}
+			// One final pass so the group settles into its idle/sung end state.
+			const group = groups[index];
+			group.animate(timestamp, deltaTime);
+			if (group.isSettled?.() === false) {
+				next.add(index);
+			}
+		}
+		scene.animatedIndices = next;
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
@@ -240,6 +282,9 @@ export class LyricsRenderer {
 			}
 		}
 		const layoutChanged = !sameLayoutSettings(scene.layoutSettings, settings);
+		// New settings can change what any group renders, so the next frame runs a full pass.
+		scene.animatedIndices = undefined;
+		scene.lastAnimatedTimestamp = undefined;
 		this.finishLayoutUpdate(scene);
 		scene.viewportController?.applySettings(settings);
 		for (const group of scene.groups) {
@@ -295,6 +340,9 @@ export class LyricsRenderer {
 		if (previous) {
 			this.deactivateInterludeFrame(previous);
 			this.deactivateHighlightLayout(previous);
+			// The retired scene is still in the DOM for the transition: stop it from reacting
+			// to resizes (and forcing layout) while it fades out.
+			previous.viewportController?.pause();
 			if (animatedReplacement) {
 				this.retiredScenes.add(previous);
 				void handle.settled.then(() => this.releaseRetiredScene(previous, root));
@@ -434,6 +482,59 @@ export class LyricsRenderer {
 		root.parentElement?.classList.toggle("album-art-mode", enabled);
 	}
 }
+
+/**
+ * Indices of the groups that can change appearance at `timestamp`. `groups` is ordered by
+ * `startTime`, so the upper edge is a binary search; the lower edge walks back over the few
+ * groups that started earlier but have not finished settling yet.
+ */
+const windowIndices = (groups: AnimatedGroup[], timestamp: number): Set<number> => {
+	const indices = new Set<number>();
+	const latestStart = timestamp + ANIMATION_LOOKAHEAD_SEC;
+	const earliestEnd = timestamp - ANIMATION_SETTLE_SEC;
+	const last = firstIndexAfter(groups, latestStart) - 1;
+	if (last < 0) {
+		return indices;
+	}
+	let first = firstIndexAtOrAfter(groups, earliestEnd);
+	while (first > 0 && groups[first - 1].endTime >= earliestEnd) {
+		first -= 1;
+	}
+	for (let index = first; index <= last; index += 1) {
+		indices.add(index);
+	}
+	return indices;
+};
+
+/** First index whose `startTime` is strictly greater than `time`. */
+const firstIndexAfter = (groups: AnimatedGroup[], time: number): number => {
+	let low = 0;
+	let high = groups.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if (groups[middle].startTime > time) {
+			high = middle;
+		} else {
+			low = middle + 1;
+		}
+	}
+	return low;
+};
+
+/** First index whose `startTime` is greater than or equal to `time`. */
+const firstIndexAtOrAfter = (groups: AnimatedGroup[], time: number): number => {
+	let low = 0;
+	let high = groups.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if (groups[middle].startTime >= time) {
+			high = middle;
+		} else {
+			low = middle + 1;
+		}
+	}
+	return low;
+};
 
 const roundSeconds = (value: number): number => Number(value.toFixed(3));
 

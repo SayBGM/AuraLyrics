@@ -1,5 +1,6 @@
 import type { Syllable, SyllableVocal } from "../../lyrics/types";
 import type { RhythmProfile } from "../AudioAnalysisWaveformService";
+import { forEachNextLaterStart } from "../lyricsTrackHelpers";
 import { koreanTailSplitForSegment, melismaSustainClassesForFinalSyllable } from "./koreanTail";
 import {
 	type ParentheticalVocalItem,
@@ -229,13 +230,9 @@ const markRowTailTiming = (row: SyllableVisualRow, tailEndTime: number): void =>
 };
 
 const applyRowHoldTiming = (rows: SyllableVisualRow[]): void => {
-	for (let index = 0; index < rows.length; index += 1) {
-		const row = rows[index];
-		const next = rows.slice(index + 1).find((item) => item.startTime > row.startTime);
-		if (next) {
-			row.holdEndTime = Math.max(row.endTime, next.startTime);
-		}
-	}
+	forEachNextLaterStart(rows, (row, next) => {
+		row.holdEndTime = Math.max(row.endTime, next.startTime);
+	});
 };
 
 const addRowClass = (row: SyllableVisualRow, className: string): void => {
