@@ -1,13 +1,15 @@
 import { describe, expect, test, vi } from "vitest";
 import { SettingsControlFactory } from "../../src/settings/SettingsControlFactory";
 
+const identity = (value: number): string => String(value);
+
 describe("SettingsControlFactory", () => {
 	test("creates controls in the supplied document and preserves range preview and commit semantics", () => {
 		const ownerDocument = document.implementation.createHTMLDocument("settings");
 		const commit = vi.fn(() => true);
 		const preview = vi.fn();
 		const controls = new SettingsControlFactory(ownerDocument, commit);
-		const row = controls.range("font-scale", "Font scale", 1, 0.72, 1.5, 0.01, preview);
+		const row = controls.range("font-scale", "Font scale", 1, { min: 0.72, max: 1.5, step: 0.01, unit: "percent" }, identity, preview);
 		ownerDocument.body.append(row);
 		const input = row.querySelector<HTMLInputElement>('[data-control-id="font-scale"]');
 
@@ -30,7 +32,7 @@ describe("SettingsControlFactory", () => {
 	test("does not persist an untouched range and retains dirty state after a failed commit", () => {
 		const commit = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
 		const controls = new SettingsControlFactory(document, commit);
-		const row = controls.range("dim", "Dim", 0.4, 0, 1, 0.05, vi.fn());
+		const row = controls.range("dim", "Dim", 0.4, { min: 0, max: 1, step: 0.05, unit: "percent" }, identity, vi.fn());
 		const input = row.querySelector<HTMLInputElement>("input");
 		if (!input) {
 			throw new Error("Range input was not rendered.");
@@ -49,8 +51,12 @@ describe("SettingsControlFactory", () => {
 	test("treats one successful range commit as committing every previewed range", () => {
 		const commit = vi.fn(() => true);
 		const controls = new SettingsControlFactory(document, commit);
-		const first = controls.range("dim", "Dim", 0.4, 0, 1, 0.05, vi.fn()).querySelector<HTMLInputElement>("input");
-		const second = controls.range("saturation", "Saturation", 1, 0, 2, 0.05, vi.fn()).querySelector<HTMLInputElement>("input");
+		const first = controls
+			.range("dim", "Dim", 0.4, { min: 0, max: 1, step: 0.05, unit: "percent" }, identity, vi.fn())
+			.querySelector<HTMLInputElement>("input");
+		const second = controls
+			.range("saturation", "Saturation", 1, { min: 0, max: 2, step: 0.05, unit: "percent" }, identity, vi.fn())
+			.querySelector<HTMLInputElement>("input");
 		if (!first || !second) {
 			throw new Error("Range inputs were not rendered.");
 		}
@@ -69,7 +75,9 @@ describe("SettingsControlFactory", () => {
 		const commit = vi.fn(() => true);
 		const persistedToggle = vi.fn(() => true);
 		const controls = new SettingsControlFactory(document, commit);
-		const range = controls.range("dim", "Dim", 0.4, 0, 1, 0.05, vi.fn()).querySelector<HTMLInputElement>("input");
+		const range = controls
+			.range("dim", "Dim", 0.4, { min: 0, max: 1, step: 0.05, unit: "percent" }, identity, vi.fn())
+			.querySelector<HTMLInputElement>("input");
 		const toggle = controls.toggle("motion", "Motion", true, persistedToggle).querySelector<HTMLInputElement>("input");
 		if (!range || !toggle) {
 			throw new Error("Settings controls were not rendered.");
@@ -88,7 +96,9 @@ describe("SettingsControlFactory", () => {
 	test("keeps range previews dirty when a non-range persistence attempt fails", () => {
 		const commit = vi.fn(() => true);
 		const controls = new SettingsControlFactory(document, commit);
-		const range = controls.range("dim", "Dim", 0.4, 0, 1, 0.05, vi.fn()).querySelector<HTMLInputElement>("input");
+		const range = controls
+			.range("dim", "Dim", 0.4, { min: 0, max: 1, step: 0.05, unit: "percent" }, identity, vi.fn())
+			.querySelector<HTMLInputElement>("input");
 		const toggle = controls.toggle("motion", "Motion", true, () => false).querySelector<HTMLInputElement>("input");
 		if (!range || !toggle) {
 			throw new Error("Settings controls were not rendered.");

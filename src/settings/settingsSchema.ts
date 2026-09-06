@@ -96,7 +96,6 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 
 export const PRESETS: Record<Exclude<LyricsVisualPreset, "custom">, Partial<ExtensionSettings>> = {
 	immersive: {
-		backgroundEnabled: true,
 		backgroundBlurPx: 10,
 		backgroundDim: 0.36,
 		backgroundSaturation: 1.05,
@@ -106,7 +105,6 @@ export const PRESETS: Record<Exclude<LyricsVisualPreset, "custom">, Partial<Exte
 		glowStrength: 0.8,
 	},
 	clean: {
-		backgroundEnabled: true,
 		backgroundBlurPx: 18,
 		backgroundDim: 0.78,
 		backgroundSaturation: 0.8,
@@ -116,7 +114,6 @@ export const PRESETS: Record<Exclude<LyricsVisualPreset, "custom">, Partial<Exte
 		glowStrength: 0.25,
 	},
 	karaoke: {
-		backgroundEnabled: true,
 		backgroundBlurPx: 28,
 		backgroundDim: 0.68,
 		backgroundSaturation: 1.05,
@@ -153,11 +150,6 @@ const isLyricsVisualPreset = (value: unknown): value is LyricsVisualPreset =>
 const isSyncPreference = (value: unknown): value is SyncPreference => value === "prefer-syllable" || value === "line-only";
 const isAlignmentMode = (value: unknown): value is AlignmentMode => value === "natural" || value === "center" || value === "left";
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-
-const clampNumber = (value: unknown, fallback: number, min: number, max: number): number => {
-	const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-	return Math.min(max, Math.max(min, next));
-};
 
 const normalizeBoolean = (value: unknown, fallback: boolean): boolean => (typeof value === "boolean" ? value : fallback);
 
@@ -203,7 +195,7 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		lyricsDelayMs: clampNumericSetting("lyricsDelayMs", settings.lyricsDelayMs, defaults.lyricsDelayMs),
 		fontScale: clampNumericSetting("fontScale", fontScale, defaults.fontScale),
 		fontFamily: normalizeString(settings.fontFamily, 256) ?? defaults.fontFamily,
-		backgroundEnabled: true,
+		backgroundEnabled: normalizeBoolean(settings.backgroundEnabled, defaults.backgroundEnabled),
 		backgroundBlurPx: clampNumericSetting("backgroundBlurPx", settings.backgroundBlurPx, defaults.backgroundBlurPx),
 		backgroundDim: clampNumericSetting("backgroundDim", settings.backgroundDim, defaults.backgroundDim),
 		backgroundSaturation: clampNumericSetting("backgroundSaturation", settings.backgroundSaturation, defaults.backgroundSaturation),
@@ -220,7 +212,7 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		highlightMotion: isHighlightMotion(settings.highlightMotion) ? settings.highlightMotion : defaults.highlightMotion,
 		motionEnabled: normalizeBoolean(settings.motionEnabled, defaults.motionEnabled),
 		motionIntensity: clampNumericSetting("motionIntensity", settings.motionIntensity, defaults.motionIntensity),
-		springSoftness: clampNumber(settings.springSoftness, defaults.springSoftness, 0, 1),
+		springSoftness: clampNumericSetting("springSoftness", settings.springSoftness, defaults.springSoftness),
 		glowStrength: clampNumericSetting("glowStrength", settings.glowStrength, defaults.glowStrength),
 		reduceMotion: normalizeBoolean(settings.reduceMotion, defaults.reduceMotion),
 		providers: {

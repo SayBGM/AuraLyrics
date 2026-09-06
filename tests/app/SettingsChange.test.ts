@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { rendererSettingsChange } from "../../src/app/SettingsChange";
+import { rendererSettingsChange, SETTINGS_CHANGE_KEYS, settingsChangeClassification } from "../../src/app/SettingsChange";
 import { DEFAULT_SETTINGS, type ExtensionSettings } from "../../src/settings/settingsSchema";
 
 const settings = (patch: Partial<ExtensionSettings> = {}): ExtensionSettings => ({
@@ -9,6 +9,10 @@ const settings = (patch: Partial<ExtensionSettings> = {}): ExtensionSettings => 
 });
 
 describe("rendererSettingsChange", () => {
+	test("classifies every ExtensionSettings key exactly once", () => {
+		expect([...SETTINGS_CHANGE_KEYS].sort()).toEqual(Object.keys(DEFAULT_SETTINGS).sort());
+	});
+
 	test.each([
 		["language", "ko"],
 		["syncPreference", "line-only"],
@@ -18,12 +22,14 @@ describe("rendererSettingsChange", () => {
 		["interludeStyle", "frame"],
 		["debugMode", true],
 	] as const)("classifies %s as structural", (key, value) => {
+		expect(settingsChangeClassification(key)).toBe("structural");
 		expect(rendererSettingsChange(DEFAULT_SETTINGS, settings({ [key]: value }))).toBe("structural");
 	});
 
 	test.each([
 		["fontScale", 1.2],
 		["fontFamily", "Inter"],
+		["backgroundEnabled", false],
 		["backgroundBlurPx", 24],
 		["backgroundDim", 0.7],
 		["backgroundSaturation", 0.8],
@@ -39,13 +45,16 @@ describe("rendererSettingsChange", () => {
 		["glowStrength", 0.3],
 		["reduceMotion", true],
 	] as const)("classifies %s as live", (key, value) => {
+		expect(settingsChangeClassification(key)).toBe("live");
 		expect(rendererSettingsChange(DEFAULT_SETTINGS, settings({ [key]: value }))).toBe("live");
 	});
 
-	test("classifies provider, delay, preset, and background-only changes as renderer-irrelevant", () => {
+	test("classifies provider, delay, and preset changes as renderer-irrelevant", () => {
+		expect(settingsChangeClassification("lyricsDelayMs")).toBe("none");
+		expect(settingsChangeClassification("preset")).toBe("none");
+		expect(settingsChangeClassification("providers")).toBe("none");
 		expect(rendererSettingsChange(DEFAULT_SETTINGS, settings({ lyricsDelayMs: 250 }))).toBe("none");
 		expect(rendererSettingsChange(DEFAULT_SETTINGS, settings({ preset: "clean" }))).toBe("none");
-		expect(rendererSettingsChange(DEFAULT_SETTINGS, settings({ backgroundEnabled: false }))).toBe("none");
 		expect(
 			rendererSettingsChange(
 				DEFAULT_SETTINGS,
@@ -54,5 +63,10 @@ describe("rendererSettingsChange", () => {
 				})
 			)
 		).toBe("none");
+	});
+
+	test("returns the highest-priority classification when multiple keys change at once", () => {
+		expect(rendererSettingsChange(DEFAULT_SETTINGS, settings({ lyricsDelayMs: 250, fontScale: 1.2 }))).toBe("live");
+		expect(rendererSettingsChange(DEFAULT_SETTINGS, settings({ fontScale: 1.2, language: "ko" }))).toBe("structural");
 	});
 });
