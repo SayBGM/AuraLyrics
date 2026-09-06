@@ -18,26 +18,35 @@ type LyricsCacheOptions = {
 	maxTotalBytes: number;
 	now: () => number;
 	ttlMs: number;
+	persistDebounceMs: number;
+	/** Schedules a debounced persist. Defaults to the global `setTimeout`; tests may inject a synchronous stand-in. */
+	schedule: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
 };
 
 // v2: cached documents may carry per-line translatedText; v1 entries predate it and are discarded.
 const CACHE_KEY = "aura-lyrics:lyrics-cache-v2";
 const STALE_CACHE_KEYS = ["aura-lyrics:lyrics-cache-v1", "dynamic-popup-lyrics:lyrics-cache-v1"];
+const textEncoder = new TextEncoder();
 const DEFAULT_OPTIONS: LyricsCacheOptions = {
 	maxEntries: 30,
 	maxEntryBytes: 256 * 1024,
 	maxTotalBytes: 2 * 1024 * 1024,
 	now: () => Date.now(),
 	ttlMs: 1000 * 60 * 60 * 24 * 14,
+	persistDebounceMs: 500,
+	schedule: (callback, delayMs) => setTimeout(callback, delayMs),
 };
 
 export class LyricsCache {
 	private readonly values = new Map<string, CachedLyrics>();
+	private readonly options: LyricsCacheOptions;
+	private pendingPersistHandle?: ReturnType<typeof setTimeout>;
 
 	public constructor(
 		private readonly storage?: CacheStorage,
-		private readonly options: Partial<LyricsCacheOptions> = {}
+		options: Partial<LyricsCacheOptions> = {}
 	) {
+		this.options = { ...DEFAULT_OPTIONS, ...options };
 		this.load();
 	}
 
@@ -48,7 +57,7 @@ export class LyricsCache {
 		}
 		if (this.isExpired(cached)) {
 			this.values.delete(uri);
-			this.persist();
+			this.schedulePersist();
 			return undefined;
 		}
 		return { lyrics: cached.lyrics, provider: cached.provider };
@@ -58,25 +67,26 @@ export class LyricsCache {
 		const entry: CachedLyrics = {
 			lyrics,
 			provider,
-			updatedAt: this.resolvedOptions().now(),
+			updatedAt: this.options.now(),
 		};
-		if (this.serializedSize([uri, entry]) > this.resolvedOptions().maxEntryBytes) {
+		if (this.serializedSize([uri, entry]) > this.options.maxEntryBytes) {
 			return;
 		}
 		this.values.set(uri, entry);
 		this.prune(false);
-		this.persist();
+		this.schedulePersist();
 	}
 
 	public delete(uri: string): void {
 		if (!this.values.delete(uri)) {
 			return;
 		}
-		this.persist();
+		this.schedulePersist();
 	}
 
 	public clear(): void {
 		this.values.clear();
+		this.cancelPendingPersist();
 		try {
 			this.storage?.delete?.(CACHE_KEY);
 			for (const staleKey of STALE_CACHE_KEYS) {
@@ -85,11 +95,20 @@ export class LyricsCache {
 		} catch {
 			// Cache storage is best-effort; callers should not fail because cleanup failed.
 		}
-		this.persist();
+		this.persistNow();
+	}
+
+	/** Flushes a pending debounced persist immediately (e.g. on `beforeunload`). No-op if nothing is pending. */
+	public flush(): void {
+		if (this.pendingPersistHandle === undefined) {
+			return;
+		}
+		this.cancelPendingPersist();
+		this.persistNow();
 	}
 
 	private isExpired(cached: CachedLyrics): boolean {
-		return this.resolvedOptions().now() - cached.updatedAt > this.resolvedOptions().ttlMs;
+		return this.options.now() - cached.updatedAt > this.options.ttlMs;
 	}
 
 	private load(): void {
@@ -110,16 +129,32 @@ export class LyricsCache {
 				}
 			}
 			this.prune(false);
-			this.serializedValues();
+			this.evictToBudget();
 		} catch {
 			this.values.clear();
 		}
 	}
 
-	private persist(): void {
+	private schedulePersist(): void {
+		this.cancelPendingPersist();
+		this.pendingPersistHandle = this.options.schedule(() => {
+			this.pendingPersistHandle = undefined;
+			this.persistNow();
+		}, this.options.persistDebounceMs);
+	}
+
+	private cancelPendingPersist(): void {
+		if (this.pendingPersistHandle !== undefined) {
+			clearTimeout(this.pendingPersistHandle);
+			this.pendingPersistHandle = undefined;
+		}
+	}
+
+	private persistNow(): void {
 		if (!this.storage) {
 			return;
 		}
+		this.evictToBudget();
 		try {
 			if (!this.storage.set(CACHE_KEY, this.serializedValues())) {
 				throw new Error("Lyrics cache storage rejected the write.");
@@ -141,26 +176,35 @@ export class LyricsCache {
 	}
 
 	private serializedSize(entry: [string, CachedLyrics]): number {
-		return new TextEncoder().encode(JSON.stringify(entry)).length;
+		return textEncoder.encode(JSON.stringify(entry)).length;
 	}
 
+	/** Pure serialization of the current (already budget-fitted) in-memory entries. */
 	private serializedValues(): string {
-		const options = this.resolvedOptions();
+		return JSON.stringify([...this.values.entries()]);
+	}
+
+	/** Trims `this.values` in place so its serialized form fits `maxEntryBytes`/`maxTotalBytes`. */
+	private evictToBudget(): void {
+		const options = this.options;
 		const entries = [...this.values.entries()].sort((a, b) => b[1].updatedAt - a[1].updatedAt);
 		const kept: Array<[string, CachedLyrics]> = [];
+		// Account for the JSON array's surrounding brackets and the comma separators between entries.
+		let totalBytes = 2;
 		for (const entry of entries) {
-			if (this.serializedSize(entry) > options.maxEntryBytes) continue;
-			const candidate = JSON.stringify([...kept, entry]);
-			if (new TextEncoder().encode(candidate).length > options.maxTotalBytes) continue;
+			const size = this.serializedSize(entry);
+			if (size > options.maxEntryBytes) continue;
+			const additional = size + (kept.length > 0 ? 1 : 0);
+			if (totalBytes + additional > options.maxTotalBytes) continue;
 			kept.push(entry);
+			totalBytes += additional;
 		}
 		this.values.clear();
 		for (const entry of kept) this.values.set(entry[0], entry[1]);
-		return JSON.stringify(kept);
 	}
 
 	private prune(shouldPersist = true): void {
-		const options = this.resolvedOptions();
+		const options = this.options;
 		for (const [uri, cached] of this.values) {
 			if (this.isExpired(cached)) {
 				this.values.delete(uri);
@@ -174,11 +218,7 @@ export class LyricsCache {
 			}
 		}
 		if (shouldPersist) {
-			this.persist();
+			this.schedulePersist();
 		}
-	}
-
-	private resolvedOptions(): LyricsCacheOptions {
-		return { ...DEFAULT_OPTIONS, ...this.options };
 	}
 }

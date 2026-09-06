@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { LyricsCache } from "../../src/lyrics/LyricsCache";
 import type { LyricsDocument } from "../../src/lyrics/types";
 
@@ -18,6 +18,13 @@ class MemoryStorage {
 		return this.values.delete(key);
 	}
 }
+
+// LyricsCache now debounces persistence (500ms) so bursts of writes coalesce into one storage write.
+// Tests that need to observe storage synchronously inject this to persist inline instead of on a timer.
+const syncSchedule = (callback: () => void): ReturnType<typeof setTimeout> => {
+	callback();
+	return 0 as unknown as ReturnType<typeof setTimeout>;
+};
 
 const lyrics: LyricsDocument = {
 	type: "line",
@@ -43,7 +50,7 @@ describe("LyricsCache", () => {
 			},
 			delete: () => false,
 		};
-		const cache = new LyricsCache(storage);
+		const cache = new LyricsCache(storage, { schedule: syncSchedule });
 
 		expect(() => cache.set("spotify:track:1", lyrics, "spotify")).not.toThrow();
 		expect(cache.get("spotify:track:1")?.provider).toBe("spotify");
@@ -62,7 +69,7 @@ describe("LyricsCache", () => {
 				return false;
 			},
 		};
-		const cache = new LyricsCache(storage, { now: () => now });
+		const cache = new LyricsCache(storage, { now: () => now, schedule: syncSchedule });
 		cache.set("spotify:track:oldest", lyrics, "spotify");
 		now += 1;
 		failNextWrite = true;
@@ -79,7 +86,7 @@ describe("LyricsCache", () => {
 
 	test("persists lyrics across cache instances", () => {
 		const storage = new MemoryStorage();
-		new LyricsCache(storage).set("spotify:track:1", lyrics, "lrclib");
+		new LyricsCache(storage, { schedule: syncSchedule }).set("spotify:track:1", lyrics, "lrclib");
 
 		const restored = new LyricsCache(storage).get("spotify:track:1");
 
@@ -113,7 +120,7 @@ describe("LyricsCache", () => {
 	test("drops expired lyrics", () => {
 		const storage = new MemoryStorage();
 		const now = 1000;
-		const cache = new LyricsCache(storage, { ttlMs: 10, now: () => now });
+		const cache = new LyricsCache(storage, { ttlMs: 10, now: () => now, schedule: syncSchedule });
 		cache.set("spotify:track:1", lyrics, "spotify");
 
 		const expired = new LyricsCache(storage, {
@@ -127,7 +134,7 @@ describe("LyricsCache", () => {
 	test("evicts least recently written lyrics when max entries is exceeded", () => {
 		const storage = new MemoryStorage();
 		let now = Date.now();
-		const cache = new LyricsCache(storage, { maxEntries: 2, now: () => now });
+		const cache = new LyricsCache(storage, { maxEntries: 2, now: () => now, schedule: syncSchedule });
 		cache.set("spotify:track:1", lyrics, "spotify");
 		now += 1;
 		cache.set("spotify:track:2", lyrics, "lrclib");
@@ -141,7 +148,7 @@ describe("LyricsCache", () => {
 
 	test("enforces serialized entry and total size caps", () => {
 		const storage = new MemoryStorage();
-		const cache = new LyricsCache(storage, { maxEntryBytes: 256, maxTotalBytes: 600 });
+		const cache = new LyricsCache(storage, { maxEntryBytes: 256, maxTotalBytes: 600, schedule: syncSchedule });
 		cache.set(
 			"spotify:track:large",
 			{ ...lyrics, content: [{ type: "vocal", text: "x".repeat(1000), startTime: 0, endTime: 1, oppositeAligned: false }] },
@@ -150,5 +157,63 @@ describe("LyricsCache", () => {
 		expect(cache.get("spotify:track:large")).toBeUndefined();
 		for (let index = 0; index < 10; index += 1) cache.set(`spotify:track:${index}`, lyrics, "spotify");
 		expect(storage.values.get("aura-lyrics:lyrics-cache-v2")?.length).toBeLessThanOrEqual(600);
+	});
+
+	test("debounces persistence so bursts of writes coalesce into a single storage write", () => {
+		const storage = new MemoryStorage();
+		const set = vi.spyOn(storage, "set");
+		const cache = new LyricsCache(storage);
+		set.mockClear();
+
+		cache.set("spotify:track:1", lyrics, "spotify");
+		cache.set("spotify:track:2", lyrics, "lrclib");
+		cache.set("spotify:track:3", lyrics, "musixmatch");
+
+		expect(set).not.toHaveBeenCalled();
+
+		cache.flush();
+
+		expect(set).toHaveBeenCalledOnce();
+		expect(new LyricsCache(storage).get("spotify:track:3")?.provider).toBe("musixmatch");
+	});
+
+	test("flush is a no-op when nothing is pending", () => {
+		const storage = new MemoryStorage();
+		const set = vi.spyOn(storage, "set");
+		const cache = new LyricsCache(storage);
+		set.mockClear();
+
+		cache.flush();
+
+		expect(set).not.toHaveBeenCalled();
+	});
+
+	test("clear persists immediately, bypassing the debounce", () => {
+		const storage = new MemoryStorage();
+		const cache = new LyricsCache(storage);
+		cache.set("spotify:track:1", lyrics, "spotify");
+
+		cache.clear();
+
+		expect(storage.values.get("aura-lyrics:lyrics-cache-v2")).toBe("[]");
+	});
+
+	test("resolves persistence with real timers when no schedule override is provided", async () => {
+		vi.useFakeTimers();
+		try {
+			const storage = new MemoryStorage();
+			const set = vi.spyOn(storage, "set");
+			const cache = new LyricsCache(storage);
+			set.mockClear();
+
+			cache.set("spotify:track:1", lyrics, "spotify");
+			expect(set).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(500);
+
+			expect(set).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

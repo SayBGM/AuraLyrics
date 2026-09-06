@@ -188,6 +188,7 @@ export class ExtensionApp {
 		this.settingsView.destroy();
 		this.pip.close();
 		this.renderer.destroy();
+		this.cache.flush();
 	}
 
 	private async togglePip(): Promise<void> {
