@@ -1,5 +1,3 @@
-export { clamp } from "../../shared/math";
-
 export type SplinePoint = {
 	time: number;
 	value: number;

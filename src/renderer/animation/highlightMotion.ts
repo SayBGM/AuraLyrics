@@ -1,6 +1,6 @@
 import type { HighlightMotion } from "../../settings/settingsSchema";
+import { clamp } from "../../shared/math";
 import { glowCurve, scaleCurve, yOffsetCurve } from "./curves";
-import { clamp } from "./Spline";
 
 export type HighlightMotionSample = {
 	scale: number;

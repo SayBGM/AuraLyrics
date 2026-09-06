@@ -1,8 +1,8 @@
 import type { Syllable, SyllableVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
+import { clamp } from "../../shared/math";
 import type { RhythmProfile } from "../AudioAnalysisWaveformService";
 import { createHighlightMotionSample, sampleHighlightMotionInto } from "../animation/highlightMotion";
-import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
 import { SPRING_PROFILES, springTuningForSoftness } from "../animation/springTuning";
 import { HighlightDecorationTrack, type HighlightDecorationTrackProvider } from "../highlight/HighlightDecorationLayout";

@@ -1,5 +1,11 @@
 export const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
 
+/**
+ * Clamps a 0..1 progress value, treating a non-finite input as 0. Progress is derived from
+ * divisions by durations, so a degenerate document must not leak NaN into CSS.
+ */
+export const clampProgress = (value: number): number => (Number.isFinite(value) ? clamp(value, 0, 1) : 0);
+
 export const median = (values: number[]): number => {
 	if (values.length === 0) {
 		return 0;

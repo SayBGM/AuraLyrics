@@ -1,6 +1,6 @@
 import type { Syllable } from "../../lyrics/types";
+import { clamp, median } from "../../shared/math";
 import type { RhythmProfile } from "../AudioAnalysisWaveformService";
-import { clamp } from "../animation/Spline";
 import type { TimedParentheticalSegment } from "./parentheticalSegments";
 
 export type KoreanTailSplit = {
@@ -149,10 +149,4 @@ const splitFinalHangulSyllable = (text: string): Pick<KoreanTailSplit, "baseText
 		baseText,
 		tailText: `${finalSyllable}${trailingPunctuation}`,
 	};
-};
-
-const median = (values: number[]): number => {
-	const sorted = [...values].sort((a, b) => a - b);
-	const middle = Math.floor(sorted.length / 2);
-	return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 };

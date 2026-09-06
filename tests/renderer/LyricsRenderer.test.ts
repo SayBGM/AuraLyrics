@@ -2075,7 +2075,7 @@ describe("LyricsRenderer", () => {
 		});
 
 		const sceneGroups = (renderer: LyricsRenderer): AnimatedGroup[] =>
-			(renderer as unknown as { currentScene: { groups: AnimatedGroup[] } }).currentScene.groups;
+			(renderer as unknown as { presenter: { current: { groups: AnimatedGroup[] } } }).presenter.current.groups;
 
 		test("skips groups far outside the playhead window and still settles the ones leaving it", () => {
 			const root = document.createElement("div");

@@ -1,7 +1,7 @@
 import type { LineVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
+import { clamp } from "../../shared/math";
 import { createHighlightMotionSample, sampleHighlightMotionInto } from "../animation/highlightMotion";
-import { clamp } from "../animation/Spline";
 import { HighlightDecorationTrack, type HighlightDecorationTrackProvider } from "../highlight/HighlightDecorationLayout";
 import {
 	applyLifecycleClasses,
