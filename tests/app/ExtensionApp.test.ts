@@ -13,6 +13,7 @@ import type { TrackWaveformProfile } from "../../src/renderer/AudioAnalysisWavef
 import { SCENE_TRANSITION_DURATION_MS } from "../../src/renderer/SceneTransitionController";
 import type { SpicetifyGlobal } from "../../src/runtime/spicetify";
 import type { ExtensionSettings } from "../../src/settings/settingsSchema";
+import type { CurrentTrackLyricsDelayState } from "../../src/settings/settingsViewTypes";
 import { buildVocalAnalysis } from "../lyrics/pseudoKaraoke/fixtures";
 
 const createSpicetify = () => {
@@ -229,6 +230,33 @@ const outroControllerOf = (app: ExtensionApp): OutroPresentationController =>
 const internalsSettingsOf = (app: ExtensionApp): ExtensionSettings =>
 	(app as unknown as { settings: { get: () => ExtensionSettings } }).settings.get();
 
+/** Internals of the controllers ExtensionApp delegates to, reached through the app for test setup. */
+type PresentationInternals = {
+	revealedSnapshot?: ReadyTrackSessionSnapshot;
+	mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+	presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
+	presentReadySnapshotNow: (snapshot: ReadyTrackSessionSnapshot) => void;
+	revealReadySnapshot: (snapshot: ReadyTrackSessionSnapshot, timestampSec: number) => "none" | "lyrics-rendered";
+	revealedSnapshotFor: (track: TrackIdentity | undefined) => ReadyTrackSessionSnapshot | undefined;
+};
+
+type DelayInternals = {
+	currentTrackLyricsDelayState: () => CurrentTrackLyricsDelayState | undefined;
+	adjustCurrentTrackLyricsDelay: (uri: string, deltaMs: number) => boolean;
+	resetCurrentTrackLyricsDelay: (uri: string) => boolean;
+};
+
+type TransitionInternals = {
+	activeTransition?: unknown;
+	pendingPresentation?: unknown;
+};
+
+const presentationOf = (app: ExtensionApp): PresentationInternals => (app as unknown as { presentation: PresentationInternals }).presentation;
+
+const delaysOf = (app: ExtensionApp): DelayInternals => (app as unknown as { trackDelays: DelayInternals }).trackDelays;
+
+const transitionsOf = (app: ExtensionApp): TransitionInternals => (app as unknown as { transitions: TransitionInternals }).transitions;
+
 /** Builds the staleness token `ExtensionApp` would have created for `track` at this point in time. */
 const trackEpochOf = (app: ExtensionApp, session: unknown, track: TrackIdentity): TrackEpoch => {
 	const internals = app as unknown as { playbackTrackEpoch: number; themeGeneration: number };
@@ -439,7 +467,6 @@ describe("ExtensionApp", () => {
 				showTrackMetadata: () => void;
 				update: (timestampSec: number, deltaTimeSec: number) => void;
 			};
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
@@ -455,7 +482,7 @@ describe("ExtensionApp", () => {
 			showTrackMetadata: vi.fn(),
 			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
 		};
-		internals.mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
+		presentationOf(app).mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
 
@@ -523,24 +550,23 @@ describe("ExtensionApp", () => {
 		const internals = app as unknown as {
 			settings: { reset: () => ExtensionSettings; update: (patch: Partial<ExtensionSettings>) => void };
 			trackLyricsDelays: { delete: (uri: string) => boolean; set: (uri: string, delayMs: number) => unknown };
-			currentTrackLyricsDelayState: () => { delayMs: number; defaultDelayMs: number; hasOverride: boolean } | undefined;
 			playbackSynchronizer: PlaybackSynchronizer;
 		};
 		internals.settings.update({ lyricsDelayMs: 250 });
 
 		internals.playbackSynchronizer.resync();
 		expect(internals.playbackSynchronizer.timestampSec).toBe(9.75);
-		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 250, defaultDelayMs: 250, hasOverride: false });
+		expect(delaysOf(app).currentTrackLyricsDelayState()).toMatchObject({ delayMs: 250, defaultDelayMs: 250, hasOverride: false });
 
 		internals.trackLyricsDelays.set(track.uri, 400);
 		internals.playbackSynchronizer.resync();
 		expect(internals.playbackSynchronizer.timestampSec).toBe(9.6);
-		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 400, defaultDelayMs: 250, hasOverride: true });
+		expect(delaysOf(app).currentTrackLyricsDelayState()).toMatchObject({ delayMs: 400, defaultDelayMs: 250, hasOverride: true });
 
 		internals.settings.reset();
 		internals.playbackSynchronizer.resync();
 		expect(internals.playbackSynchronizer.timestampSec).toBe(9.6);
-		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 400, defaultDelayMs: 0, hasOverride: true });
+		expect(delaysOf(app).currentTrackLyricsDelayState()).toMatchObject({ delayMs: 400, defaultDelayMs: 0, hasOverride: true });
 
 		internals.trackLyricsDelays.delete(track.uri);
 		internals.playbackSynchronizer.resync();
@@ -563,40 +589,35 @@ describe("ExtensionApp", () => {
 		const snapshot = readySnapshotWithLyrics(track, lyrics);
 		const mount = vi.fn();
 		const internals = app as unknown as {
-			adjustCurrentTrackLyricsDelay: (uri: string, deltaMs: number) => void;
-			currentTrackLyricsDelayState: () => { delayMs: number; hasOverride: boolean } | undefined;
 			lyricsService: { load: (...args: unknown[]) => Promise<unknown> };
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			playbackSynchronizer: PlaybackSynchronizer;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			renderer: { update: (timestampSec: number, deltaTimeSec: number) => void };
-			resetCurrentTrackLyricsDelay: (uri: string) => void;
 			session: { root: HTMLElement };
 		};
 		const load = vi.spyOn(internals.lyricsService, "load");
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		const update = vi.spyOn(internals.renderer, "update");
 		internals.playbackSynchronizer.resync();
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		mount.mockClear();
 		update.mockClear();
 
-		internals.adjustCurrentTrackLyricsDelay(track.uri, 50);
+		delaysOf(app).adjustCurrentTrackLyricsDelay(track.uri, 50);
 
-		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 50, hasOverride: true });
+		expect(delaysOf(app).currentTrackLyricsDelayState()).toMatchObject({ delayMs: 50, hasOverride: true });
 		expect(internals.playbackSynchronizer.timestampSec).toBe(9.95);
 		expect(update).toHaveBeenCalledWith(9.95, 0);
 		expect(load).not.toHaveBeenCalled();
 
-		internals.adjustCurrentTrackLyricsDelay("spotify:track:stale", 100);
-		expect(internals.currentTrackLyricsDelayState()?.delayMs).toBe(50);
+		delaysOf(app).adjustCurrentTrackLyricsDelay("spotify:track:stale", 100);
+		expect(delaysOf(app).currentTrackLyricsDelayState()?.delayMs).toBe(50);
 
 		update.mockClear();
-		internals.resetCurrentTrackLyricsDelay(track.uri);
-		expect(internals.currentTrackLyricsDelayState()).toMatchObject({ delayMs: 0, hasOverride: false });
+		delaysOf(app).resetCurrentTrackLyricsDelay(track.uri);
+		expect(delaysOf(app).currentTrackLyricsDelayState()).toMatchObject({ delayMs: 0, hasOverride: false });
 		expect(internals.playbackSynchronizer.timestampSec).toBe(10);
 		expect(update).toHaveBeenCalledWith(10, 0);
 		expect(load).not.toHaveBeenCalled();
@@ -622,7 +643,6 @@ describe("ExtensionApp", () => {
 				showTrackMetadata: () => void;
 				update: (timestampSec: number, deltaTimeSec: number) => void;
 			};
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
@@ -638,7 +658,7 @@ describe("ExtensionApp", () => {
 			showTrackMetadata: vi.fn(),
 			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
 		};
-		internals.mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
+		presentationOf(app).mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
 
@@ -684,7 +704,6 @@ describe("ExtensionApp", () => {
 				showTrackMetadata: () => void;
 				update: (timestampSec: number, deltaTimeSec: number) => void;
 			};
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
@@ -705,7 +724,7 @@ describe("ExtensionApp", () => {
 			showTrackMetadata: vi.fn(),
 			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
 		};
-		internals.mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
+		presentationOf(app).mountReadySnapshot = (snapshot) => events.push(["mount", snapshot]);
 		internals.isPlaybackActive = true;
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(initial, internalsSettingsOf(app), 5).kind).toBe("hold");
@@ -739,7 +758,6 @@ describe("ExtensionApp", () => {
 			currentTrack: TrackIdentity;
 			trackSession: { isCurrent: () => boolean; invalidate: () => void };
 			renderer: { destroy: () => void; update: () => void };
-			mountReadySnapshot: typeof mount;
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
@@ -750,7 +768,7 @@ describe("ExtensionApp", () => {
 		internals.currentTrack = oldTrack;
 		internals.trackSession = { isCurrent: () => true, invalidate: vi.fn() };
 		internals.renderer = { destroy: vi.fn(), update: vi.fn() };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 
 		const rendering = internals.renderEnrichment(enrichment.promise, initial, trackEpochOf(app, session, oldTrack));
 		internals.currentTrack = newTrack;
@@ -1091,8 +1109,6 @@ describe("ExtensionApp", () => {
 				showTrackMetadata: () => void;
 				update: (timestampSec: number, deltaTimeSec: number) => void;
 			};
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 		};
 		internals.settings.update({ syncPreference: "line-only" });
@@ -1112,9 +1128,9 @@ describe("ExtensionApp", () => {
 			showTrackMetadata: vi.fn(),
 			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
 		};
-		internals.mountReadySnapshot = (candidate) => events.push(["mount", candidate]);
+		presentationOf(app).mountReadySnapshot = (candidate) => events.push(["mount", candidate]);
 		internals.introGate.beginTrackEpoch();
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		expect(internals.introGate.isHolding()).toBe(true);
 		events.length = 0;
 
@@ -1644,7 +1660,6 @@ describe("ExtensionApp", () => {
 			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
 			introGate: IntroPresentationGate;
 			playbackSynchronizer: PlaybackSynchronizer;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 			applySettings: () => Promise<void>;
 		};
@@ -1652,7 +1667,7 @@ describe("ExtensionApp", () => {
 		internals.currentTrack = track;
 		internals.playbackSynchronizer.resync();
 		internals.introGate.beginTrackEpoch();
-		internals.presentReadySnapshot(syntheticSnapshot);
+		presentationOf(app).presentReadySnapshot(syntheticSnapshot);
 		internals.lyricsService = {
 			load: vi.fn(() => refreshResult.promise),
 			refreshCooldowns: vi.fn(),
@@ -1915,7 +1930,6 @@ describe("ExtensionApp", () => {
 			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
 			introGate: IntroPresentationGate;
 			playbackSynchronizer: PlaybackSynchronizer;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 			openPip: () => Promise<void>;
 			closePip: (closeWindow?: boolean) => void;
@@ -1924,7 +1938,7 @@ describe("ExtensionApp", () => {
 		internals.currentTrack = track;
 		internals.playbackSynchronizer.resync();
 		internals.introGate.beginTrackEpoch();
-		internals.presentReadySnapshot(syntheticSnapshot);
+		presentationOf(app).presentReadySnapshot(syntheticSnapshot);
 		expectSyntheticTimingScene(initialRoot);
 		internals.closePip(false);
 		internals.settings.update({ pseudoKaraoke: false, syncPreference: "line-only" });
@@ -1966,17 +1980,14 @@ describe("ExtensionApp", () => {
 		};
 		const internals = app as unknown as {
 			settings: { update: (patch: Partial<ExtensionSettings>) => void };
-			revealedSnapshot: ReadyTrackSessionSnapshot;
 			revealedSnapshotFingerprint: string;
-			revealReadySnapshot: (snapshot: ReadyTrackSessionSnapshot, timestampSec: number) => void;
-			revealedSnapshotFor: (track: TrackIdentity) => ReadyTrackSessionSnapshot | undefined;
 			session: { root: HTMLElement };
 		};
 		internals.session = { root: document.createElement("main") };
-		internals.revealReadySnapshot(syntheticSnapshot, 8);
+		presentationOf(app).revealReadySnapshot(syntheticSnapshot, 8);
 		internals.settings.update({ language: "ko", showTranslation: false, interludeStyle: "wave" });
 
-		const restored = internals.revealedSnapshotFor(track);
+		const restored = presentationOf(app).revealedSnapshotFor(track);
 
 		expect(restored?.lyrics).toBe(syntheticSnapshot.lyrics);
 		expect(restored?.timingSource).toBe("synthetic");
@@ -2299,9 +2310,6 @@ describe("ExtensionApp", () => {
 		const track = metadataTrack("spotify:track:delay-persistence");
 		setCurrentPlayerTrack(spicetify, track);
 		const app = new ExtensionApp(spicetify);
-		const internals = app as unknown as {
-			adjustCurrentTrackLyricsDelay: (uri: string, deltaMs: number) => void;
-		};
 		app.start();
 		if (!spicetify.LocalStorage) {
 			throw new Error("LocalStorage fixture is missing.");
@@ -2310,7 +2318,7 @@ describe("ExtensionApp", () => {
 			throw new Error("quota exceeded");
 		});
 
-		internals.adjustCurrentTrackLyricsDelay(track.uri, 50);
+		delaysOf(app).adjustCurrentTrackLyricsDelay(track.uri, 50);
 
 		expect(showNotification).toHaveBeenCalledOnce();
 		expect(showNotification).toHaveBeenCalledWith("AuraLyrics settings could not be saved.", true);
@@ -2365,7 +2373,6 @@ describe("ExtensionApp", () => {
 		const internals = app as unknown as {
 			session: { setPlaying: (playing: boolean) => void };
 			currentTrack: TrackIdentity;
-			revealedSnapshot: ReadyTrackSessionSnapshot;
 			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
@@ -2375,7 +2382,7 @@ describe("ExtensionApp", () => {
 		app.start();
 		internals.session = { setPlaying: vi.fn() };
 		internals.currentTrack = snapshot.loadState.track;
-		internals.revealedSnapshot = snapshot;
+		presentationOf(app).revealedSnapshot = snapshot;
 		internals.trackSession = {
 			getSnapshot: () => ({ loadState: { status: "ready" } }) as unknown as TrackSessionSnapshot,
 			invalidate: vi.fn(),
@@ -2407,7 +2414,6 @@ describe("ExtensionApp", () => {
 		const internals = app as unknown as {
 			session: { setPlaying: (playing: boolean) => void };
 			currentTrack: TrackIdentity;
-			revealedSnapshot: ReadyTrackSessionSnapshot;
 			trackSession: { getSnapshot: () => TrackSessionSnapshot; invalidate: () => void };
 			renderer: { destroy: () => void; update: (timestamp: number, deltaTime: number) => void };
 			isPlaybackActive: boolean;
@@ -2417,7 +2423,7 @@ describe("ExtensionApp", () => {
 		app.start();
 		internals.session = { setPlaying: vi.fn() };
 		internals.currentTrack = snapshot.loadState.track;
-		internals.revealedSnapshot = snapshot;
+		presentationOf(app).revealedSnapshot = snapshot;
 		internals.trackSession = {
 			getSnapshot: () => ({ loadState: { status: "ready" } }) as unknown as TrackSessionSnapshot,
 			invalidate: vi.fn(),
@@ -2460,7 +2466,6 @@ describe("ExtensionApp", () => {
 			isPlaybackActive: boolean;
 			playbackSynchronizer: typeof synchronizer;
 			renderer: { destroy: () => void; update: (timestampSec: number, deltaTimeSec: number) => void };
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 		};
 		internals.session = { root: document.createElement("main") };
@@ -2471,7 +2476,7 @@ describe("ExtensionApp", () => {
 			destroy: vi.fn(),
 			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
 		};
-		internals.mountReadySnapshot = (ready) => events.push(["mount", ready]);
+		presentationOf(app).mountReadySnapshot = (ready) => events.push(["mount", ready]);
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(snapshot, internalsSettingsOf(app), 0).kind).toBe("hold");
 
@@ -2588,7 +2593,6 @@ describe("ExtensionApp", () => {
 			introGate: IntroPresentationGate;
 			playbackSynchronizer: typeof synchronizer;
 			renderer: { destroy: () => void; update: (timestampSec: number, deltaTimeSec: number) => void };
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
 		internals.session = { root: document.createElement("main"), setPlaying: vi.fn() };
@@ -2597,7 +2601,7 @@ describe("ExtensionApp", () => {
 			destroy: vi.fn(),
 			update: (timestamp, deltaTime) => events.push(["update", timestamp, deltaTime]),
 		};
-		internals.mountReadySnapshot = (ready) => events.push(["mount", ready]);
+		presentationOf(app).mountReadySnapshot = (ready) => events.push(["mount", ready]);
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(snapshot, internalsSettingsOf(app), 0).kind).toBe("hold");
 
@@ -2638,14 +2642,13 @@ describe("ExtensionApp", () => {
 			isPlaybackActive: boolean;
 			playbackSynchronizer: { timestampSec: number; update: typeof updatePlayback };
 			renderer: { destroy: () => void; update: () => void };
-			mountReadySnapshot: typeof mount;
 			tick: (deltaTimeSec: number) => void;
 		};
 		internals.session = { root };
 		internals.trackSession = { getSnapshot: () => snapshot, invalidate: vi.fn() };
 		internals.playbackSynchronizer = { timestampSec: 8, update: updatePlayback };
 		internals.renderer = { destroy: vi.fn(), update: vi.fn() };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.isPlaybackActive = false;
 		internals.introGate.beginTrackEpoch();
 		expect(internals.introGate.accept(snapshot, internalsSettingsOf(app), 0).kind).toBe("hold");
@@ -2676,13 +2679,12 @@ describe("ExtensionApp", () => {
 			isPlaybackActive: boolean;
 			playbackSynchronizer: PlaybackSynchronizer;
 			renderer: { destroy: () => void; update: typeof update };
-			mountReadySnapshot: typeof mount;
 			tick: (deltaTimeSec: number) => void;
 		};
 		internals.session = { root: document.createElement("main") };
 		internals.trackSession = { getSnapshot: () => snapshot, invalidate: vi.fn() };
 		internals.renderer = { destroy: vi.fn(), update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.isPlaybackActive = true;
 		internals.playbackSynchronizer.resync();
 		internals.introGate.beginTrackEpoch();
@@ -2767,21 +2769,19 @@ describe("ExtensionApp", () => {
 			isPlaybackActive: boolean;
 			playbackSynchronizer: PlaybackSynchronizer;
 			renderer: { update: (timestampSec: number, deltaTimeSec: number) => void };
-			mountReadySnapshot: typeof mount;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
 		internals.settings.update({ lyricsDelayMs: delayMs });
 		internals.session = { root: document.createElement("main"), setPlaying: vi.fn() };
 		internals.trackSession = { getSnapshot: () => snapshot, invalidate: vi.fn() };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.isPlaybackActive = true;
 		const update = vi.spyOn(internals.renderer, "update");
 		internals.playbackSynchronizer.resync();
 		internals.introGate.beginTrackEpoch();
 
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 
 		expect(internals.playbackSynchronizer.timestampSec).toBe(initialTimestampSec);
 		expect(internals.introGate.isHolding()).toBe(true);
@@ -2822,20 +2822,18 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement };
 			playbackSynchronizer: typeof synchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
-			mountReadySnapshot: typeof mount;
 			isPlaybackActive: boolean;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.playbackSynchronizer = synchronizer;
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.isPlaybackActive = true;
 
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		expect(mount).toHaveBeenCalledOnce();
 		expect(update).toHaveBeenLastCalledWith(9.999, 0);
 
@@ -2864,7 +2862,6 @@ describe("ExtensionApp", () => {
 		const internals = app as unknown as {
 			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
 			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
@@ -2875,7 +2872,7 @@ describe("ExtensionApp", () => {
 			refreshCooldowns: vi.fn(),
 			invalidate: vi.fn(),
 		};
-		const mount = vi.spyOn(internals, "mountReadySnapshot");
+		const mount = vi.spyOn(presentationOf(app), "mountReadySnapshot");
 
 		await internals.loadCurrentTrack(false);
 
@@ -2921,7 +2918,6 @@ describe("ExtensionApp", () => {
 		const internals = app as unknown as {
 			pip: { open: typeof open; close: () => void };
 			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
-			mountReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			openPip: () => Promise<void>;
 			closePip: (closeWindow?: boolean) => void;
 		};
@@ -2934,7 +2930,7 @@ describe("ExtensionApp", () => {
 			refreshCooldowns: vi.fn(),
 			invalidate: vi.fn(),
 		};
-		const mount = vi.spyOn(internals, "mountReadySnapshot");
+		const mount = vi.spyOn(presentationOf(app), "mountReadySnapshot");
 
 		await internals.openPip();
 		expect(roots[0]?.querySelector(".lyrics-track")).not.toBeNull();
@@ -2974,18 +2970,16 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement; setPlaying: (isPlaying: boolean) => void };
 			playbackSynchronizer: PlaybackSynchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), setPlaying: vi.fn() };
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.playbackSynchronizer.resync();
-		internals.presentReadySnapshot(initial);
-		internals.presentReadySnapshot(latest);
+		presentationOf(app).presentReadySnapshot(initial);
+		presentationOf(app).presentReadySnapshot(latest);
 		mount.mockClear();
 		update.mockClear();
 		showTrackMetadata.mockClear();
@@ -3031,15 +3025,13 @@ describe("ExtensionApp", () => {
 		const internals = app as unknown as {
 			session: { root: HTMLElement };
 			isPlaybackActive: boolean;
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.isPlaybackActive = true;
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		expect(introGateOf(app).isHolding()).toBe(true);
 
 		progressMs = 8_000;
@@ -3083,17 +3075,15 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement };
 			playbackSynchronizer: { timestampSec: number };
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: () => void };
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.playbackSynchronizer = { timestampSec: 100 };
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update: vi.fn() };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 
 		expect(mount).toHaveBeenCalledWith(snapshot);
 		expect(showTrackMetadata).not.toHaveBeenCalled();
@@ -3111,17 +3101,15 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement };
 			playbackSynchronizer: { timestampSec: number };
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: () => void };
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.playbackSynchronizer = { timestampSec: 10 };
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update: vi.fn() };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 
 		expect(mount).not.toHaveBeenCalled();
 		expect(showTrackMetadata).toHaveBeenCalledOnce();
@@ -3149,18 +3137,16 @@ describe("ExtensionApp", () => {
 			session: { root: HTMLElement; setPlaying: (isPlaying: boolean) => void };
 			playbackSynchronizer: typeof synchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: () => void };
-			mountReadySnapshot: () => void;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), setPlaying: vi.fn() };
 		internals.playbackSynchronizer = synchronizer;
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update: vi.fn() };
-		internals.mountReadySnapshot = vi.fn();
+		presentationOf(app).mountReadySnapshot = vi.fn();
 		internals.playbackSynchronizer.resync();
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		resume.mockClear();
 		synchronizer.resync.mockClear();
 
@@ -3225,11 +3211,9 @@ describe("ExtensionApp", () => {
 		const internals = app as unknown as {
 			session: { root: HTMLElement; setCover: (url?: string) => void; applyTheme: (theme?: TrackTheme) => void };
 			outroController?: OutroPresentationController;
-			revealedSnapshot?: ReadyTrackSessionSnapshot;
 			lyricsService: { load: () => Promise<LyricsLoadState>; refreshCooldowns: () => void; invalidate: () => void };
 			playbackSynchronizer: PlaybackSynchronizer;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
 		expect(internals.outroController).toBeDefined();
@@ -3237,7 +3221,7 @@ describe("ExtensionApp", () => {
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), setCover: vi.fn(), applyTheme: vi.fn() };
 		internals.playbackSynchronizer.resync();
-		internals.presentReadySnapshot(outroSnapshot(track));
+		presentationOf(app).presentReadySnapshot(outroSnapshot(track));
 		expect(internals.outroController.currentKind()).toBe("metadata");
 		internals.lyricsService = {
 			load: vi.fn(async (): Promise<LyricsLoadState> => ({ status: "error", track, message: "offline" })),
@@ -3248,7 +3232,7 @@ describe("ExtensionApp", () => {
 		await internals.loadCurrentTrack(true);
 
 		expect(internals.outroController.currentKind()).toBe("inactive");
-		expect(internals.revealedSnapshot).toBeUndefined();
+		expect(presentationOf(app).revealedSnapshot).toBeUndefined();
 		app.destroy();
 	});
 
@@ -3278,10 +3262,8 @@ describe("ExtensionApp", () => {
 			trackSession: { isCurrent: (snapshot: TrackSessionSnapshot) => boolean; invalidate: () => void };
 			playbackSynchronizer: typeof synchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
-			mountReadySnapshot: typeof mount;
 			isPlaybackActive: boolean;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			renderEnrichment: (
 				enrichment: Promise<ReadyTrackSessionSnapshot | undefined>,
 				initialSnapshot: ReadyTrackSessionSnapshot,
@@ -3295,10 +3277,10 @@ describe("ExtensionApp", () => {
 		internals.trackSession = { isCurrent: (snapshot) => snapshot === enriched, invalidate: vi.fn() };
 		internals.playbackSynchronizer = synchronizer;
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.isPlaybackActive = true;
 
-		internals.presentReadySnapshot(initial);
+		presentationOf(app).presentReadySnapshot(initial);
 		expect(showTrackMetadata).toHaveBeenCalledOnce();
 		await internals.renderEnrichment(Promise.resolve(enriched), initial, trackEpochOf(app, session, track));
 
@@ -3343,9 +3325,7 @@ describe("ExtensionApp", () => {
 				showTrackMetadata: typeof showTrackMetadata;
 				update: typeof update;
 			};
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
@@ -3358,9 +3338,9 @@ describe("ExtensionApp", () => {
 		};
 		internals.playbackSynchronizer = synchronizer;
 		internals.renderer = { destroy: vi.fn(), applySettings: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		expect(mount).toHaveBeenCalledOnce();
 		settings.settings.update({ syncPreference: "line-only" });
 		await internals.applySettings();
@@ -3395,9 +3375,7 @@ describe("ExtensionApp", () => {
 			outroController?: OutroPresentationController;
 			playbackSynchronizer: PlaybackSynchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: () => void; update: (timestampSec: number, deltaTimeSec: number) => void };
-			mountReadySnapshot: () => void;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			onPlaybackChanged: (isPlaying: boolean) => void;
 		};
 		internals.settings.update({ lyricsDelayMs: delayMs });
@@ -3408,12 +3386,12 @@ describe("ExtensionApp", () => {
 		const update = vi.fn();
 		const showTrackMetadata = vi.fn();
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = vi.fn();
+		presentationOf(app).mountReadySnapshot = vi.fn();
 		const accept = vi.spyOn(internals.outroController, "accept");
 		const evaluate = vi.spyOn(internals.outroController, "evaluate");
 		internals.playbackSynchronizer.resync();
 
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 
 		expect(accept.mock.calls[0]?.[2]).toBe(9);
 		expect(update).toHaveBeenCalledWith(9, 0);
@@ -3447,9 +3425,7 @@ describe("ExtensionApp", () => {
 				showTrackMetadata: typeof showTrackMetadata;
 				update: typeof update;
 			};
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 		};
 		internals.settings.update({ lyricsDelayMs: 1_000 });
@@ -3458,9 +3434,9 @@ describe("ExtensionApp", () => {
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.currentTrack = track;
 		internals.renderer = { destroy: vi.fn(), applySettings: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.playbackSynchronizer.resync();
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		expect(outroControllerOf(app).currentKind()).toBe("lyrics");
 		mount.mockClear();
 		update.mockClear();
@@ -3504,19 +3480,17 @@ describe("ExtensionApp", () => {
 				showTrackMetadata: typeof showTrackMetadata;
 				update: typeof update;
 			};
-			mountReadySnapshot: typeof mount;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			applySettings: () => Promise<void>;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main"), applySettings: vi.fn() };
 		internals.currentTrack = track;
 		internals.renderer = { destroy: vi.fn(), applySettings: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.playbackSynchronizer.resync();
-		internals.presentReadySnapshot(initial);
-		internals.presentReadySnapshot(latest);
+		presentationOf(app).presentReadySnapshot(initial);
+		presentationOf(app).presentReadySnapshot(latest);
 		expect(outroControllerOf(app).currentKind()).toBe("metadata");
 		mount.mockClear();
 		update.mockClear();
@@ -3547,20 +3521,18 @@ describe("ExtensionApp", () => {
 			currentTrack: TrackIdentity;
 			playbackSynchronizer: PlaybackSynchronizer;
 			renderer: { destroy: () => void; showTrackMetadata: typeof showTrackMetadata; update: typeof update };
-			mountReadySnapshot: typeof mount;
 			isPlaybackActive: boolean;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 		};
 		await internals.onTrackChanged(trackChangedEvent(track));
 		internals.session = { root: document.createElement("main") };
 		internals.currentTrack = track;
 		internals.renderer = { destroy: vi.fn(), showTrackMetadata, update };
-		internals.mountReadySnapshot = mount;
+		presentationOf(app).mountReadySnapshot = mount;
 		internals.isPlaybackActive = true;
 		internals.playbackSynchronizer.resync();
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		expect(outroControllerOf(app).currentKind()).toBe("metadata");
 		showTrackMetadata.mockClear();
 		mount.mockClear();
@@ -3606,7 +3578,6 @@ describe("ExtensionApp", () => {
 			playbackSynchronizer: typeof synchronizer;
 			isPlaybackActive: boolean;
 			onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
-			presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 			tick: (deltaTimeSec: number) => void;
 		};
 		internals.settings.update({ reduceMotion: true });
@@ -3614,7 +3585,7 @@ describe("ExtensionApp", () => {
 		internals.session = { root };
 		internals.playbackSynchronizer = synchronizer;
 		internals.isPlaybackActive = true;
-		internals.presentReadySnapshot(snapshot);
+		presentationOf(app).presentReadySnapshot(snapshot);
 		expect(root.querySelector(".lyrics-track")).not.toBeNull();
 
 		internals.tick(1);
@@ -4027,7 +3998,6 @@ describe("ExtensionApp", () => {
 			};
 			settings: { update: (patch: unknown) => void };
 			trackSession: { getSnapshot: () => TrackSessionSnapshot };
-			revealedSnapshot?: ReadyTrackSessionSnapshot;
 			outroController: OutroPresentationController;
 			lyricsService: { load: (track: TrackIdentity) => Promise<LyricsLoadState> };
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
@@ -4055,7 +4025,7 @@ describe("ExtensionApp", () => {
 		await internals.loadCurrentTrack(false);
 		await vi.waitFor(() => expect(internals.trackSession.getSnapshot().waveformProfile).toBeDefined());
 		expect(internals.outroController.currentKind()).toBe("lyrics");
-		expect(internals.revealedSnapshot?.waveformProfile).toBeDefined();
+		expect(presentationOf(app).revealedSnapshot?.waveformProfile).toBeDefined();
 		await vi.waitFor(() => expect(root.querySelector<HTMLElement>(".aura-lyrics")?.style.getPropertyValue("--interlude-wave-cycle")).toBe("1.056s"));
 
 		expect(spicetify.getAudioData).toHaveBeenCalledWith("spotify:track:wave");
@@ -4405,8 +4375,6 @@ describe("ExtensionApp", () => {
 				const internals = app as unknown as {
 					session: typeof session;
 					currentTrack: TrackIdentity;
-					activeTrackTransition?: unknown;
-					pendingTrackPresentation?: unknown;
 					directionController: TrackTransitionDirectionController;
 					settings: { update: (patch: Partial<ExtensionSettings>) => void };
 					lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
@@ -4430,8 +4398,8 @@ describe("ExtensionApp", () => {
 				await internals.onTrackChanged(trackChangedEvent(incoming));
 				const transitionHandle = showTrackMetadata.mock.results[0]?.value;
 				expect(transitionHandle).toBeDefined();
-				expect(internals.activeTrackTransition).toBeDefined();
-				expect(internals.pendingTrackPresentation).toBeDefined();
+				expect(transitionsOf(app).activeTransition).toBeDefined();
+				expect(transitionsOf(app).pendingPresentation).toBeDefined();
 				expect(root.querySelector('[data-scene-plane="incoming"] .track-metadata-scene.loading')).not.toBeNull();
 
 				internals.settings.update(setting);
@@ -4439,8 +4407,8 @@ describe("ExtensionApp", () => {
 				await Promise.resolve();
 
 				expect(await transitionHandle?.settled).toEqual({ generation: transitionHandle?.generation, completed: true });
-				expect(internals.activeTrackTransition).toBeUndefined();
-				expect(internals.pendingTrackPresentation).toBeUndefined();
+				expect(transitionsOf(app).activeTransition).toBeUndefined();
+				expect(transitionsOf(app).pendingPresentation).toBeUndefined();
 				expect(root.children).toHaveLength(1);
 				expect(root.querySelector("[data-scene-plane]")).toBeNull();
 				expect(root.className).not.toContain("scene-transition-");
@@ -4514,14 +4482,13 @@ describe("ExtensionApp", () => {
 				session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
 				currentTrack: TrackIdentity;
 				lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
-				presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 				onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 			};
 			internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
 			internals.currentTrack = outgoing;
 			internals.lyricsService = { load: vi.fn(() => result.promise), invalidate: vi.fn() };
 			beginIntroEpoch(app);
-			internals.presentReadySnapshot(
+			presentationOf(app).presentReadySnapshot(
 				readySnapshotWithLyrics(outgoing, {
 					type: "line",
 					startTime: 0,
@@ -4691,7 +4658,6 @@ describe("ExtensionApp", () => {
 					renderer: {
 						showTrackMetadata: (root: HTMLElement, metadata: { mode: "persistent"; track: TrackIdentity }, settings: ExtensionSettings) => unknown;
 					};
-					presentReadySnapshot: (snapshot: ReadyTrackSessionSnapshot) => void;
 					onTrackChanged: (event: TrackChangedEvent) => Promise<void>;
 				};
 				internals.session = { root, setCover: vi.fn(), applyTheme: vi.fn() };
@@ -4704,7 +4670,7 @@ describe("ExtensionApp", () => {
 				expect(root.textContent).not.toContain("Initial pending");
 				current = latest;
 				internals.trackSession = { isCurrent: (snapshot) => snapshot === current, invalidate: vi.fn() };
-				internals.presentReadySnapshot(latest);
+				presentationOf(app).presentReadySnapshot(latest);
 				await vi.advanceTimersByTimeAsync(SCENE_TRANSITION_DURATION_MS);
 
 				expect(root.textContent).toContain("Latest pending");
@@ -4964,8 +4930,6 @@ describe("ExtensionApp", () => {
 				session: { root: HTMLElement; setCover: () => void; applyTheme: () => void };
 				currentTrack: TrackIdentity;
 				playbackTrackEpoch: number;
-				activeTrackTransition?: unknown;
-				pendingTrackPresentation?: unknown;
 				directionController: TrackTransitionDirectionController;
 				settings: { update: (patch: Partial<ExtensionSettings>) => void };
 				lyricsService: { load: () => Promise<LyricsLoadState>; invalidate: () => void };
@@ -4997,8 +4961,8 @@ describe("ExtensionApp", () => {
 			expect(loadingCalls.map(({ call }) => call[3]?.direction)).toEqual(["next", "previous"]);
 			expect(loadingCalls[0]?.result.generation).not.toBe(loadingCalls[1]?.result.generation);
 			expect(internals.playbackTrackEpoch).toBe(2);
-			expect(internals.activeTrackTransition).toBeUndefined();
-			expect(internals.pendingTrackPresentation).toBeUndefined();
+			expect(transitionsOf(app).activeTransition).toBeUndefined();
+			expect(transitionsOf(app).pendingPresentation).toBeUndefined();
 			expect(root.children).toHaveLength(1);
 			expect(root.textContent).toContain("Second epoch");
 			app.destroy();
