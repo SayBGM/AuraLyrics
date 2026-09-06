@@ -94,7 +94,7 @@ export class DocumentPipController {
 		root.append(coverLayer, scrim, vignette, borderFrame, content, closeButton, controlsElement);
 		doc.head.append(base, style);
 		doc.body.append(root);
-		this.installControlVisibility(root, pipWindow);
+		const disposeControlVisibility = this.installControlVisibility(root, pipWindow);
 		const coverController = new PipCoverTransitionController(coverLayer, (hasCover) => {
 			root.classList.toggle("cover-missing", !hasCover);
 		});
@@ -102,6 +102,7 @@ export class DocumentPipController {
 		const destroySession = () => {
 			if (sessionDestroyed) return;
 			sessionDestroyed = true;
+			disposeControlVisibility();
 			coverController.destroy();
 		};
 		let currentSettings = settings;
@@ -209,7 +210,7 @@ export class DocumentPipController {
 		button.setAttribute("aria-label", isPlaying ? "Pause" : "Play");
 	}
 
-	private installControlVisibility(root: HTMLElement, pipWindow: Window): void {
+	private installControlVisibility(root: HTMLElement, pipWindow: Window): () => void {
 		let hideTimer: number | undefined;
 		const show = () => {
 			root.classList.add("controls-visible");
@@ -221,18 +222,33 @@ export class DocumentPipController {
 				hideTimer = undefined;
 			}, 2200);
 		};
-		for (const eventName of ["pointermove", "mousemove", "focusin"] as const) {
+		const hide = () => {
+			if (hideTimer !== undefined) {
+				pipWindow.clearTimeout(hideTimer);
+				hideTimer = undefined;
+			}
+			root.classList.remove("controls-visible");
+		};
+		const showEvents = ["pointermove", "mousemove", "focusin"] as const;
+		const hideEvents = ["pointerleave", "mouseleave"] as const;
+		for (const eventName of showEvents) {
 			root.addEventListener(eventName, show);
 		}
-		for (const eventName of ["pointerleave", "mouseleave"] as const) {
-			root.addEventListener(eventName, () => {
-				if (hideTimer !== undefined) {
-					pipWindow.clearTimeout(hideTimer);
-					hideTimer = undefined;
-				}
-				root.classList.remove("controls-visible");
-			});
+		for (const eventName of hideEvents) {
+			root.addEventListener(eventName, hide);
 		}
+		return () => {
+			for (const eventName of showEvents) {
+				root.removeEventListener(eventName, show);
+			}
+			for (const eventName of hideEvents) {
+				root.removeEventListener(eventName, hide);
+			}
+			if (hideTimer !== undefined) {
+				pipWindow.clearTimeout(hideTimer);
+				hideTimer = undefined;
+			}
+		};
 	}
 
 	private applyRootSettings(root: HTMLElement, settings: ExtensionSettings): void {
