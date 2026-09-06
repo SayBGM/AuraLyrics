@@ -1,6 +1,7 @@
 import type { TrackTheme } from "../app/TrackThemeService";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import { EventEmitter } from "../shared/EventEmitter";
+import { applySharedRootSettings } from "../shared/settingsCssProperties";
 import { THEME_CSS_PROPERTIES } from "../shared/themeCssProperties";
 import { PipCoverTransitionController } from "./PipCoverTransitionController";
 
@@ -252,15 +253,7 @@ export class DocumentPipController {
 	}
 
 	private applyRootSettings(root: HTMLElement, settings: ExtensionSettings): void {
-		root.style.setProperty("--font-scale", String(settings.fontScale));
-		root.style.setProperty("--background-blur", `${settings.backgroundBlurPx}px`);
-		root.style.setProperty("--background-dim", String(settings.backgroundDim));
-		root.style.setProperty("--background-saturation", String(settings.backgroundSaturation));
-		root.style.setProperty("--vignette-strength", String(settings.vignetteStrength));
-		root.style.setProperty("--inactive-blur", `${settings.inactiveBlurPx}px`);
-		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
-		root.classList.toggle("reduce-motion", settings.reduceMotion || !settings.motionEnabled);
-		root.classList.toggle("motion-disabled", !settings.motionEnabled);
+		applySharedRootSettings(root, settings);
 		root.classList.toggle("interlude-style-frame", settings.interludeStyle === "frame");
 		root.classList.toggle("interlude-style-dots", settings.interludeStyle === "dots");
 		root.classList.toggle("interlude-style-wave", settings.interludeStyle === "wave");

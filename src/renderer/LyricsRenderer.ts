@@ -1,6 +1,7 @@
 import type { LyricsDocument, LyricsLoadDiagnostics } from "../lyrics/types";
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import { clamp } from "../shared/math";
+import { applySharedRootSettings } from "../shared/settingsCssProperties";
 import type { AnimatedGroup } from "./AnimatedGroup";
 import type { RhythmProfile } from "./AudioAnalysisWaveformService";
 import { createStatusScene, type StatusViewModel } from "./components/StatusScene";
@@ -265,19 +266,11 @@ export class LyricsRenderer {
 	}
 
 	private applyRootSettings(root: HTMLElement, settings: ExtensionSettings): void {
-		root.style.setProperty("--font-scale", String(settings.fontScale));
-		root.style.setProperty("--background-blur", `${settings.backgroundBlurPx}px`);
-		root.style.setProperty("--background-dim", String(settings.backgroundDim));
-		root.style.setProperty("--background-saturation", String(settings.backgroundSaturation));
-		root.style.setProperty("--vignette-strength", String(settings.vignetteStrength));
-		root.style.setProperty("--inactive-blur", `${settings.inactiveBlurPx}px`);
-		root.style.setProperty("--motion-intensity", String(settings.motionIntensity));
+		applySharedRootSettings(root, settings);
 		root.style.setProperty("--spring-softness", String(settings.springSoftness));
 		root.style.fontFamily = `${settings.fontFamily}, sans-serif`;
 		root.dataset.highlightEffect = settings.highlightEffect;
 		root.dataset.highlightMotion = settings.highlightMotion;
-		root.classList.toggle("reduce-motion", settings.reduceMotion || !settings.motionEnabled);
-		root.classList.toggle("motion-disabled", !settings.motionEnabled);
 	}
 
 	private applyRhythmProfile(root: HTMLElement, rhythm: RhythmProfile | undefined): void {
