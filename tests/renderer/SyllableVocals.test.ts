@@ -154,3 +154,45 @@ describe("SyllableVocals live spring tuning", () => {
 		expect(after.glow.position).not.toBe(liveSprings(control).glow.position);
 	});
 });
+
+describe("SyllableVocals per-frame dirty check", () => {
+	const settledVocals = (): { vocals: SyllableVocals; syllable: HTMLElement } => {
+		const vocals = new SyllableVocals(vocal, false, DEFAULT_SETTINGS);
+		const syllable = vocals.element.querySelector<HTMLElement>(".syllable.synced");
+		if (!syllable) {
+			throw new Error("Expected a synced syllable element.");
+		}
+		// Let the springs come to rest on a fixed timestamp.
+		for (let frame = 0; frame < 240; frame += 1) {
+			vocals.animate(5, 1 / 60);
+		}
+		return { vocals, syllable };
+	};
+
+	test("writes nothing while the timestamp, the settings and the springs are unchanged", () => {
+		const { vocals, syllable } = settledVocals();
+		const setProperty = vi.spyOn(syllable.style, "setProperty");
+		const toggle = vi.spyOn(syllable.classList, "toggle");
+
+		vocals.animate(5, 1 / 60);
+
+		expect(setProperty).not.toHaveBeenCalled();
+		expect(toggle).not.toHaveBeenCalled();
+	});
+
+	test("resumes writing when the timestamp or the settings change", () => {
+		const { vocals, syllable } = settledVocals();
+		const setProperty = vi.spyOn(syllable.style, "setProperty");
+
+		vocals.animate(5.5, 1 / 60);
+
+		expect(setProperty).toHaveBeenCalled();
+		expect(syllable.style.getPropertyValue("--highlight-progress")).toContain("55");
+
+		setProperty.mockClear();
+		vocals.applySettings({ ...DEFAULT_SETTINGS, highlightMotion: "wave" });
+		vocals.animate(5.5, 1 / 60);
+
+		expect(setProperty).toHaveBeenCalled();
+	});
+});

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { LineVocal } from "../../src/lyrics/types";
 import { LineVocals } from "../../src/renderer/components/LineVocals";
 import { DEFAULT_SETTINGS } from "../../src/settings/settingsSchema";
@@ -55,5 +55,28 @@ describe("LineVocals highlighting", () => {
 		vocals.applySettings({ ...DEFAULT_SETTINGS, highlightMotion: "wave", reduceMotion: true });
 		vocals.animate(4);
 		expect(target?.style.transform).toBe("translateY(calc(var(--lyrics-size) * 0)) rotate(0deg) scaleX(1) scaleY(1)");
+	});
+
+	test("writes nothing when the same timestamp is animated twice", () => {
+		const vocals = new LineVocals(line, DEFAULT_SETTINGS);
+		const target = vocals.element.querySelector<HTMLElement>(".line.highlight-layout-host");
+		const glyphLayer = vocals.element.querySelector<HTMLElement>(".highlight-glyph-layer.highlight-target");
+		if (!target || !glyphLayer) {
+			throw new Error("Expected the line highlight elements.");
+		}
+		vocals.animate(4);
+		const setProperty = vi.spyOn(target.style, "setProperty");
+		const glyphSetProperty = vi.spyOn(glyphLayer.style, "setProperty");
+		const toggle = vi.spyOn(target.classList, "toggle");
+
+		vocals.animate(4);
+
+		expect(setProperty).not.toHaveBeenCalled();
+		expect(glyphSetProperty).not.toHaveBeenCalled();
+		expect(toggle).not.toHaveBeenCalled();
+
+		vocals.animate(4.5);
+
+		expect(setProperty).toHaveBeenCalled();
 	});
 });
