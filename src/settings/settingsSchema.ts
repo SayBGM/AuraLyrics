@@ -96,7 +96,6 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 
 export const PRESETS: Record<Exclude<LyricsVisualPreset, "custom">, Partial<ExtensionSettings>> = {
 	immersive: {
-		backgroundEnabled: true,
 		backgroundBlurPx: 10,
 		backgroundDim: 0.36,
 		backgroundSaturation: 1.05,
@@ -106,7 +105,6 @@ export const PRESETS: Record<Exclude<LyricsVisualPreset, "custom">, Partial<Exte
 		glowStrength: 0.8,
 	},
 	clean: {
-		backgroundEnabled: true,
 		backgroundBlurPx: 18,
 		backgroundDim: 0.78,
 		backgroundSaturation: 0.8,
@@ -116,7 +114,6 @@ export const PRESETS: Record<Exclude<LyricsVisualPreset, "custom">, Partial<Exte
 		glowStrength: 0.25,
 	},
 	karaoke: {
-		backgroundEnabled: true,
 		backgroundBlurPx: 28,
 		backgroundDim: 0.68,
 		backgroundSaturation: 1.05,
@@ -203,7 +200,7 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		lyricsDelayMs: clampNumericSetting("lyricsDelayMs", settings.lyricsDelayMs, defaults.lyricsDelayMs),
 		fontScale: clampNumericSetting("fontScale", fontScale, defaults.fontScale),
 		fontFamily: normalizeString(settings.fontFamily, 256) ?? defaults.fontFamily,
-		backgroundEnabled: true,
+		backgroundEnabled: normalizeBoolean(settings.backgroundEnabled, defaults.backgroundEnabled),
 		backgroundBlurPx: clampNumericSetting("backgroundBlurPx", settings.backgroundBlurPx, defaults.backgroundBlurPx),
 		backgroundDim: clampNumericSetting("backgroundDim", settings.backgroundDim, defaults.backgroundDim),
 		backgroundSaturation: clampNumericSetting("backgroundSaturation", settings.backgroundSaturation, defaults.backgroundSaturation),

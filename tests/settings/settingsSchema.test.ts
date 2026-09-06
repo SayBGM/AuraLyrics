@@ -50,13 +50,13 @@ describe("settingsSchema", () => {
 		});
 	});
 
-	test("normalizes removed album background and invalid language values", () => {
+	test("honors a real backgroundEnabled value and normalizes invalid language values", () => {
 		const settings = normalizeLoadedSettings({
 			backgroundEnabled: false,
 			language: "fr" as never,
 		});
 
-		expect(settings.backgroundEnabled).toBe(true);
+		expect(settings.backgroundEnabled).toBe(false);
 		expect(settings.language).toBe("en");
 	});
 
@@ -137,14 +137,15 @@ describe("settingsSchema", () => {
 		["motionEnabled", 1],
 		["reduceMotion", null],
 		["debugMode", []],
+		["backgroundEnabled", "false"],
 	])("accepts only real booleans for %s", (key, invalid) => {
 		const settings = normalizeLoadedSettings({ [key]: invalid } as never);
 
 		expect(settings[key as keyof typeof DEFAULT_SETTINGS]).toBe(DEFAULT_SETTINGS[key as keyof typeof DEFAULT_SETTINGS]);
 	});
 
-	test("keeps the forced background policy even for a real false value", () => {
-		expect(normalizeLoadedSettings({ backgroundEnabled: false }).backgroundEnabled).toBe(true);
+	test("respects a real false backgroundEnabled value instead of forcing it back on", () => {
+		expect(normalizeLoadedSettings({ backgroundEnabled: false }).backgroundEnabled).toBe(false);
 	});
 
 	test("normalizes non-finite, string, clamped, and integral numeric settings", () => {
