@@ -90,6 +90,7 @@ export class ExtensionApp {
 	private playbackTrackEpoch = 0;
 	private activeTrackTransition?: ActiveTrackTransition;
 	private pendingTrackPresentation?: PendingTrackPresentation;
+	private pendingSettingsFrame?: number;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		this.storage = new SpicetifyStorageAdapter(spicetify);
@@ -118,6 +119,15 @@ export class ExtensionApp {
 			userAgent: `spicetify v${this.spicetify.Config?.version ?? "unknown"} AuraLyrics`,
 			musixmatchToken: settings.providers.musixmatchToken,
 			proxyBaseUrl: this.resolveProviderProxyBaseUrl(settings.providers),
+			refreshMusixmatchToken: async () => {
+				try {
+					const token = await this.musixmatchTokenService.refresh(this.resolveProviderProxyBaseUrl(settings.providers));
+					this.settings.update({ providers: { ...settings.providers, musixmatchToken: token } });
+					return token;
+				} catch {
+					return undefined;
+				}
+			},
 		}));
 		this.trackSession = new TrackSessionController(
 			{
@@ -159,7 +169,7 @@ export class ExtensionApp {
 			this.player.trackChanged.subscribe((event) => void this.onTrackChanged(event)),
 			this.player.playbackChanged.subscribe((isPlaying) => this.onPlaybackChanged(isPlaying)),
 			this.player.progressChanged.subscribe(() => this.onProgressChanged()),
-			this.settings.subscribe(() => void this.applySettings()),
+			this.settings.subscribe((settings) => this.onSettingsChanged(settings)),
 			this.settings.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
 			this.trackLyricsDelays.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
 			this.pip.closed.subscribe(() => this.closePip(false))
@@ -176,6 +186,7 @@ export class ExtensionApp {
 		this.endOutroTrackEpoch();
 		this.revealedSnapshot = undefined;
 		this.themeGeneration += 1;
+		this.cancelPendingSettingsFrame();
 		this.session = undefined;
 		this.started = false;
 		this.clock?.stop();
@@ -188,6 +199,7 @@ export class ExtensionApp {
 		this.settingsView.destroy();
 		this.pip.close();
 		this.renderer.destroy();
+		this.cache.flush();
 	}
 
 	private async togglePip(): Promise<void> {
@@ -263,9 +275,11 @@ export class ExtensionApp {
 		this.introGate.discardPendingSession();
 		this.outroController.discardSession();
 		this.themeGeneration += 1;
+		this.cancelPendingSettingsFrame();
 		this.clock?.stop();
 		this.clock = undefined;
 		this.renderer.destroy();
+		this.waveformService.clear();
 		if (closeWindow) {
 			this.pip.close();
 		}
@@ -556,7 +570,7 @@ export class ExtensionApp {
 
 	private tick(deltaTime: number): void {
 		if (!this.session) return;
-		const settings = this.settings.get();
+		const settings = this.appliedSettings;
 		if (!this.isPlaybackActive) {
 			if (this.hasMountedLyricsPresentation()) {
 				this.renderer.update(this.playbackSynchronizer.timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
@@ -574,6 +588,37 @@ export class ExtensionApp {
 		if (this.hasMountedLyricsPresentation() && !didRenderLyrics) {
 			this.renderer.update(timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
 		}
+	}
+
+	/**
+	 * Settings-change subscription entry point. Structural changes (which rebuild the presented
+	 * lyrics) apply immediately, same as before. Live changes (sliders, toggles that only affect
+	 * CSS/visual output) are coalesced onto a single pending PiP-window animation frame so a burst
+	 * of rapid input (e.g. dragging a slider) applies only the latest settings once per frame.
+	 */
+	private onSettingsChanged(settings: ExtensionSettings): void {
+		const change = rendererSettingsChange(this.appliedSettings, settings);
+		const pipWindow = this.session?.window;
+		if (change !== "structural" && pipWindow && typeof pipWindow.requestAnimationFrame === "function") {
+			if (this.pendingSettingsFrame === undefined) {
+				this.pendingSettingsFrame = pipWindow.requestAnimationFrame(() => {
+					this.pendingSettingsFrame = undefined;
+					void this.applySettings();
+				});
+			}
+			return;
+		}
+		this.cancelPendingSettingsFrame();
+		void this.applySettings();
+	}
+
+	private cancelPendingSettingsFrame(): void {
+		if (this.pendingSettingsFrame === undefined) {
+			return;
+		}
+		const frame = this.pendingSettingsFrame;
+		this.pendingSettingsFrame = undefined;
+		this.session?.window.cancelAnimationFrame(frame);
 	}
 
 	private async applySettings(): Promise<void> {

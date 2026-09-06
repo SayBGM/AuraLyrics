@@ -946,6 +946,91 @@ describe("ExtensionApp", () => {
 		expect(mount).not.toHaveBeenCalled();
 	});
 
+	test("coalesces a burst of live settings changes into a single pending animation frame", () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const applySessionSettings = vi.fn();
+		const applyRendererSettings = vi.fn();
+		let rafCallback: FrameRequestCallback | undefined;
+		const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+			rafCallback = callback;
+			return 7;
+		});
+		const internals = app as unknown as {
+			session: { window: Window; root: HTMLElement; applySettings: typeof applySessionSettings };
+			settings: { update: (patch: Partial<ExtensionSettings>) => void };
+			renderer: { applySettings: typeof applyRendererSettings; destroy: () => void };
+		};
+		internals.session = { window, root: document.createElement("main"), applySettings: applySessionSettings };
+		internals.renderer = { applySettings: applyRendererSettings, destroy: vi.fn() };
+		app.start();
+
+		internals.settings.update({ fontScale: 1.1 });
+		internals.settings.update({ fontScale: 1.2 });
+		internals.settings.update({ fontScale: 1.3 });
+
+		expect(requestAnimationFrame).toHaveBeenCalledOnce();
+		expect(applySessionSettings).not.toHaveBeenCalled();
+		expect(applyRendererSettings).not.toHaveBeenCalled();
+
+		rafCallback?.(0);
+
+		expect(applySessionSettings).toHaveBeenCalledOnce();
+		expect(applyRendererSettings).toHaveBeenCalledOnce();
+		expect(applySessionSettings).toHaveBeenCalledWith(expect.objectContaining({ fontScale: 1.3 }));
+		app.destroy();
+	});
+
+	test("applies a structural settings change immediately and cancels a pending live-change frame", () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const applySessionSettings = vi.fn();
+		const applyRendererSettings = vi.fn();
+		vi.spyOn(window, "requestAnimationFrame").mockReturnValue(7);
+		const cancelAnimationFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+		const internals = app as unknown as {
+			session: { window: Window; root: HTMLElement; applySettings: typeof applySessionSettings };
+			settings: { update: (patch: Partial<ExtensionSettings>) => void };
+			renderer: { applySettings: typeof applyRendererSettings; destroy: () => void };
+		};
+		internals.session = { window, root: document.createElement("main"), applySettings: applySessionSettings };
+		internals.renderer = { applySettings: applyRendererSettings, destroy: vi.fn() };
+		app.start();
+
+		internals.settings.update({ fontScale: 1.1 });
+		expect(applySessionSettings).not.toHaveBeenCalled();
+
+		internals.settings.update({ showTranslation: false });
+
+		expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
+		expect(applySessionSettings).toHaveBeenCalledOnce();
+		expect(applySessionSettings).toHaveBeenCalledWith(expect.objectContaining({ fontScale: 1.1, showTranslation: false }));
+		app.destroy();
+	});
+
+	test("cancels a pending live-settings frame on closePip so it never applies after close", () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const applySessionSettings = vi.fn();
+		vi.spyOn(window, "requestAnimationFrame").mockReturnValue(7);
+		const cancelAnimationFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+		const internals = app as unknown as {
+			session: { window: Window; root: HTMLElement; applySettings: typeof applySessionSettings };
+			settings: { update: (patch: Partial<ExtensionSettings>) => void };
+			closePip: (closeWindow?: boolean) => void;
+		};
+		internals.session = { window, root: document.createElement("main"), applySettings: applySessionSettings };
+		app.start();
+
+		internals.settings.update({ fontScale: 1.1 });
+		expect(applySessionSettings).not.toHaveBeenCalled();
+
+		internals.closePip(false);
+
+		expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
+		app.destroy();
+	});
+
 	test("rebuilds ready lyrics for a structural setting change", async () => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);

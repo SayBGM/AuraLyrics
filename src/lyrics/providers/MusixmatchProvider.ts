@@ -60,6 +60,10 @@ export class MusixmatchProvider implements LyricsProvider {
 	}
 
 	public async fetch(track: TrackIdentity, context: ProviderContext): Promise<ProviderResult> {
+		return this.fetchWithToken(track, context, true);
+	}
+
+	private async fetchWithToken(track: TrackIdentity, context: ProviderContext, allowTokenRefresh: boolean): Promise<ProviderResult> {
 		const params = new URLSearchParams({
 			format: "json",
 			namespace: "lyrics_synched",
@@ -80,10 +84,17 @@ export class MusixmatchProvider implements LyricsProvider {
 			cosmosGet: context.cosmosGet,
 			cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
 			fetch: context.fetch,
+			signal: context.signal,
 		});
 		const macro = payload.message?.body?.macro_calls;
 		const matcher = macro?.["matcher.track.get"]?.message;
 		if (!matcher || matcher.header.status_code !== 200) {
+			if (allowTokenRefresh && matcher?.header.status_code === 401 && context.refreshMusixmatchToken) {
+				const refreshedToken = await context.refreshMusixmatchToken();
+				if (refreshedToken) {
+					return this.fetchWithToken(track, { ...context, musixmatchToken: refreshedToken }, false);
+				}
+			}
 			if (matcher && this.isTemporaryBlock(matcher.header)) {
 				return {
 					ok: false,
@@ -95,8 +106,14 @@ export class MusixmatchProvider implements LyricsProvider {
 			return { ok: false, reason: "error", message: matcher?.header.hint ?? "Musixmatch request failed." };
 		}
 		const trackId = this.extractTrackId(matcher.body);
+		if (trackId && context.signal?.aborted) {
+			return { ok: false, reason: "error", message: "aborted" };
+		}
 		const translations = trackId ? await this.fetchTranslations(trackId, context) : undefined;
 		if (trackId) {
+			if (context.signal?.aborted) {
+				return { ok: false, reason: "error", message: "aborted" };
+			}
 			const richsync = await this.fetchRichsync(trackId, track.durationMs, context, translations);
 			if (richsync) {
 				return { ok: true, lyrics: richsync };
@@ -129,6 +146,7 @@ export class MusixmatchProvider implements LyricsProvider {
 				cosmosGet: context.cosmosGet,
 				cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
 				fetch: context.fetch,
+				signal: context.signal,
 			});
 			const map = buildMusixmatchTranslationMap(payload.message?.body?.translations_list ?? []);
 			return map.size > 0 ? map : undefined;
@@ -153,6 +171,7 @@ export class MusixmatchProvider implements LyricsProvider {
 				cosmosGet: context.cosmosGet,
 				cosmosHeaders: MUSIXMATCH_DESKTOP_HEADERS,
 				fetch: context.fetch,
+				signal: context.signal,
 			});
 			const richsyncBody = payload.message?.body?.richsync?.richsync_body;
 			return richsyncBody ? parseMusixmatchRichsync(richsyncBody, translations) : undefined;

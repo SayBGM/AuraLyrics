@@ -643,7 +643,9 @@ describe("SettingsView", () => {
 
 	test("uses a bounded dark modal with only the panel body scrolling", () => {
 		const { content } = openView();
-		const css = content.querySelector("style")?.textContent ?? "";
+		// Settings styles are injected once into the owner document's <head> (guarded by id) rather
+		// than re-parsed into the modal container on every open.
+		const css = document.getElementById("aura-lyrics-settings-styles")?.textContent ?? "";
 		const containerRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-container");
 		const mainSectionRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection");
 		const originalCreditsRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits");

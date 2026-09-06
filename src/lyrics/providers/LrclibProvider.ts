@@ -104,6 +104,7 @@ export class LrclibProvider implements LyricsProvider {
 				const targetUrl = `https://lrclib.net/api/search?${params.toString()}`;
 				response = await context.fetch(applyUrlProxy(targetUrl, context.proxyBaseUrl), {
 					headers: { "x-user-agent": context.userAgent },
+					signal: context.signal,
 				});
 			} catch (error) {
 				return { ok: false, reason: "error", message: errorMessage(error) };

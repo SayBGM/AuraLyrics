@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { DEFAULT_SETTINGS, SettingsStore } from "../../src/settings/SettingsStore";
+import { DEFAULT_SETTINGS, type ExtensionSettings, SettingsStore } from "../../src/settings/SettingsStore";
 
 class MemoryStorage {
 	private readonly values = new Map<string, string>();
@@ -225,22 +225,39 @@ describe("SettingsStore", () => {
 		expect(events).toEqual(["persist", "first", "second"]);
 	});
 
-	test("keeps no-op updates observable and isolates listener snapshots", () => {
+	test("keeps no-op updates observable and emits the same frozen reference to every listener", () => {
 		const storage = new MemoryStorage();
 		const set = vi.spyOn(storage, "set");
 		const store = new SettingsStore(storage);
 		set.mockClear();
-		const observedFontScales: number[] = [];
-		store.subscribe((settings) => {
-			settings.fontScale = 2.4;
-		});
-		store.subscribe((settings) => observedFontScales.push(settings.fontScale));
+		const seen: ExtensionSettings[] = [];
+		store.subscribe((settings) => seen.push(settings));
+		store.subscribe((settings) => seen.push(settings));
 
 		store.update({ preset: "immersive" }, false);
 
 		expect(set).toHaveBeenCalledOnce();
-		expect(observedFontScales).toEqual([DEFAULT_SETTINGS.fontScale]);
+		expect(seen[0]).toBe(seen[1]);
+		expect(seen[0]).toBe(store.get());
 		expect(store.get().fontScale).toBe(DEFAULT_SETTINGS.fontScale);
+	});
+
+	test("get() returns the same frozen reference until the next update, then a new one", () => {
+		const store = new SettingsStore(new MemoryStorage());
+
+		const first = store.get();
+		const second = store.get();
+		expect(second).toBe(first);
+		expect(Object.isFrozen(first)).toBe(true);
+		expect(() => {
+			(first as { fontScale: number }).fontScale = 99;
+		}).toThrow();
+
+		const updated = store.update({ fontScale: 1.5 });
+
+		expect(store.get()).toBe(updated);
+		expect(store.get()).not.toBe(first);
+		expect(Object.isFrozen(store.get())).toBe(true);
 	});
 
 	test("reset and preset changes persist before emitting their normalized state", () => {

@@ -45,6 +45,7 @@ const MIN_BAR_HEIGHT = 0.14;
 const DEFAULT_BAR_COUNT = 18;
 const ANALYSIS_RETRY_DELAYS_MS = [400, 1_200] as const;
 const ANALYSIS_FAILURE_CACHE_MS = 5_000;
+const MAX_ANALYSIS_CACHE_ENTRIES = 5;
 
 export class AudioAnalysisWaveformService {
 	private readonly analysisCache = new Map<string, AnalysisCacheEntry>();
@@ -56,10 +57,12 @@ export class AudioAnalysisWaveformService {
 	public async getAnalysis(track: TrackIdentity): Promise<AudioAnalysisData | undefined> {
 		const cached = this.analysisCache.get(track.uri);
 		if (cached?.kind === "positive") {
+			this.touchAnalysisCache(track.uri, cached);
 			return cached.data;
 		}
 		if (cached?.kind === "negative") {
 			if (Date.now() < cached.expiresAt) {
+				this.touchAnalysisCache(track.uri, cached);
 				return cached.data;
 			}
 			this.analysisCache.delete(track.uri);
@@ -77,9 +80,9 @@ export class AudioAnalysisWaveformService {
 				const data = await acquisition;
 				if (this.isCurrentEntry(track.uri, entry)) {
 					if (hasUsableSegments(data)) {
-						this.analysisCache.set(track.uri, { kind: "positive", data });
+						this.touchAnalysisCache(track.uri, { kind: "positive", data });
 					} else {
-						this.analysisCache.set(track.uri, {
+						this.touchAnalysisCache(track.uri, {
 							kind: "negative",
 							data,
 							expiresAt: Date.now() + ANALYSIS_FAILURE_CACHE_MS,
@@ -101,6 +104,27 @@ export class AudioAnalysisWaveformService {
 		this.analysisGenerations.set(uri, (this.analysisGenerations.get(uri) ?? 0) + 1);
 		this.analysisCache.delete(uri);
 		this.inFlight.delete(uri);
+	}
+
+	/** Drops all cached/pending analysis. Call when the PiP session that consumes them closes. */
+	public clear(): void {
+		this.analysisCache.clear();
+		this.analysisGenerations.clear();
+		this.inFlight.clear();
+	}
+
+	/** Marks `uri` as most-recently-used and evicts the least-recently-used entry past the cache bound. */
+	private touchAnalysisCache(uri: string, entry: AnalysisCacheEntry): void {
+		this.analysisCache.delete(uri);
+		this.analysisCache.set(uri, entry);
+		while (this.analysisCache.size > MAX_ANALYSIS_CACHE_ENTRIES) {
+			const oldestKey = this.analysisCache.keys().next().value;
+			if (oldestKey === undefined) {
+				break;
+			}
+			this.analysisCache.delete(oldestKey);
+			this.analysisGenerations.delete(oldestKey);
+		}
 	}
 
 	public async loadProfile(track: TrackIdentity): Promise<TrackWaveformProfile> {

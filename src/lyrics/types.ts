@@ -107,6 +107,10 @@ export type ProviderContext = {
 	userAgent: string;
 	musixmatchToken?: string;
 	proxyBaseUrl?: string;
+	/** Aborted when a newer load supersedes this one, or on explicit invalidation. Best-effort: not all transports support it. */
+	signal?: AbortSignal;
+	/** Refreshes the Musixmatch user token (e.g. after a 401) and persists it on success. Absent when no token service is wired up. */
+	refreshMusixmatchToken?: () => Promise<string | undefined>;
 };
 
 export interface LyricsProvider {

@@ -582,4 +582,66 @@ describe("LyricsService", () => {
 		expect(fallbackFetch).not.toHaveBeenCalled();
 		expect(cache.get(pendingTrack.uri)).toBeUndefined();
 	});
+
+	test("invalidate aborts the in-flight request's signal", async () => {
+		const pending = deferred<void>();
+		let capturedSignal: AbortSignal | undefined;
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async (_requestedTrack, providerContext) => {
+				capturedSignal = providerContext.signal;
+				await pending.promise;
+				return { ok: false, reason: "no-lyrics" };
+			},
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), new LyricsCache(), () => context, { maxAttempts: 1, retryDelayMs: 0 });
+
+		const loading = service.load(track, DEFAULT_SETTINGS);
+		expect(capturedSignal?.aborted).toBe(false);
+
+		service.invalidate();
+
+		expect(capturedSignal?.aborted).toBe(true);
+		pending.resolve();
+		await expect(loading).resolves.toEqual({ status: "idle" });
+	});
+
+	test("concurrent loads for the same URI and refresh flag fetch only once", async () => {
+		let calls = 0;
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => {
+				calls += 1;
+				return { ok: true, lyrics: lineLyrics("Shared") };
+			},
+		};
+		const service = new LyricsService(new ProviderRegistry([provider]), new LyricsCache(), () => context, { maxAttempts: 1, retryDelayMs: 0 });
+
+		const [first, second] = await Promise.all([service.load(track, DEFAULT_SETTINGS, false), service.load(track, DEFAULT_SETTINGS, false)]);
+
+		expect(calls).toBe(1);
+		expect(first).toBe(second);
+	});
+
+	test("a second load for the same key after the first settles fetches again", async () => {
+		let calls = 0;
+		const provider: LyricsProvider = {
+			id: "spotify",
+			supports: () => true,
+			fetch: async () => {
+				calls += 1;
+				return { ok: true, lyrics: lineLyrics(`Call ${calls}`) };
+			},
+		};
+		const cache = new LyricsCache();
+		const service = new LyricsService(new ProviderRegistry([provider]), cache, () => context, { maxAttempts: 1, retryDelayMs: 0 });
+
+		await service.load(track, DEFAULT_SETTINGS, false);
+		cache.delete(track.uri);
+		await service.load(track, DEFAULT_SETTINGS, false);
+
+		expect(calls).toBe(2);
+	});
 });
