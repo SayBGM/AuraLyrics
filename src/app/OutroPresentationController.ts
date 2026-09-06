@@ -59,6 +59,11 @@ export class OutroPresentationController {
 		return this.resultFor(target, this.snapshot);
 	}
 
+	/** URI of the track this controller is scoped to, or `undefined` between track epochs. */
+	public activeTrackUri(): string | undefined {
+		return this.activeUri;
+	}
+
 	public currentKind(): "inactive" | "lyrics" | "metadata" {
 		return this.presentation ?? "inactive";
 	}

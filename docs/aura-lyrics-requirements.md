@@ -125,7 +125,6 @@
 - LyricsRenderer active/sung/idle, 3줄 context, provider source 표시를 테스트한다.
 - LyricsRenderer가 마지막 가사 이후 seek에서도 마지막 sung line을 기준으로 스크롤하는지 테스트한다.
 - SpicetifyPlayerAdapter가 `pause/play`를 우선 사용하고 없을 때만 `togglePlay`로 fallback하는지 테스트한다.
-- MusicStateMachine 전이를 테스트한다.
 
 ## 12. 구현 완료 상태
 - Document Picture-in-Picture 기반 PiP shell 구현 완료.

@@ -35,8 +35,6 @@ export type TrackSessionWaveformService = {
 	invalidateAnalysis(track: TrackIdentity): void;
 };
 
-type BuildPseudoKaraoke = (lyrics: LineLyrics, analysis: AudioAnalysisData | undefined, durationMs: number) => SyllableLyrics | null;
-
 type PseudoKaraokeEntry = {
 	source: LineLyrics;
 	lyrics: SyllableLyrics;
@@ -67,7 +65,7 @@ export class TrackSessionController {
 	public constructor(
 		private readonly lyricsService: TrackSessionLyricsService,
 		private readonly waveformService: TrackSessionWaveformService,
-		private readonly buildPseudoKaraoke: BuildPseudoKaraoke = buildPseudoKaraokeLyrics
+		private readonly buildPseudoKaraoke: typeof buildPseudoKaraokeLyrics = buildPseudoKaraokeLyrics
 	) {}
 
 	public getSnapshot(): TrackSessionSnapshot {
@@ -204,7 +202,7 @@ export class TrackSessionController {
 		if (!this.isPresentationCurrent(generation, presentationRevision)) {
 			return;
 		}
-		const lyrics = this.buildPseudoKaraoke(lineLyrics, analysis, track.durationMs);
+		const lyrics = this.buildPseudoKaraoke(lineLyrics, analysis);
 		if (lyrics) {
 			this.touchPseudoKaraoke(track.uri, { source: lineLyrics, lyrics });
 		}
