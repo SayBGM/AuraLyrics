@@ -1398,6 +1398,18 @@ const renderScenario = async (page: Page, name: ScenarioName, timestamp?: number
 		return;
 	}
 	await expect(page.locator(".aura-lyrics")).toBeVisible();
+	await settleHighlightLayout(page);
+};
+
+// The highlight decoration layout re-measures once fonts have loaded, on an animation
+// frame. Wait for that pass so assertions never read a half-invalidated layout.
+const settleHighlightLayout = async (page: Page): Promise<void> => {
+	await page.evaluate(async () => {
+		await document.fonts.ready;
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+	});
 };
 
 const metadataMetrics = async (page: Page) =>
