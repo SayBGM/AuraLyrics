@@ -1,7 +1,9 @@
 import type { Interlude as InterludeMetadata } from "../../lyrics/types";
 import type { InterludeStyle } from "../../settings/SettingsStore";
 import type { UiLanguage } from "../../settings/settingsSchema";
+import type { AnimatedGroup } from "../AnimatedGroup";
 import type { InterludeWaveform } from "../AudioAnalysisWaveformService";
+import { applyLifecycleClasses, createLifecycleCache } from "../highlight/highlightStyleWriter";
 import { interludeProgressAt, progressPercent } from "../interludeProgress";
 
 export class InterludeView {
@@ -10,7 +12,12 @@ export class InterludeView {
 	public readonly endTime: number;
 	public isActive = false;
 	public progress = 0;
+	/** Frame-style interludes stay out of the lyrics track, so their element never needs styling. */
+	public attached = true;
 	private readonly bars: HTMLSpanElement[] = [];
+	private readonly classes = createLifecycleCache();
+	private lastProgressValue?: string;
+	private lastBarProgress = Number.NaN;
 
 	public constructor(
 		private readonly interlude: InterludeMetadata,
@@ -38,14 +45,24 @@ export class InterludeView {
 	public animate(timestamp: number): void {
 		const active = timestamp >= this.interlude.startTime && timestamp <= this.interlude.endTime;
 		this.isActive = active;
-		this.element.classList.toggle("active", active);
-		this.element.classList.toggle("sung", timestamp > this.interlude.endTime);
-		this.element.classList.toggle("idle", timestamp < this.interlude.startTime);
 		const progress = interludeProgressAt(timestamp, this.interlude.startTime, this.interlude.endTime);
 		this.progress = progress;
-		this.element.style.setProperty("--interlude-progress", progressPercent(progress));
-		if (this.style === "wave") {
+		if (!this.attached) {
+			return;
+		}
+		applyLifecycleClasses(
+			this.element,
+			{ active, sung: timestamp > this.interlude.endTime, idle: timestamp < this.interlude.startTime },
+			this.classes
+		);
+		const percent = progressPercent(progress);
+		if (this.lastProgressValue !== percent) {
+			this.element.style.setProperty("--interlude-progress", percent);
+			this.lastProgressValue = percent;
+		}
+		if (this.style === "wave" && this.lastBarProgress !== progress) {
 			this.updateBarProgress(progress);
+			this.lastBarProgress = progress;
 		}
 	}
 
@@ -69,12 +86,18 @@ export class InterludeView {
 		if (count === 0) {
 			return;
 		}
-		for (const [index, bar] of this.bars.entries()) {
+		for (let index = 0; index < count; index += 1) {
+			const bar = this.bars[index];
 			const fill = Math.min(1, Math.max(0, progress * count - index));
-			bar.style.setProperty("--bar-fill-ratio", String(Math.round(fill * 1000) / 1000));
+			const value = String(Math.round(fill * 1000) / 1000);
+			if (bar.style.getPropertyValue("--bar-fill-ratio") !== value) {
+				bar.style.setProperty("--bar-fill-ratio", value);
+			}
 		}
 	}
 }
+
+export const isActiveInterlude = (group: AnimatedGroup): group is InterludeView => group instanceof InterludeView && group.isActive;
 
 const fallbackBars = (): number[] => [0.24, 0.52, 0.8, 0.42, 0.68, 0.34, 0.58, 0.86, 0.46, 0.64, 0.3, 0.72];
 

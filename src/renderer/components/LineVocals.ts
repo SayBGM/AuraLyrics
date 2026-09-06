@@ -1,10 +1,19 @@
 import type { LineVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
-import { sampleHighlightMotion } from "../animation/highlightMotion";
+import { createHighlightMotionSample, sampleHighlightMotionInto } from "../animation/highlightMotion";
 import { clamp } from "../animation/Spline";
 import { HighlightDecorationTrack, type HighlightDecorationTrackProvider } from "../highlight/HighlightDecorationLayout";
+import {
+	applyLifecycleClasses,
+	createHighlightStyleCache,
+	createLifecycleCache,
+	lifecycleUnchanged,
+	writeHighlightStyles,
+} from "../highlight/highlightStyleWriter";
 import { createTranslationElement } from "../lyricsTrackHelpers";
 
+// Whole-line highlighting is sampled straight from the motion curves: unlike SyllableVocals
+// there are no per-glyph springs here, so `springSoftness` deliberately has no effect on it.
 export class LineVocals implements HighlightDecorationTrackProvider {
 	public readonly element: HTMLDivElement;
 	public readonly startTime: number;
@@ -17,6 +26,14 @@ export class LineVocals implements HighlightDecorationTrackProvider {
 	private motionIntensity = 1;
 	private glowStrength = 0.8;
 	private reducedMotion = false;
+	private readonly groupClasses = createLifecycleCache();
+	private readonly lineClasses = createLifecycleCache();
+	private readonly glyphClasses = createLifecycleCache();
+	private readonly styles = createHighlightStyleCache();
+	private readonly motionSample = createHighlightMotionSample();
+	private styleVersion = 0;
+	private lastStyleVersion = -1;
+	private lastProgress = Number.NaN;
 
 	public constructor(
 		private readonly line: LineVocal,
@@ -60,34 +77,49 @@ export class LineVocals implements HighlightDecorationTrackProvider {
 	public animate(timestamp: number): void {
 		const active = timestamp >= this.line.startTime && timestamp < this.holdEndTime;
 		const sung = timestamp >= this.holdEndTime;
+		const groupState = { active, sung, idle: !active && !sung };
 		const progress = clamp((timestamp - this.line.startTime) / Math.max(this.line.endTime - this.line.startTime, 0.001), 0, 1);
-		const motion = sampleHighlightMotion(this.highlightMotion, progress, 0, this.motionIntensity, this.reducedMotion);
-		this.element.classList.toggle("active", active);
-		this.element.classList.toggle("sung", sung);
-		this.element.classList.toggle("idle", !active && !sung);
-		const highlightActive = progress > 0 && progress < 1;
-		const highlightSung = timestamp >= this.line.endTime;
-		const highlightIdle = timestamp <= this.line.startTime;
-		this.lineElement.classList.toggle("active", highlightActive);
-		this.lineElement.classList.toggle("sung", highlightSung);
-		this.lineElement.classList.toggle("idle", highlightIdle);
-		this.glyphLayer.classList.toggle("active", highlightActive);
-		this.glyphLayer.classList.toggle("sung", highlightSung);
-		this.glyphLayer.classList.toggle("idle", highlightIdle);
-		this.lineElement.style.scale = String(motion.scale);
-		this.lineElement.style.transform = `translateY(calc(var(--lyrics-size) * ${motion.yOffset})) rotate(${motion.rotationDeg}deg) scaleX(${motion.scaleX}) scaleY(${motion.scaleY})`;
-		this.lineElement.style.setProperty("--highlight-progress", `${progress * 100}%`);
-		this.lineElement.style.setProperty("--highlight-progress-ratio", String(progress));
-		this.lineElement.style.setProperty("--gradient-progress", `${progress * 100}%`);
-		this.lineElement.style.setProperty("--line-progress", `${progress * 100}%`);
-		this.glyphLayer.style.setProperty("--highlight-ripple", String(motion.ripple));
-		const effectiveGlow = motion.glow * (this.glowStrength / 0.8);
-		this.glyphLayer.style.setProperty("--text-shadow-opacity", `${effectiveGlow * 100}%`);
-		this.glyphLayer.style.setProperty("--text-shadow-blur-radius", `${4 + effectiveGlow * 8}px`);
+		const highlightState = {
+			active: progress > 0 && progress < 1,
+			sung: timestamp >= this.line.endTime,
+			idle: timestamp <= this.line.startTime,
+		};
+		if (
+			this.lastProgress === progress &&
+			this.lastStyleVersion === this.styleVersion &&
+			lifecycleUnchanged(this.groupClasses, groupState) &&
+			lifecycleUnchanged(this.lineClasses, highlightState)
+		) {
+			return;
+		}
+		const motion = sampleHighlightMotionInto(this.motionSample, this.highlightMotion, progress, 0, this.motionIntensity, this.reducedMotion);
+		applyLifecycleClasses(this.element, groupState, this.groupClasses);
+		applyLifecycleClasses(this.lineElement, highlightState, this.lineClasses);
+		applyLifecycleClasses(this.glyphLayer, highlightState, this.glyphClasses);
+		writeHighlightStyles(
+			this.lineElement,
+			this.glyphLayer,
+			{
+				scale: motion.scale,
+				scaleX: motion.scaleX,
+				scaleY: motion.scaleY,
+				yOffset: motion.yOffset,
+				rotationDeg: motion.rotationDeg,
+				glow: motion.glow,
+				ripple: motion.ripple,
+				progress,
+			},
+			this.glowStrength,
+			this.styles
+		);
 		this.highlightDecorationTrack.setProgress(progress);
+		this.lastProgress = progress;
+		this.lastStyleVersion = this.styleVersion;
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
+		// Invalidate the per-frame dirty check: the same timestamp can now produce different motion.
+		this.styleVersion += 1;
 		this.highlightMotion = settings.highlightMotion;
 		this.motionIntensity = Math.max(0, settings.motionIntensity);
 		this.glowStrength = Math.max(0, settings.glowStrength);

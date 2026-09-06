@@ -2433,7 +2433,7 @@ describe("ExtensionApp", () => {
 		expect(root.querySelector(".syllable-group.active")).not.toBeNull();
 		expect(root.querySelector(".vocals.lead .syllable-row.active")?.textContent).toContain("Lead");
 		const syllable = root.querySelector<HTMLElement>(".vocals.lead .syllable.active");
-		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("25%");
+		expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe("25%");
 		app.destroy();
 	});
 

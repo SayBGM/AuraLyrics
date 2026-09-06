@@ -100,7 +100,7 @@ describe("SyllableVocals live spring tuning", () => {
 
 		vocals.animate(timestamp, 1 / 60, true);
 
-		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe(expectedProgress);
+		expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe(expectedProgress);
 		expect(syllable?.style.getPropertyValue("--synthetic-wake-progress")).toBe("");
 		expect(syllable?.className).not.toContain("synthetic-wake");
 	});

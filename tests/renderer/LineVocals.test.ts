@@ -23,12 +23,12 @@ describe("LineVocals highlighting", () => {
 		expect(glyphLayer?.contains(vocals.getHighlightDecorationTracks()[0].decorationLayer)).toBe(false);
 
 		vocals.animate(4);
-		expect(target?.style.getPropertyValue("--line-progress")).toBe("50%");
+		expect(target?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(vocals.element.classList.contains("active")).toBe(true);
 		expect(target?.classList.contains("active")).toBe(true);
 
 		vocals.animate(6.5);
-		expect(target?.style.getPropertyValue("--line-progress")).toBe("100%");
+		expect(target?.style.getPropertyValue("--highlight-progress")).toBe("100%");
 		expect(vocals.element.classList.contains("active")).toBe(true);
 		expect(target?.classList.contains("sung")).toBe(true);
 

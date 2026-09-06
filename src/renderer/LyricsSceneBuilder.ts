@@ -7,6 +7,7 @@ import { LineVocals } from "./components/LineVocals";
 import { createProviderCreditElement, ProviderCredit } from "./components/ProviderCredit";
 import { SyllableVocals } from "./components/SyllableVocals";
 import type { HighlightDecorationTrack } from "./highlight/HighlightDecorationLayout";
+import { applyLifecycleClasses, createLifecycleCache } from "./highlight/highlightStyleWriter";
 import { interludeKey } from "./interludeProgress";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { applyHoldTiming, createTranslationElement, syllableToLine } from "./lyricsTrackHelpers";
@@ -98,8 +99,12 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 			(background) => new SyllableVocals(background, true, settings, rhythm, vocalOptions, ownerDocument)
 		);
 		const vocalRanges = [item.lead, ...(item.background ?? [])];
-		const startTime = Math.min(...vocalRanges.map((vocal) => vocal.startTime));
-		const endTime = Math.max(...vocalRanges.map((vocal) => vocal.endTime));
+		let startTime = Number.POSITIVE_INFINITY;
+		let endTime = Number.NEGATIVE_INFINITY;
+		for (const vocal of vocalRanges) {
+			startTime = Math.min(startTime, vocal.startTime);
+			endTime = Math.max(endTime, vocal.endTime);
+		}
 		group.classList.toggle("has-parenthetical", lead.hasParenthetical || backgrounds.some((background) => background.hasParenthetical));
 		highlightTracks.push(...lead.getHighlightDecorationTracks());
 		for (const background of backgrounds) {
@@ -110,12 +115,17 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 			group.append(createTranslationElement(translatedText, ownerDocument));
 		}
 		let liveSettings = settings;
+		const groupClasses = createLifecycleCache();
 		const animated: AnimatedGroup = {
 			element: group,
 			startTime,
 			endTime,
 			setHoldEndTime: (holdEndTime) => {
-				animated.endTime = Math.max(holdEndTime, ...vocalRanges.map((vocal) => vocal.endTime));
+				let held = holdEndTime;
+				for (const vocal of vocalRanges) {
+					held = Math.max(held, vocal.endTime);
+				}
+				animated.endTime = held;
 			},
 			animate: (timestamp, deltaTime) => {
 				lead.animate(timestamp, deltaTime, liveSettings.reduceMotion || !liveSettings.motionEnabled);
@@ -123,10 +133,9 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 					background.animate(timestamp, deltaTime, liveSettings.reduceMotion || !liveSettings.motionEnabled);
 				}
 				const active = timestamp >= startTime && timestamp < animated.endTime;
-				group.classList.toggle("active", active);
-				group.classList.toggle("sung", timestamp >= animated.endTime);
-				group.classList.toggle("idle", timestamp < startTime);
+				applyLifecycleClasses(group, { active, sung: timestamp >= animated.endTime, idle: timestamp < startTime }, groupClasses);
 			},
+			isSettled: () => lead.isSettled() && backgrounds.every((background) => background.isSettled()),
 			applySettings: (nextSettings) => {
 				liveSettings = nextSettings;
 				lead.applySettings(nextSettings);
@@ -155,9 +164,11 @@ const appendInterlude = (
 	}
 	const interlude = new InterludeView(item, settings.interludeStyle, settings.language, waveforms[interludeKey(item)], lyricsTrack.ownerDocument);
 	groups.push(interlude);
-	if (settings.interludeStyle !== "frame") {
-		lyricsTrack.append(interlude.element);
+	if (settings.interludeStyle === "frame") {
+		interlude.attached = false;
+		return;
 	}
+	lyricsTrack.append(interlude.element);
 };
 
 const appendTimedCredit = (groups: AnimatedGroup[], lyricsTrack: HTMLElement, documentEndTime: number, options: LyricsSceneOptions): void => {

@@ -699,7 +699,7 @@ describe("LyricsRenderer", () => {
 			[3, "75%"],
 		] as const) {
 			renderer.update(timestamp, 1 / 60);
-			expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe(expectedProgress);
+			expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe(expectedProgress);
 		}
 		expect(scene?.matches(".aura-lyrics.synthetic-timing[data-timing-source='synthetic']")).toBe(true);
 		expect(scene?.style.getPropertyValue("--motion-intensity")).toBe("0");
@@ -708,7 +708,7 @@ describe("LyricsRenderer", () => {
 
 		renderer.applySettings({ ...DEFAULT_SETTINGS, motionEnabled: false });
 		expect(scene?.classList.contains("reduce-motion")).toBe(true);
-		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("75%");
+		expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe("75%");
 
 		renderer.applySettings({ ...DEFAULT_SETTINGS, reduceMotion: true });
 		expect(scene?.classList.contains("reduce-motion")).toBe(true);
@@ -739,7 +739,7 @@ describe("LyricsRenderer", () => {
 		const syllable = root.querySelector<HTMLElement>(".syllable.synced");
 
 		expect(scene?.classList.contains("synthetic-timing")).toBe(false);
-		expect(syllable?.style.getPropertyValue("--gradient-progress")).toBe("50%");
+		expect(syllable?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(syllable?.style.getPropertyValue("--synthetic-wake-progress")).toBe("");
 		expect(syllable?.className).not.toContain("synthetic-wake");
 		expect(root.querySelector(".synthetic-wake-halo")).toBeNull();
@@ -928,7 +928,7 @@ describe("LyricsRenderer", () => {
 
 		const activeLine = root.querySelector<HTMLElement>(".vocals-group.active");
 		const line = activeLine?.querySelector<HTMLElement>(".line.highlight-layout-host");
-		expect(line?.style.getPropertyValue("--line-progress")).toBe("50%");
+		expect(line?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(line?.style.getPropertyValue("--highlight-progress")).toBe("50%");
 		expect(root.querySelector(".line-group")).not.toBeNull();
 	});

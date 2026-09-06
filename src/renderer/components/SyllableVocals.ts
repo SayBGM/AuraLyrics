@@ -1,11 +1,20 @@
 import type { Syllable, SyllableVocal } from "../../lyrics/types";
 import type { ExtensionSettings } from "../../settings/SettingsStore";
 import type { RhythmProfile } from "../AudioAnalysisWaveformService";
-import { sampleHighlightMotion } from "../animation/highlightMotion";
+import { createHighlightMotionSample, sampleHighlightMotionInto } from "../animation/highlightMotion";
 import { clamp } from "../animation/Spline";
 import { Spring } from "../animation/Spring";
 import { SPRING_PROFILES, springTuningForSoftness } from "../animation/springTuning";
 import { HighlightDecorationTrack, type HighlightDecorationTrackProvider } from "../highlight/HighlightDecorationLayout";
+import {
+	applyLifecycleClasses,
+	createHighlightStyleCache,
+	createLifecycleCache,
+	type HighlightStyleCache,
+	type LifecycleClassCache,
+	lifecycleUnchanged,
+	writeHighlightStyles,
+} from "../highlight/highlightStyleWriter";
 import { melismaBoostForProgress } from "../lyrics/koreanTail";
 import { buildSyllableRows, type SyllableRowsOptions, type SyllableVisualGroup } from "../lyrics/syllableRows";
 
@@ -18,6 +27,13 @@ type LiveSyllable = {
 	index: number;
 	highlightUnits: number;
 	progress: number;
+	isMelisma: boolean;
+	classes: LifecycleClassCache;
+	styles: HighlightStyleCache;
+	melismaStep?: string;
+	lastProgress: number;
+	lastImmediate?: boolean;
+	lastStyleVersion: number;
 };
 
 type LiveHighlightTrack = {
@@ -26,6 +42,7 @@ type LiveHighlightTrack = {
 	startTime: number;
 	endTime: number;
 	decoration: HighlightDecorationTrack;
+	classes: LifecycleClassCache;
 };
 
 type LiveRow = {
@@ -33,6 +50,7 @@ type LiveRow = {
 	startTime: number;
 	endTime: number;
 	holdEndTime: number;
+	classes: LifecycleClassCache;
 };
 
 type SyllableRow = {
@@ -50,6 +68,10 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 	private motionIntensity = 1;
 	private glowStrength = 0.8;
 	private highlightMotion: ExtensionSettings["highlightMotion"] = "spring";
+	private readonly elementClasses = createLifecycleCache();
+	private readonly motionSample = createHighlightMotionSample();
+	private styleVersion = 0;
+	private settled = false;
 
 	public constructor(
 		private readonly vocal: SyllableVocal,
@@ -67,21 +89,35 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 	public animate(timestamp: number, deltaTime: number, immediate = false): void {
 		const active = timestamp >= this.vocal.startTime && timestamp <= this.vocal.endTime;
 		const sung = timestamp > this.vocal.endTime;
-		this.element.classList.toggle("active", active);
-		this.element.classList.toggle("sung", sung);
-		this.element.classList.toggle("idle", !active && !sung);
+		applyLifecycleClasses(this.element, { active, sung, idle: !active && !sung }, this.elementClasses);
 
 		for (const row of this.liveRows) {
 			const rowActive = timestamp >= row.startTime && timestamp < row.holdEndTime;
 			const rowSung = timestamp >= row.holdEndTime;
-			row.element.classList.toggle("active", rowActive);
-			row.element.classList.toggle("sung", rowSung);
-			row.element.classList.toggle("idle", !rowActive && !rowSung);
+			applyLifecycleClasses(row.element, { active: rowActive, sung: rowSung, idle: !rowActive && !rowSung }, row.classes);
 		}
 
+		let settled = true;
 		for (const live of this.liveSyllables) {
 			const progress = clamp((timestamp - live.metadata.startTime) / Math.max(live.metadata.endTime - live.metadata.startTime, 0.001), 0, 1);
-			const motion = sampleHighlightMotion(this.highlightMotion, progress, live.index, this.motionIntensity, immediate);
+			const state = {
+				active: progress > 0 && progress < 1,
+				sung: timestamp >= live.metadata.endTime,
+				idle: timestamp <= live.metadata.startTime,
+			};
+			const sleeping = live.scale.isSleeping() && live.yOffset.isSleeping() && live.glow.isSleeping();
+			// Nothing observable can differ from the previous frame: identical progress and
+			// settings, settled springs, and the same lifecycle classes already on the element.
+			if (
+				sleeping &&
+				live.lastProgress === progress &&
+				live.lastImmediate === immediate &&
+				live.lastStyleVersion === this.styleVersion &&
+				lifecycleUnchanged(live.classes, state)
+			) {
+				continue;
+			}
+			const motion = sampleHighlightMotionInto(this.motionSample, this.highlightMotion, progress, live.index, this.motionIntensity, immediate);
 			const scale = motion.scale;
 			const yOffset = motion.yOffset;
 			const glow = motion.glow;
@@ -97,36 +133,58 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 			let nextScale = live.scale.update(deltaTime);
 			let nextYOffset = live.yOffset.update(deltaTime);
 			let nextGlow = live.glow.update(deltaTime);
-			if (live.element.classList.contains("korean-melisma-sustain")) {
+			if (live.isMelisma) {
 				const melisma = melismaBoostForProgress(progress);
 				nextScale += melisma.scale * this.motionIntensity;
 				nextYOffset += melisma.yOffset * this.motionIntensity;
 				nextGlow = Math.max(nextGlow, melisma.glow);
-				live.element.style.setProperty("--melisma-step", String(melisma.step));
+				const step = String(melisma.step);
+				if (live.melismaStep !== step) {
+					live.element.style.setProperty("--melisma-step", step);
+					live.melismaStep = step;
+				}
 			}
-			live.element.classList.toggle("active", progress > 0 && progress < 1);
-			live.element.classList.toggle("sung", timestamp >= live.metadata.endTime);
-			live.element.classList.toggle("idle", timestamp <= live.metadata.startTime);
-			live.element.style.scale = nextScale.toString();
-			live.element.style.transform = `translateY(calc(var(--lyrics-size) * ${nextYOffset})) rotate(${motion.rotationDeg}deg) scaleX(${motion.scaleX}) scaleY(${motion.scaleY})`;
-			const effectiveGlow = nextGlow * (this.glowStrength / 0.8);
-			live.element.style.setProperty("--text-shadow-opacity", `${effectiveGlow * 100}%`);
-			live.element.style.setProperty("--text-shadow-blur-radius", `${4 + effectiveGlow * 8}px`);
-			live.element.style.setProperty("--highlight-progress", `${progress * 100}%`);
-			live.element.style.setProperty("--highlight-progress-ratio", String(progress));
-			live.element.style.setProperty("--gradient-progress", `${progress * 100}%`);
-			live.element.style.setProperty("--highlight-ripple", String(motion.ripple));
+			applyLifecycleClasses(live.element, state, live.classes);
+			writeHighlightStyles(
+				live.element,
+				live.element,
+				{
+					scale: nextScale,
+					scaleX: motion.scaleX,
+					scaleY: motion.scaleY,
+					yOffset: nextYOffset,
+					rotationDeg: motion.rotationDeg,
+					glow: nextGlow,
+					ripple: motion.ripple,
+					progress,
+				},
+				this.glowStrength,
+				live.styles
+			);
 			live.progress = progress;
+			live.lastProgress = progress;
+			live.lastImmediate = immediate;
+			live.lastStyleVersion = this.styleVersion;
+			if (!(live.scale.isSleeping() && live.yOffset.isSleeping() && live.glow.isSleeping())) {
+				settled = false;
+			}
 		}
+		this.settled = settled;
 
 		for (const track of this.liveHighlightTracks) {
 			track.decoration.updateProgressFromPieces();
 			const progress = track.decoration.getProgress();
-			track.element.classList.toggle("active", progress > 0 && progress < 1);
-			track.element.classList.toggle("sung", timestamp >= track.endTime);
-			track.element.classList.toggle("idle", timestamp <= track.startTime);
-			track.element.style.setProperty("--highlight-track-progress-ratio", String(progress));
+			applyLifecycleClasses(
+				track.element,
+				{ active: progress > 0 && progress < 1, sung: timestamp >= track.endTime, idle: timestamp <= track.startTime },
+				track.classes
+			);
 		}
+	}
+
+	/** True once every live spring has come to rest, so the group can leave the animated window. */
+	public isSettled(): boolean {
+		return this.settled;
 	}
 
 	public getHighlightDecorationTracks(): readonly HighlightDecorationTrack[] {
@@ -134,6 +192,8 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 	}
 
 	public applySettings(settings: ExtensionSettings): void {
+		// Invalidate the per-frame dirty check: the same timestamp can now produce different motion.
+		this.styleVersion += 1;
 		const backgroundScale = this.isBackground ? 0.72 : 1;
 		this.motionIntensity = Math.max(0, settings.motionIntensity) * backgroundScale;
 		this.glowStrength = Math.max(0, settings.glowStrength) * backgroundScale;
@@ -168,6 +228,7 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 				startTime: rowModel.startTime,
 				endTime: rowModel.endTime,
 				holdEndTime: rowModel.holdEndTime,
+				classes: createLifecycleCache(),
 			});
 			this.element.append(row.element);
 		}
@@ -199,12 +260,19 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 				fallbackWeight: syllable.highlightUnits,
 			})),
 		});
+		let startTime = Number.POSITIVE_INFINITY;
+		let endTime = Number.NEGATIVE_INFINITY;
+		for (const syllable of syllables) {
+			startTime = Math.min(startTime, syllable.metadata.startTime);
+			endTime = Math.max(endTime, syllable.metadata.endTime);
+		}
 		this.liveHighlightTracks.push({
 			element: parent,
 			syllables,
-			startTime: Math.min(...syllables.map((syllable) => syllable.metadata.startTime)),
-			endTime: Math.max(...syllables.map((syllable) => syllable.metadata.endTime)),
+			startTime,
+			endTime,
 			decoration,
+			classes: createLifecycleCache(),
 		});
 	}
 
@@ -232,6 +300,11 @@ export class SyllableVocals implements HighlightDecorationTrackProvider {
 			index: this.liveSyllables.length,
 			highlightUnits: textUnits(text),
 			progress: 0,
+			isMelisma: span.classList.contains("korean-melisma-sustain"),
+			classes: createLifecycleCache(),
+			styles: createHighlightStyleCache(),
+			lastProgress: Number.NaN,
+			lastStyleVersion: -1,
 		} satisfies LiveSyllable;
 		this.liveSyllables.push(live);
 		return live;

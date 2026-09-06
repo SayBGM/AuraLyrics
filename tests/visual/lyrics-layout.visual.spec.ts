@@ -505,7 +505,7 @@ test("synthetic karaoke uses the themed syllable wake without a visible timing m
 		const syntheticStyleSource = Array.from(document.querySelectorAll("style"))
 			.map((style) => style.textContent ?? "")
 			.find((source) => source.includes('.aura-lyrics.synthetic-timing[data-highlight-effect="fill"] .syllable.active'));
-		const gradientProgress = activeSyllable.style.getPropertyValue("--gradient-progress");
+		const gradientProgress = activeSyllable.style.getPropertyValue("--highlight-progress");
 		return {
 			hasSyntheticClass: lyrics.classList.contains("synthetic-timing"),
 			timingSource: lyrics.dataset.timingSource,
