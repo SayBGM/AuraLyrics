@@ -556,7 +556,7 @@ export class ExtensionApp {
 
 	private tick(deltaTime: number): void {
 		if (!this.session) return;
-		const settings = this.settings.get();
+		const settings = this.appliedSettings;
 		if (!this.isPlaybackActive) {
 			if (this.hasMountedLyricsPresentation()) {
 				this.renderer.update(this.playbackSynchronizer.timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);

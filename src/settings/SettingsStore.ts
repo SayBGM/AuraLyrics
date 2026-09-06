@@ -1,4 +1,4 @@
-import type { EventEmitter } from "../shared/EventEmitter";
+import { EventEmitter } from "../shared/EventEmitter";
 import { SettingsPersistence, type SettingsStorage } from "./SettingsPersistence";
 import { DEFAULT_SETTINGS, type ExtensionSettings, type LyricsVisualPreset, PRESET_CONTROLLED_KEYS, PRESETS } from "./settingsSchema";
 
@@ -22,20 +22,31 @@ export type SettingsUpdateResult = {
 	settings: ExtensionSettings;
 };
 
+/** Recursively freezes a plain object/array tree. Settings snapshots are read-only from `get()` onward. */
+const deepFreeze = <T>(value: T): T => {
+	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+		Object.freeze(value);
+		for (const key of Object.keys(value as Record<string, unknown>)) {
+			deepFreeze((value as Record<string, unknown>)[key]);
+		}
+	}
+	return value;
+};
+
 export class SettingsStore {
 	private readonly persistence: SettingsPersistence;
 	private settings: ExtensionSettings;
-	private readonly listeners = new Set<(settings: ExtensionSettings) => void>();
+	private readonly listeners = new EventEmitter<ExtensionSettings>();
 	public readonly persistenceFailed: EventEmitter<void>;
 
 	public constructor(storage: SettingsStorage) {
 		this.persistence = new SettingsPersistence(storage);
 		this.persistenceFailed = this.persistence.failed;
-		this.settings = this.persistence.load();
+		this.settings = deepFreeze(this.persistence.load());
 	}
 
 	public get(): ExtensionSettings {
-		return structuredClone(this.settings);
+		return this.settings;
 	}
 
 	public update(patch: Partial<ExtensionSettings>, markCustom = true): ExtensionSettings {
@@ -43,14 +54,14 @@ export class SettingsStore {
 	}
 
 	public updateWithResult(patch: Partial<ExtensionSettings>, markCustom = true): SettingsUpdateResult {
-		this.settings = this.merge(patch, markCustom);
+		this.settings = deepFreeze(this.merge(patch, markCustom));
 		const persisted = this.persist();
 		this.emit();
 		return { persisted, settings: this.get() };
 	}
 
 	public preview(patch: Partial<ExtensionSettings>, markCustom = true): ExtensionSettings {
-		this.settings = this.merge(patch, markCustom);
+		this.settings = deepFreeze(this.merge(patch, markCustom));
 		this.emit();
 		return this.get();
 	}
@@ -76,15 +87,14 @@ export class SettingsStore {
 	}
 
 	public resetWithResult(): SettingsUpdateResult {
-		this.settings = structuredClone(DEFAULT_SETTINGS);
+		this.settings = deepFreeze(structuredClone(DEFAULT_SETTINGS));
 		const persisted = this.persist();
 		this.emit();
 		return { persisted, settings: this.get() };
 	}
 
 	public subscribe(listener: (settings: ExtensionSettings) => void): () => void {
-		this.listeners.add(listener);
-		return () => this.listeners.delete(listener);
+		return this.listeners.subscribe(listener);
 	}
 
 	private merge(patch: Partial<ExtensionSettings>, markCustom: boolean): ExtensionSettings {
@@ -109,8 +119,6 @@ export class SettingsStore {
 	}
 
 	private emit(): void {
-		for (const listener of this.listeners) {
-			listener(this.get());
-		}
+		this.listeners.emit(this.get());
 	}
 }
