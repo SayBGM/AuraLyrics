@@ -6,6 +6,8 @@ export type RequestMusixmatchOptions<T> = {
 	cosmosGet: (url: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
 	cosmosHeaders: Record<string, string>;
 	fetch: typeof fetch;
+	/** Aborts the fetch-based (proxy) path. CosmosAsync has no cancellation support, so this has no effect there. */
+	signal?: AbortSignal;
 };
 
 /**
@@ -19,6 +21,7 @@ export const requestMusixmatch = async <T>(options: RequestMusixmatchOptions<T>)
 	if (options.proxyBaseUrl) {
 		const response = await options.fetch(applyUrlProxy(options.targetUrl, options.proxyBaseUrl), {
 			headers: options.cosmosHeaders,
+			signal: options.signal,
 		});
 		return (await response.json()) as T;
 	}

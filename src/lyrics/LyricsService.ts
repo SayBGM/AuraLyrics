@@ -6,8 +6,16 @@ import { ProviderLoadPipeline, type ProviderLoadPipelineOptions } from "./Provid
 import type { ProviderRegistry } from "./providers/ProviderRegistry";
 import type { LyricsLoadDiagnostics, LyricsLoadState, ProviderContext, TrackIdentity } from "./types";
 
+type InFlightEntry = {
+	/** The requestId this entry was started under. A stale entry (superseded by an unrelated key) is never reused. */
+	requestId: number;
+	promise: Promise<LyricsLoadState>;
+};
+
 export class LyricsService {
 	private requestId = 0;
+	private abortController?: AbortController;
+	private readonly inFlight = new Map<string, InFlightEntry>();
 	private readonly cacheRepository: LyricsCacheRepository;
 	private readonly providerPipeline: ProviderLoadPipeline;
 
@@ -27,13 +35,50 @@ export class LyricsService {
 
 	public invalidate(): void {
 		this.requestId += 1;
+		this.abortController?.abort();
+		this.abortController = undefined;
 	}
 
 	public async load(track: TrackIdentity, settings: ExtensionSettings, refresh = false): Promise<LyricsLoadState> {
-		const currentRequest = ++this.requestId;
 		if (track.isLocal) {
+			this.requestId += 1;
+			this.abortController?.abort();
+			this.abortController = undefined;
 			return { status: "empty", track, reason: "unsupported-local" };
 		}
+
+		const key = `${track.uri}|${refresh}`;
+		const existing = this.inFlight.get(key);
+		if (existing && existing.requestId === this.requestId) {
+			return existing.promise;
+		}
+
+		const currentRequest = ++this.requestId;
+		this.abortController?.abort();
+		const controller = new AbortController();
+		this.abortController = controller;
+
+		const entry: InFlightEntry = { requestId: currentRequest, promise: Promise.resolve({ status: "idle" }) };
+		entry.promise = this.loadNetwork(track, settings, refresh, currentRequest, controller.signal).finally(() => {
+			if (this.inFlight.get(key) === entry) {
+				this.inFlight.delete(key);
+			}
+		});
+		this.inFlight.set(key, entry);
+		return entry.promise;
+	}
+
+	public refreshCooldowns(): void {
+		this.providerPipeline.clearCooldowns();
+	}
+
+	private async loadNetwork(
+		track: TrackIdentity,
+		settings: ExtensionSettings,
+		refresh: boolean,
+		currentRequest: number,
+		signal: AbortSignal
+	): Promise<LyricsLoadState> {
 		const providers = this.registry.ordered(settings);
 		const primaryProvider = providers.find((provider) => provider.supports(track));
 		const cached = this.cacheRepository.lookup(track.uri, primaryProvider?.id, refresh);
@@ -52,7 +97,7 @@ export class LyricsService {
 			};
 		}
 
-		const loaded = await this.providerPipeline.load(track, settings, providers, () => currentRequest === this.requestId);
+		const loaded = await this.providerPipeline.load(track, settings, providers, () => currentRequest === this.requestId, signal);
 		if (currentRequest !== this.requestId) {
 			return { status: "idle" };
 		}
@@ -75,9 +120,5 @@ export class LyricsService {
 			return { status: "error", track, message: loaded.state.message, diagnostics };
 		}
 		return { status: "idle" };
-	}
-
-	public refreshCooldowns(): void {
-		this.providerPipeline.clearCooldowns();
 	}
 }

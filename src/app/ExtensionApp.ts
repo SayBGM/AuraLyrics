@@ -118,6 +118,15 @@ export class ExtensionApp {
 			userAgent: `spicetify v${this.spicetify.Config?.version ?? "unknown"} AuraLyrics`,
 			musixmatchToken: settings.providers.musixmatchToken,
 			proxyBaseUrl: this.resolveProviderProxyBaseUrl(settings.providers),
+			refreshMusixmatchToken: async () => {
+				try {
+					const token = await this.musixmatchTokenService.refresh(this.resolveProviderProxyBaseUrl(settings.providers));
+					this.settings.update({ providers: { ...settings.providers, musixmatchToken: token } });
+					return token;
+				} catch {
+					return undefined;
+				}
+			},
 		}));
 		this.trackSession = new TrackSessionController(
 			{
