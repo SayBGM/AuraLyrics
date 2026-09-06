@@ -1,8 +1,8 @@
 import type { LyricsDocument, LyricsLoadDiagnostics } from "../lyrics/types";
 import type { ExtensionSettings } from "../settings/SettingsStore";
+import { clamp } from "../shared/math";
 import type { AnimatedGroup } from "./AnimatedGroup";
 import type { RhythmProfile } from "./AudioAnalysisWaveformService";
-import { clamp } from "./animation/Spline";
 import { createStatusScene, type StatusViewModel } from "./components/StatusScene";
 import { createTrackMetadataScene, type TrackMetadataViewModel } from "./components/TrackMetadata";
 import { HighlightDecorationLayoutController } from "./highlight/HighlightDecorationLayout";
@@ -10,11 +10,14 @@ import { InterludeFrameController } from "./InterludeFrameController";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
 import { buildLyricsScene } from "./LyricsSceneBuilder";
 import { LyricsViewportController } from "./LyricsViewportController";
-import { SceneTransitionController, type SceneTransitionDirection, type SceneTransitionHandle } from "./SceneTransitionController";
+import { type ScenePresentationOptions, ScenePresenter, type SceneResources } from "./ScenePresenter";
+import type { SceneTransitionHandle } from "./SceneTransitionController";
+import { buildSceneShell, createSceneAnnouncer, staticLyricsLabel } from "./sceneShell";
 
 export type { StatusViewModel } from "./components/StatusScene";
 export { interludeKey } from "./interludeProgress";
 export type { InterludeWaveformMap } from "./interludeWaveforms";
+export type { ScenePresentationOptions } from "./ScenePresenter";
 
 let nextRendererInstanceId = 0;
 
@@ -29,28 +32,6 @@ export type LyricsRendererMountOptions = {
 	rhythm?: RhythmProfile;
 };
 
-export type ScenePresentationOptions = {
-	direction?: SceneTransitionDirection;
-	animate?: boolean;
-};
-
-type SceneResources = {
-	scene: HTMLDivElement;
-	container?: HTMLDivElement;
-	lyricsViewport?: HTMLDivElement;
-	lyricsTrack?: HTMLDivElement;
-	groups: AnimatedGroup[];
-	viewportController?: LyricsViewportController;
-	highlightLayoutController?: HighlightDecorationLayoutController;
-	interludeFrameController?: InterludeFrameController;
-	layoutSettings?: Pick<ExtensionSettings, "alignmentMode" | "fontFamily" | "fontScale">;
-	layoutFrame?: number;
-	cleaned: boolean;
-	/** Indices animated on the previous frame, so leaving groups still get one settling pass. */
-	animatedIndices?: Set<number>;
-	lastAnimatedTimestamp?: number;
-};
-
 // Groups are visited in a window around the playhead: far enough ahead that a group is
 // already idle before it can matter, and far enough behind that it has settled into `sung`.
 const ANIMATION_LOOKAHEAD_SEC = 4;
@@ -58,20 +39,14 @@ const ANIMATION_SETTLE_SEC = 4;
 // Anything larger than a plausible frame delta is a seek and forces a full pass.
 const ANIMATION_SEEK_THRESHOLD_SEC = 1;
 
-const ROOT_PRESENTATION_CLASSES = [
-	"interlude-active",
-	"interlude-frame-active",
-	"interlude-style-frame",
-	"interlude-style-dots",
-	"interlude-style-wave",
-] as const;
-
+/**
+ * Public face of the renderer: builds scenes (lyrics, status, metadata, album art), drives the
+ * per-frame animation window, and pushes settings into the live scene. The scene lifecycle
+ * itself — transitions, retirement and cleanup — lives in `ScenePresenter`.
+ */
 export class LyricsRenderer {
 	private readonly rendererInstanceId = ++nextRendererInstanceId;
-	private hostRoot?: HTMLElement;
-	private sceneTransitionController?: SceneTransitionController;
-	private currentScene?: SceneResources;
-	private readonly retiredScenes = new Set<SceneResources>();
+	private readonly presenter = new ScenePresenter();
 
 	public mount(
 		root: HTMLElement,
@@ -79,27 +54,9 @@ export class LyricsRenderer {
 		presentation?: ScenePresentationOptions
 	): SceneTransitionHandle {
 		const ownerDocument = root.ownerDocument;
-		const container = ownerDocument.createElement("div");
-		container.className = "aura-lyrics";
+		const { container, lyricsViewport, lyricsTrack } = buildSceneShell(ownerDocument, settings, timingSource, this.rendererInstanceId);
 		this.applyRootSettings(container, settings);
 		this.applyRhythmProfile(container, rhythm);
-		const lyricsViewport = ownerDocument.createElement("div");
-		lyricsViewport.className = "lyrics-viewport";
-		const lyricsTrack = ownerDocument.createElement("div");
-		lyricsTrack.className = `lyrics-track align-${settings.alignmentMode}`;
-		lyricsViewport.append(lyricsTrack);
-		container.append(lyricsViewport);
-		if (timingSource === "synthetic") {
-			const description = ownerDocument.createElement("span");
-			description.id = `aura-synthetic-timing-description-${this.rendererInstanceId}`;
-			description.className = "aura-visually-hidden";
-			description.dataset.auraSyntheticDescription = "true";
-			description.textContent = syntheticTimingLabel(settings.language);
-			container.classList.add("synthetic-timing");
-			container.dataset.timingSource = "synthetic";
-			container.setAttribute("aria-describedby", description.id);
-			container.append(description);
-		}
 		const scene = buildLyricsScene(lyricsTrack, {
 			lyrics,
 			settings,
@@ -120,11 +77,7 @@ export class LyricsRenderer {
 			lyricsViewport.tabIndex = 0;
 			lyricsViewport.setAttribute("aria-label", staticLyricsLabel(settings.language));
 		} else {
-			const announcer = ownerDocument.createElement("span");
-			announcer.className = "aura-visually-hidden";
-			announcer.setAttribute("role", "status");
-			announcer.setAttribute("aria-live", "polite");
-			announcer.setAttribute("aria-atomic", "true");
+			const announcer = createSceneAnnouncer(ownerDocument);
 			container.append(announcer);
 			viewportController = new LyricsViewportController(
 				lyricsTrack,
@@ -156,7 +109,7 @@ export class LyricsRenderer {
 			layoutSettings: layoutSettingsFor(settings),
 			cleaned: false,
 		};
-		const handle = this.presentScene(
+		const handle = this.presenter.present(
 			root,
 			resources,
 			presentation,
@@ -167,7 +120,7 @@ export class LyricsRenderer {
 			highlightLayoutController.start();
 			highlightLayoutController.flush();
 		} else {
-			this.scheduleLayoutUpdate(resources);
+			this.presenter.scheduleLayoutUpdate(resources);
 		}
 		return handle;
 	}
@@ -181,7 +134,7 @@ export class LyricsRenderer {
 		const ownerDocument = root.ownerDocument;
 		const container = createStatusScene(ownerDocument, status);
 		this.applyRootSettings(container, settings);
-		return this.presentScene(
+		return this.presenter.present(
 			root,
 			{ scene: container, container, groups: [], cleaned: false },
 			presentation,
@@ -198,7 +151,7 @@ export class LyricsRenderer {
 	): SceneTransitionHandle {
 		const container = createTrackMetadataScene(root.ownerDocument, metadata);
 		this.applyRootSettings(container, settings);
-		return this.presentScene(
+		return this.presenter.present(
 			root,
 			{ scene: container, container, groups: [], cleaned: false },
 			presentation,
@@ -212,7 +165,7 @@ export class LyricsRenderer {
 		scene.className = "album-art-scene";
 		scene.dataset.scene = "album-art";
 		scene.setAttribute("aria-hidden", "true");
-		return this.presentScene(
+		return this.presenter.present(
 			root,
 			{ scene, groups: [], cleaned: false },
 			presentation,
@@ -222,13 +175,51 @@ export class LyricsRenderer {
 	}
 
 	public update(timestamp: number, deltaTime: number): void {
-		const scene = this.currentScene;
+		const scene = this.presenter.current;
 		if (!scene || scene.cleaned) {
 			return;
 		}
 		this.animateGroups(scene, timestamp, deltaTime);
 		scene.interludeFrameController?.update();
 		scene.viewportController?.update();
+	}
+
+	public applySettings(settings: ExtensionSettings): void {
+		if (settings.reduceMotion || !settings.motionEnabled) {
+			this.presenter.finishTransition();
+		}
+		const scene = this.presenter.current;
+		if (!scene || scene.cleaned) {
+			return;
+		}
+		if (scene.container) {
+			this.applyRootSettings(scene.container, settings);
+		}
+		if (scene.lyricsTrack) {
+			for (const alignment of ["natural", "center", "left"] as const) {
+				scene.lyricsTrack.classList.toggle(`align-${alignment}`, settings.alignmentMode === alignment);
+			}
+		}
+		const layoutChanged = !sameLayoutSettings(scene.layoutSettings, settings);
+		// New settings can change what any group renders, so the next frame runs a full pass.
+		scene.animatedIndices = undefined;
+		scene.lastAnimatedTimestamp = undefined;
+		this.presenter.finishLayoutUpdate(scene);
+		scene.viewportController?.applySettings(settings);
+		for (const group of scene.groups) {
+			group.applySettings?.(settings);
+		}
+		scene.layoutSettings = layoutSettingsFor(settings);
+		if (layoutChanged && scene.highlightLayoutController) {
+			scene.highlightLayoutController.invalidate();
+		} else {
+			scene.highlightLayoutController?.flush();
+			scene.viewportController?.update();
+		}
+	}
+
+	public destroy(): void {
+		this.presenter.destroy();
 	}
 
 	private animateGroups(scene: SceneResources, timestamp: number, deltaTime: number): void {
@@ -265,187 +256,12 @@ export class LyricsRenderer {
 		scene.animatedIndices = next;
 	}
 
-	public applySettings(settings: ExtensionSettings): void {
-		if (settings.reduceMotion || !settings.motionEnabled) {
-			this.sceneTransitionController?.finish();
-		}
-		const scene = this.currentScene;
-		if (!scene || scene.cleaned) {
-			return;
-		}
-		if (scene.container) {
-			this.applyRootSettings(scene.container, settings);
-		}
-		if (scene.lyricsTrack) {
-			for (const alignment of ["natural", "center", "left"] as const) {
-				scene.lyricsTrack.classList.toggle(`align-${alignment}`, settings.alignmentMode === alignment);
-			}
-		}
-		const layoutChanged = !sameLayoutSettings(scene.layoutSettings, settings);
-		// New settings can change what any group renders, so the next frame runs a full pass.
-		scene.animatedIndices = undefined;
-		scene.lastAnimatedTimestamp = undefined;
-		this.finishLayoutUpdate(scene);
-		scene.viewportController?.applySettings(settings);
-		for (const group of scene.groups) {
-			group.applySettings?.(settings);
-		}
-		scene.layoutSettings = layoutSettingsFor(settings);
-		if (layoutChanged && scene.highlightLayoutController) {
-			scene.highlightLayoutController.invalidate();
-		} else {
-			scene.highlightLayoutController?.flush();
-			scene.viewportController?.update();
-		}
-	}
-
-	public destroy(): void {
-		const root = this.hostRoot;
-		const controller = this.sceneTransitionController;
-		const scenes = new Set(this.retiredScenes);
-		if (this.currentScene) {
-			scenes.add(this.currentScene);
-		}
-		this.hostRoot = undefined;
-		this.sceneTransitionController = undefined;
-		this.currentScene = undefined;
-		this.retiredScenes.clear();
-		controller?.destroy();
-		for (const scene of scenes) {
-			this.cleanupScene(scene);
-		}
-		this.setAlbumArtMode(root, false);
-		this.clearRootPresentationState(root);
-	}
-
-	private presentScene(
-		root: HTMLElement,
-		scene: SceneResources,
-		presentation: ScenePresentationOptions | undefined,
-		animate: boolean,
-		albumArtMode: boolean
-	): SceneTransitionHandle {
-		this.ensurePresenter(root);
-		const previous = this.currentScene;
-		const animatedReplacement = previous !== undefined && root.firstElementChild !== null && animate && presentation?.direction !== undefined;
-		this.currentScene = scene;
-		this.setAlbumArtMode(root, albumArtMode);
-		const handle = this.sceneTransitionController?.present(scene.scene, {
-			direction: presentation?.direction,
-			animate,
-		});
-		if (!handle) {
-			throw new Error("Scene transition controller was not initialized.");
-		}
-		if (previous) {
-			this.deactivateInterludeFrame(previous);
-			this.deactivateHighlightLayout(previous);
-			// The retired scene is still in the DOM for the transition: stop it from reacting
-			// to resizes (and forcing layout) while it fades out.
-			previous.viewportController?.pause();
-			if (animatedReplacement) {
-				this.retiredScenes.add(previous);
-				void handle.settled.then(() => this.releaseRetiredScene(previous, root));
-			} else {
-				this.cleanupScene(previous);
-			}
-			this.reapplyCurrentInterludeFrame(root);
-		}
-		return handle;
-	}
-
-	private ensurePresenter(root: HTMLElement): void {
-		if (this.hostRoot === root && this.sceneTransitionController) {
-			return;
-		}
-		if (this.hostRoot || this.sceneTransitionController || this.currentScene || this.retiredScenes.size > 0) {
-			this.destroy();
-		}
-		this.hostRoot = root;
-		this.sceneTransitionController = new SceneTransitionController(root);
-	}
-
-	private releaseRetiredScene(scene: SceneResources, root: HTMLElement): void {
-		this.retiredScenes.delete(scene);
-		this.cleanupScene(scene);
-		this.reapplyCurrentInterludeFrame(root);
-	}
-
-	private cleanupScene(scene: SceneResources): void {
-		if (scene.cleaned) {
-			return;
-		}
-		scene.cleaned = true;
-		const hostWindow = scene.scene.ownerDocument.defaultView;
-		if (scene.layoutFrame !== undefined) {
-			hostWindow?.cancelAnimationFrame?.(scene.layoutFrame);
-			scene.layoutFrame = undefined;
-		}
-		this.deactivateInterludeFrame(scene);
-		this.deactivateHighlightLayout(scene);
-		scene.viewportController?.destroy();
-		scene.scene.remove();
-		scene.groups.length = 0;
-		scene.container = undefined;
-		scene.lyricsViewport = undefined;
-		scene.lyricsTrack = undefined;
-		scene.viewportController = undefined;
-	}
-
-	private scheduleLayoutUpdate(scene: SceneResources): void {
-		const hostWindow = scene.scene.ownerDocument.defaultView;
-		if (!hostWindow?.requestAnimationFrame || !scene.viewportController) {
-			return;
-		}
-		scene.layoutFrame = hostWindow.requestAnimationFrame(() => {
-			scene.layoutFrame = undefined;
-			if (!scene.cleaned && this.currentScene === scene) {
-				scene.viewportController?.update();
-			}
-		});
-	}
-
-	private finishLayoutUpdate(scene: SceneResources): void {
-		if (scene.layoutFrame === undefined) {
-			return;
-		}
-		scene.scene.ownerDocument.defaultView?.cancelAnimationFrame?.(scene.layoutFrame);
-		scene.layoutFrame = undefined;
-		scene.viewportController?.update();
-	}
-
-	private deactivateInterludeFrame(scene: SceneResources): void {
-		const controller = scene.interludeFrameController;
-		scene.interludeFrameController = undefined;
-		controller?.destroy();
-	}
-
-	private deactivateHighlightLayout(scene: SceneResources): void {
-		const controller = scene.highlightLayoutController;
-		scene.highlightLayoutController = undefined;
-		controller?.destroy();
-	}
-
-	private reapplyCurrentInterludeFrame(root: HTMLElement): void {
-		if (this.hostRoot === root && this.currentScene && !this.currentScene.cleaned) {
-			this.currentScene.interludeFrameController?.update();
-		}
-	}
-
 	private shouldAnimate(presentation: ScenePresentationOptions | undefined, motionEnabled: boolean): boolean {
 		return presentation?.animate === true && motionEnabled;
 	}
 
 	private hasReducedMotion(root: HTMLElement): boolean {
 		return root.classList.contains("reduce-motion") || root.parentElement?.classList.contains("reduce-motion") === true;
-	}
-
-	private clearRootPresentationState(root: HTMLElement | undefined): void {
-		if (!root) {
-			return;
-		}
-		root.classList.remove(...ROOT_PRESENTATION_CLASSES);
-		root.parentElement?.classList.remove(...ROOT_PRESENTATION_CLASSES);
 	}
 
 	private applyRootSettings(root: HTMLElement, settings: ExtensionSettings): void {
@@ -472,14 +288,6 @@ export class LyricsRenderer {
 		root.style.setProperty("--interlude-wave-cycle", `${roundSeconds(clamp(beatDuration * 2.64, 0.84, 1.9))}s`);
 		root.style.setProperty("--interlude-dot-cycle", `${roundSeconds(clamp(beatDuration * 2.2, 0.72, 1.55))}s`);
 		root.style.setProperty("--interlude-pill-cycle", `${roundSeconds(clamp(beatDuration * 2.9, 0.95, 2.05))}s`);
-	}
-
-	private setAlbumArtMode(root: HTMLElement | undefined, enabled: boolean): void {
-		if (!root) {
-			return;
-		}
-		root.classList.toggle("album-art-mode", enabled);
-		root.parentElement?.classList.toggle("album-art-mode", enabled);
 	}
 }
 
@@ -546,15 +354,3 @@ const layoutSettingsFor = (settings: ExtensionSettings): Pick<ExtensionSettings,
 
 const sameLayoutSettings = (previous: SceneResources["layoutSettings"], next: ExtensionSettings): boolean =>
 	previous?.alignmentMode === next.alignmentMode && previous.fontFamily === next.fontFamily && previous.fontScale === next.fontScale;
-
-const syntheticTimingLabel = (language: ExtensionSettings["language"]): string => {
-	if (language === "ko") return "가상 노래방 싱크";
-	if (language === "ja") return "仮想カラオケ同期";
-	return "Synthesized karaoke sync";
-};
-
-const staticLyricsLabel = (language: ExtensionSettings["language"]): string => {
-	if (language === "ko") return "정적 가사 문서";
-	if (language === "ja") return "静的歌詞ドキュメント";
-	return "Static lyrics document";
-};
