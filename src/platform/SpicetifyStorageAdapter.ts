@@ -24,6 +24,17 @@ export class SpicetifyStorageAdapter {
 	}
 
 	public delete(key: string): boolean {
+		if (!this.spicetify.LocalStorage) {
+			return false;
+		}
+		if (this.spicetify.LocalStorage.remove) {
+			try {
+				this.spicetify.LocalStorage.remove(key);
+				return true;
+			} catch {
+				return false;
+			}
+		}
 		return this.set(key, "");
 	}
 }

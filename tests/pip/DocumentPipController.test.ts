@@ -421,6 +421,27 @@ describe("DocumentPipController", () => {
 		expect(pipWindow.document.querySelector(".pip-cover")).toBeNull();
 	});
 
+	test("releases control-visibility listeners and the pending hide timer on close", async () => {
+		vi.useFakeTimers();
+		const pipWindow = createPipWindow();
+		window.documentPictureInPicture = {
+			requestWindow: vi.fn(async () => pipWindow),
+		};
+		const controller = new DocumentPipController();
+		await controller.open(DEFAULT_SETTINGS, "");
+		const root = pipWindow.document.querySelector<HTMLElement>("#aura-lyrics-root");
+		root?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+		expect(root?.classList.contains("controls-visible")).toBe(true);
+		expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+		controller.close();
+
+		expect(vi.getTimerCount()).toBe(0);
+		root?.classList.remove("controls-visible");
+		root?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+		expect(root?.classList.contains("controls-visible")).toBe(false);
+	});
+
 	test("renders a square-corner interlude frame with CSS progress segments instead of SVG paths", async () => {
 		const pipWindow = createPipWindow({ width: 960, height: 420 });
 		window.documentPictureInPicture = {
