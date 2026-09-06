@@ -51,34 +51,8 @@ export class SettingsControlFactory {
 		spec: NumericSettingSpec,
 		formatValue: (value: number) => string,
 		onChange: (value: number) => number | undefined,
-		presentation?: ControlPresentation
-	): HTMLElement;
-	public range(
-		controlId: string,
-		label: string,
-		value: number,
-		min: number,
-		max: number,
-		step: number,
-		onChange: (value: number) => void
-	): HTMLElement;
-	public range(
-		controlId: string,
-		label: string,
-		value: number,
-		specOrMin: NumericSettingSpec | number,
-		formatOrMax: ((value: number) => string) | number,
-		changeOrStep: ((value: number) => unknown) | number,
-		onChangeOrPresentation?: ((value: number) => unknown) | ControlPresentation,
-		providedPresentation: ControlPresentation = {}
+		presentation: ControlPresentation = {}
 	): HTMLElement {
-		const legacy = typeof specOrMin === "number";
-		const spec: NumericSettingSpec = legacy
-			? { min: specOrMin, max: formatOrMax as number, step: changeOrStep as number, unit: "percent" }
-			: specOrMin;
-		const formatValue = legacy ? (next: number): string => String(next) : (formatOrMax as (value: number) => string);
-		const onChange = legacy ? (onChangeOrPresentation as (value: number) => unknown) : (changeOrStep as (value: number) => unknown);
-		const presentation = legacy ? providedPresentation : ((onChangeOrPresentation as ControlPresentation | undefined) ?? providedPresentation);
 		const wrapper = this.ownerDocument.createElement("span");
 		wrapper.className = "range-control";
 		const input = this.ownerDocument.createElement("input");
