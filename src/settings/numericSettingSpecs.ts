@@ -7,6 +7,7 @@ export type NumericSettingKey =
 	| "inactiveBlurPx"
 	| "lyricsDelayMs"
 	| "motionIntensity"
+	| "springSoftness"
 	| "vignetteStrength"
 	| "visibleContextLines";
 
@@ -27,6 +28,7 @@ export const NUMERIC_SETTING_SPECS: Record<NumericSettingKey, NumericSettingSpec
 	vignetteStrength: { min: 0, max: 1, step: 0.05, unit: "percent" },
 	inactiveBlurPx: { min: 0, max: 4, step: 0.05, unit: "px" },
 	motionIntensity: { min: 0, max: 2, step: 0.05, unit: "percent" },
+	springSoftness: { min: 0, max: 1, step: 0.05, unit: "percent" },
 	glowStrength: { min: 0, max: 1.5, step: 0.05, unit: "percent" },
 	lyricsDelayMs: { min: -5000, max: 5000, step: 50, unit: "ms" },
 	visibleContextLines: { min: 0, max: 2, step: 1, unit: "lines" },

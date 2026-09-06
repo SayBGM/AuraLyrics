@@ -148,4 +148,89 @@ describe("SettingsPanelRenderer", () => {
 		expect(refreshed.querySelector(".highlight-preview")?.getAttribute("data-effect")).toBe("marker");
 		expect(refreshed.querySelector(".highlight-preview")?.getAttribute("data-motion")).toBe("wave");
 	});
+
+	test("renders the previously hidden background, font family, and spring softness controls", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const renderer = new SettingsPanelRenderer(document, store, providers, {
+			getCurrentTrackLyricsDelay: vi.fn(),
+			onAdjustCurrentTrackLyricsDelay: vi.fn(),
+			onClearCache: vi.fn(),
+			onMusixmatchTokenAccepted: vi.fn(),
+			onRefreshLyrics: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+			onScheduleRefresh: vi.fn(),
+			onResetCurrentTrackLyricsDelay: vi.fn(),
+		});
+
+		const appearance = renderer.render("appearance");
+		const motion = renderer.render("motion");
+		const backgroundToggle = appearance.querySelector<HTMLInputElement>('[data-control-id="background-enabled"]');
+		const fontFamilySelect = appearance.querySelector<HTMLSelectElement>('[data-control-id="font-family"]');
+		const springSoftnessRange = motion.querySelector<HTMLInputElement>('[data-control-id="spring-softness"]');
+
+		expect(backgroundToggle).not.toBeNull();
+		expect(backgroundToggle?.checked).toBe(true);
+		expect(fontFamilySelect).not.toBeNull();
+		expect(fontFamilySelect?.value).toBe("spotify-circular");
+		expect(Array.from(fontFamilySelect?.options ?? []).map((option) => option.value)).toEqual(["spotify-circular", "Inter", "system-ui", "serif"]);
+		expect(springSoftnessRange).not.toBeNull();
+		expect(springSoftnessRange?.min).toBe(String(NUMERIC_SETTING_SPECS.springSoftness.min));
+		expect(springSoftnessRange?.max).toBe(String(NUMERIC_SETTING_SPECS.springSoftness.max));
+		expect(springSoftnessRange?.closest(".setting-row")?.querySelector("output")?.textContent).toBe("65%");
+	});
+
+	test("persists changes made through the background, font family, and spring softness controls", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const renderer = new SettingsPanelRenderer(document, store, providers, {
+			getCurrentTrackLyricsDelay: vi.fn(),
+			onAdjustCurrentTrackLyricsDelay: vi.fn(),
+			onClearCache: vi.fn(),
+			onMusixmatchTokenAccepted: vi.fn(),
+			onRefreshLyrics: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+			onScheduleRefresh: vi.fn(),
+			onResetCurrentTrackLyricsDelay: vi.fn(),
+		});
+
+		const appearance = renderer.render("appearance");
+		const motion = renderer.render("motion");
+		const backgroundToggle = appearance.querySelector<HTMLInputElement>('[data-control-id="background-enabled"]');
+		const fontFamilySelect = appearance.querySelector<HTMLSelectElement>('[data-control-id="font-family"]');
+		const springSoftnessRange = motion.querySelector<HTMLInputElement>('[data-control-id="spring-softness"]');
+		if (!backgroundToggle || !fontFamilySelect || !springSoftnessRange) {
+			throw new Error("Hidden settings controls were not rendered.");
+		}
+
+		backgroundToggle.checked = false;
+		backgroundToggle.dispatchEvent(new Event("change"));
+		fontFamilySelect.value = "Inter";
+		fontFamilySelect.dispatchEvent(new Event("change"));
+		springSoftnessRange.value = "0.2";
+		springSoftnessRange.dispatchEvent(new Event("input", { bubbles: true }));
+		springSoftnessRange.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(store.get()).toMatchObject({ backgroundEnabled: false, fontFamily: "Inter", springSoftness: 0.2 });
+	});
+
+	test("never appends a group description id twice to a control's aria-describedby", () => {
+		const store = new SettingsStore(new MemoryStorage());
+		const renderer = new SettingsPanelRenderer(document, store, providers, {
+			getCurrentTrackLyricsDelay: vi.fn(),
+			onAdjustCurrentTrackLyricsDelay: vi.fn(() => true),
+			onClearCache: vi.fn(),
+			onMusixmatchTokenAccepted: vi.fn(),
+			onRefreshLyrics: vi.fn(),
+			onRefreshMusixmatchToken: vi.fn(),
+			onScheduleRefresh: vi.fn(),
+			onResetCurrentTrackLyricsDelay: vi.fn(() => true),
+		});
+
+		for (const section of ["general", "lyrics", "appearance", "motion", "providers", "advanced"] as const) {
+			const panel = renderer.render(section);
+			for (const control of Array.from(panel.querySelectorAll<HTMLElement>("input, select, button"))) {
+				const describedBy = control.getAttribute("aria-describedby")?.split(" ") ?? [];
+				expect(new Set(describedBy).size).toBe(describedBy.length);
+			}
+		}
+	});
 });

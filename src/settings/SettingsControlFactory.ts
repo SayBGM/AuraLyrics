@@ -4,6 +4,12 @@ import { createSettingsIcon } from "./settingsIcons";
 export type ControlPresentation = {
 	description?: string;
 	disabledReason?: string;
+	/**
+	 * Id of the owning settings-group's description element. Wiring it here at construction time
+	 * lets `row()` include it in `aria-describedby` directly, instead of the caller having to
+	 * `querySelectorAll` every control after the fact to patch the attribute on.
+	 */
+	groupDescriptionId?: string;
 };
 
 export type SettingsControlFactoryCallbacks = {
@@ -213,6 +219,9 @@ export class SettingsControlFactory {
 			reason.textContent = presentation.disabledReason;
 			describedBy.push(reason.id);
 			copy.append(reason);
+		}
+		if (presentation.groupDescriptionId) {
+			describedBy.push(presentation.groupDescriptionId);
 		}
 		if (describedBy.length > 0) {
 			accessibleControl.setAttribute("aria-describedby", describedBy.join(" "));

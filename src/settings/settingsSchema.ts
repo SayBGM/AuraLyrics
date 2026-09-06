@@ -151,11 +151,6 @@ const isSyncPreference = (value: unknown): value is SyncPreference => value === 
 const isAlignmentMode = (value: unknown): value is AlignmentMode => value === "natural" || value === "center" || value === "left";
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-const clampNumber = (value: unknown, fallback: number, min: number, max: number): number => {
-	const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-	return Math.min(max, Math.max(min, next));
-};
-
 const normalizeBoolean = (value: unknown, fallback: boolean): boolean => (typeof value === "boolean" ? value : fallback);
 
 const normalizeString = (value: unknown, maxLength: number): string | undefined => {
@@ -217,7 +212,7 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		highlightMotion: isHighlightMotion(settings.highlightMotion) ? settings.highlightMotion : defaults.highlightMotion,
 		motionEnabled: normalizeBoolean(settings.motionEnabled, defaults.motionEnabled),
 		motionIntensity: clampNumericSetting("motionIntensity", settings.motionIntensity, defaults.motionIntensity),
-		springSoftness: clampNumber(settings.springSoftness, defaults.springSoftness, 0, 1),
+		springSoftness: clampNumericSetting("springSoftness", settings.springSoftness, defaults.springSoftness),
 		glowStrength: clampNumericSetting("glowStrength", settings.glowStrength, defaults.glowStrength),
 		reduceMotion: normalizeBoolean(settings.reduceMotion, defaults.reduceMotion),
 		providers: {

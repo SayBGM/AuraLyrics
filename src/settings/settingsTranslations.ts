@@ -30,6 +30,8 @@ const EN_TRANSLATIONS = {
 	dim: "Dim",
 	emphasis: "Emphasis and glow",
 	emphasisDescription: "Glow is a visual emphasis and remains adjustable without movement.",
+	fontFamily: "Font family",
+	fontFamilyDescription: "Choose the typeface used for lyrics text.",
 	fontScale: "Font size",
 	general: "General",
 	generateMusixmatchToken: "Generate Musixmatch token",
@@ -95,8 +97,12 @@ const EN_TRANSLATIONS = {
 	settingsReset: "Settings reset",
 	settingsTitle: "AuraLyrics Settings",
 	show: "Show",
+	showBackground: "Show background artwork",
+	showBackgroundDescription: "Turn off to hide the blurred album art behind the lyrics entirely.",
 	showInterludes: "Show interludes",
 	showTranslation: "Show translation",
+	springSoftness: "Spring softness",
+	springSoftnessDescription: "Adjust how soft or snappy the syllable pop animation feels.",
 	sync: "Sync",
 	syncText: "Sync and text",
 	syncTextDescription: "Choose timing detail and whether translated text is shown.",
@@ -112,7 +118,16 @@ const EN_TRANSLATIONS = {
 } as const;
 
 export type TranslationKey = keyof typeof EN_TRANSLATIONS;
-export type OptionGroup = "alignment" | "highlightEffect" | "highlightMotion" | "interlude" | "language" | "musixmatchProxyMode" | "preset" | "sync";
+export type OptionGroup =
+	| "alignment"
+	| "fontFamily"
+	| "highlightEffect"
+	| "highlightMotion"
+	| "interlude"
+	| "language"
+	| "musixmatchProxyMode"
+	| "preset"
+	| "sync";
 
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 	en: EN_TRANSLATIONS,
@@ -146,6 +161,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		dim: "어둡게",
 		emphasis: "강조와 글로우",
 		emphasisDescription: "글로우는 움직임과 별개의 강조 효과라서 모션 없이도 조절할 수 있습니다.",
+		fontFamily: "글꼴",
+		fontFamilyDescription: "가사에 사용할 글꼴을 선택합니다.",
 		fontScale: "글자 크기",
 		general: "일반",
 		generateMusixmatchToken: "Musixmatch 토큰 생성",
@@ -210,8 +227,12 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		settingsReset: "설정을 초기화했습니다",
 		settingsTitle: "AuraLyrics 설정",
 		show: "보기",
+		showBackground: "배경 아트워크 표시",
+		showBackgroundDescription: "끄면 가사 뒤의 블러 처리된 앨범 아트를 완전히 숨깁니다.",
 		showInterludes: "인터루드 표시",
 		showTranslation: "번역 표시",
+		springSoftness: "스프링 부드러움",
+		springSoftnessDescription: "음절이 튀어오르는 애니메이션의 부드러움 정도를 조절합니다.",
 		sync: "싱크",
 		syncText: "싱크와 텍스트",
 		syncTextDescription: "가사 타이밍의 정밀도와 번역 표시 여부를 정합니다.",
@@ -255,6 +276,8 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		dim: "暗さ",
 		emphasis: "強調とグロー",
 		emphasisDescription: "グローは動きとは別の強調効果なので常に調整できます。",
+		fontFamily: "フォント",
+		fontFamilyDescription: "歌詞に使うフォントを選びます。",
 		fontScale: "文字サイズ",
 		general: "一般",
 		generateMusixmatchToken: "Musixmatch トークンを生成",
@@ -319,8 +342,12 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 		settingsReset: "設定をリセットしました",
 		settingsTitle: "AuraLyrics 設定",
 		show: "表示",
+		showBackground: "背景アートワークを表示",
+		showBackgroundDescription: "オフにすると歌詞の背後のぼかしたアルバムアートを完全に隠します。",
 		showInterludes: "インタールード表示",
 		showTranslation: "翻訳を表示",
+		springSoftness: "スプリングの柔らかさ",
+		springSoftnessDescription: "音節がポップするアニメーションの柔らかさを調整します。",
 		sync: "同期",
 		syncText: "同期とテキスト",
 		syncTextDescription: "歌詞タイミングの精度と翻訳表示を設定します。",
@@ -341,6 +368,11 @@ const OPTION_LABELS: Record<OptionGroup, Record<UiLanguage, Record<string, strin
 		en: { center: "Center", left: "Left", natural: "Natural" },
 		ko: { center: "가운데", left: "왼쪽", natural: "자연" },
 		ja: { center: "中央", left: "左", natural: "自然" },
+	},
+	fontFamily: {
+		en: { "spotify-circular": "Default (Spotify)", Inter: "Inter", "system-ui": "System UI", serif: "Serif" },
+		ko: { "spotify-circular": "기본값(Spotify)", Inter: "Inter", "system-ui": "시스템 UI", serif: "세리프" },
+		ja: { "spotify-circular": "デフォルト(Spotify)", Inter: "Inter", "system-ui": "システムUI", serif: "セリフ" },
 	},
 	highlightEffect: {
 		en: {

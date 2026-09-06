@@ -1,9 +1,9 @@
 import type { LyricsProvider } from "../lyrics/types";
-import { NUMERIC_SETTING_SPECS, type NumericSettingSpec } from "./numericSettingSpecs";
+import { NUMERIC_SETTING_SPECS, type NumericSettingKey, type NumericSettingSpec } from "./numericSettingSpecs";
 import { SettingsControlFactory } from "./SettingsControlFactory";
 import { SettingsProviderPanel } from "./SettingsProviderPanel";
-import { type ExtensionSettings, PRESETS, type SettingsStore, type SettingsUpdateResult, type UiLanguage } from "./SettingsStore";
-import { formatTranslation, type TranslationKey, translate, translatedOptionLabel } from "./settingsTranslations";
+import { DEFAULT_SETTINGS, type ExtensionSettings, PRESETS, type SettingsStore, type SettingsUpdateResult, type UiLanguage } from "./SettingsStore";
+import { formatTranslation, type OptionGroup, type TranslationKey, translate, translatedOptionLabel } from "./settingsTranslations";
 import {
 	SETTINGS_SECTIONS,
 	type SettingsCallbacks,
@@ -16,6 +16,291 @@ import {
 export type SettingsPanelRendererCallbacks = SettingsCallbacks & {
 	onFeedback?(state: SettingsFeedbackState, text: string, durationMs?: number): void;
 	onScheduleRefresh(refreshNavigation?: boolean): void;
+};
+
+type SelectSettingKey =
+	| "alignmentMode"
+	| "fontFamily"
+	| "highlightEffect"
+	| "highlightMotion"
+	| "interludeStyle"
+	| "language"
+	| "preset"
+	| "syncPreference";
+type ToggleSettingKey = "backgroundEnabled" | "debugMode" | "motionEnabled" | "pseudoKaraoke" | "reduceMotion" | "showInterludes" | "showTranslation";
+type RangeSettingKey = NumericSettingKey;
+
+type DisabledReasonResolver = (settings: ExtensionSettings, language: UiLanguage) => string | undefined;
+
+type ControlSpecBase = {
+	id: string;
+	labelKey: TranslationKey;
+	/** Defaults to the owning group's descriptionKey when omitted (matches the legacy behavior). */
+	descriptionKey?: TranslationKey;
+	/** Calls onScheduleRefresh() — other rendered controls depend on this setting's value. */
+	refresh?: boolean;
+	/** Calls onScheduleRefresh(true) — also refreshes navigation (only "language" needs this). */
+	refreshNavigation?: boolean;
+	disabledReason?: DisabledReasonResolver;
+};
+
+type SelectControlSpec = ControlSpecBase & {
+	type: "select";
+	key: SelectSettingKey;
+	optionGroup: OptionGroup;
+	options: readonly string[];
+	/** Override for settings that don't persist via a plain `{ [key]: value }` patch (only "preset"). */
+	apply?: (store: SettingsStore, value: string) => SettingsUpdateResult;
+};
+
+type ToggleControlSpec = ControlSpecBase & {
+	type: "toggle";
+	key: ToggleSettingKey;
+};
+
+type RangeControlSpec = ControlSpecBase & {
+	type: "range";
+	key: RangeSettingKey;
+};
+
+type ControlSpec = SelectControlSpec | ToggleControlSpec | RangeControlSpec;
+
+/** Bespoke, non-declarative pieces kept as explicit escape hatches from the ControlSpec table. */
+type CustomGroupId = "currentTrackDelay" | "highlightPreview" | "maintenanceActions" | "resetConfirmation";
+
+type ControlGroupSpec = {
+	id: string;
+	titleKey: TranslationKey;
+	descriptionKey: TranslationKey;
+	controls: ControlSpec[];
+	/** Appended after the generated controls (or the only content, when controls is empty). */
+	customId?: CustomGroupId;
+};
+
+const pseudoKaraokeDisabledReason: DisabledReasonResolver = (settings, language) =>
+	settings.syncPreference === "line-only" ? translate("pseudoKaraokeUnavailable", language) : undefined;
+
+const interludeStyleDisabledReason: DisabledReasonResolver = (settings, language) =>
+	settings.showInterludes ? undefined : translate("interludeUnavailable", language);
+
+const motionDisabledReason: DisabledReasonResolver = (settings, language) =>
+	!settings.motionEnabled || settings.reduceMotion ? translate("motionUnavailable", language) : undefined;
+
+const PRESET_OPTIONS = [...Object.keys(PRESETS), "custom"];
+const FONT_FAMILY_OPTIONS = [DEFAULT_SETTINGS.fontFamily, "Inter", "system-ui", "serif"];
+
+const applyPreset = (store: SettingsStore, value: string): SettingsUpdateResult =>
+	value === "custom"
+		? store.updateWithResult({ preset: "custom" }, false)
+		: store.applyPresetWithResult(value as Exclude<ExtensionSettings["preset"], "custom">);
+
+const SECTION_CONTROLS: Record<Exclude<SettingsSection, "providers">, ControlGroupSpec[]> = {
+	general: [
+		{
+			id: "general-language",
+			titleKey: "language",
+			descriptionKey: "languageDescription",
+			controls: [
+				{
+					type: "select",
+					id: "language",
+					key: "language",
+					labelKey: "language",
+					optionGroup: "language",
+					options: ["en", "ko", "ja"],
+					refreshNavigation: true,
+				},
+			],
+		},
+		{
+			id: "general-preset",
+			titleKey: "preset",
+			descriptionKey: "presetDescription",
+			controls: [
+				{
+					type: "select",
+					id: "preset",
+					key: "preset",
+					labelKey: "preset",
+					optionGroup: "preset",
+					options: PRESET_OPTIONS,
+					refresh: true,
+					apply: applyPreset,
+				},
+			],
+		},
+	],
+	lyrics: [
+		{
+			id: "lyrics-current",
+			titleKey: "trackTiming",
+			descriptionKey: "trackTimingDescription",
+			controls: [],
+			customId: "currentTrackDelay",
+		},
+		{
+			id: "lyrics-default",
+			titleKey: "timing",
+			descriptionKey: "timingDescription",
+			controls: [{ type: "range", id: "lyrics-delay", key: "lyricsDelayMs", labelKey: "defaultLyricsDelay" }],
+		},
+		{
+			id: "lyrics-sync",
+			titleKey: "syncText",
+			descriptionKey: "syncTextDescription",
+			controls: [
+				{
+					type: "select",
+					id: "sync",
+					key: "syncPreference",
+					labelKey: "sync",
+					optionGroup: "sync",
+					options: ["prefer-syllable", "line-only"],
+					refresh: true,
+				},
+				{ type: "toggle", id: "pseudo-karaoke", key: "pseudoKaraoke", labelKey: "pseudoKaraoke", disabledReason: pseudoKaraokeDisabledReason },
+				{ type: "toggle", id: "show-translation", key: "showTranslation", labelKey: "showTranslation" },
+			],
+		},
+		{
+			id: "lyrics-alignment",
+			titleKey: "alignmentContext",
+			descriptionKey: "alignmentContextDescription",
+			controls: [
+				{
+					type: "select",
+					id: "alignment",
+					key: "alignmentMode",
+					labelKey: "alignment",
+					optionGroup: "alignment",
+					options: ["natural", "center", "left"],
+				},
+				{ type: "range", id: "context-lines", key: "visibleContextLines", labelKey: "contextLines" },
+			],
+		},
+		{
+			id: "lyrics-interludes",
+			titleKey: "interludes",
+			descriptionKey: "interludesDescription",
+			controls: [
+				{ type: "toggle", id: "show-interludes", key: "showInterludes", labelKey: "showInterludes", refresh: true },
+				{
+					type: "select",
+					id: "interlude-style",
+					key: "interludeStyle",
+					labelKey: "interludeStyle",
+					optionGroup: "interlude",
+					options: ["frame", "dots", "wave"],
+					disabledReason: interludeStyleDisabledReason,
+				},
+			],
+		},
+	],
+	appearance: [
+		{
+			id: "appearance-background",
+			titleKey: "background",
+			descriptionKey: "backgroundDescription",
+			controls: [
+				{
+					type: "toggle",
+					id: "background-enabled",
+					key: "backgroundEnabled",
+					labelKey: "showBackground",
+					descriptionKey: "showBackgroundDescription",
+				},
+				{ type: "range", id: "background-blur", key: "backgroundBlurPx", labelKey: "blur" },
+				{ type: "range", id: "background-dim", key: "backgroundDim", labelKey: "dim" },
+				{ type: "range", id: "background-saturation", key: "backgroundSaturation", labelKey: "saturation" },
+				{ type: "range", id: "vignette", key: "vignetteStrength", labelKey: "vignette" },
+			],
+		},
+		{
+			id: "appearance-highlight",
+			titleKey: "highlighting",
+			descriptionKey: "highlightingDescription",
+			controls: [
+				{
+					type: "select",
+					id: "highlight-effect",
+					key: "highlightEffect",
+					labelKey: "highlightEffect",
+					optionGroup: "highlightEffect",
+					options: ["fill", "glow-sweep", "underline", "marker", "outline-fill", "spotlight"],
+					refresh: true,
+				},
+				{
+					type: "select",
+					id: "highlight-motion",
+					key: "highlightMotion",
+					labelKey: "highlightMotion",
+					optionGroup: "highlightMotion",
+					options: ["spring", "pulse", "bounce", "elastic", "wave", "ripple"],
+					refresh: true,
+				},
+			],
+			customId: "highlightPreview",
+		},
+		{
+			id: "appearance-readability",
+			titleKey: "readability",
+			descriptionKey: "readabilityDescription",
+			controls: [
+				{
+					type: "select",
+					id: "font-family",
+					key: "fontFamily",
+					labelKey: "fontFamily",
+					optionGroup: "fontFamily",
+					options: FONT_FAMILY_OPTIONS,
+					descriptionKey: "fontFamilyDescription",
+				},
+				{ type: "range", id: "font-scale", key: "fontScale", labelKey: "fontScale" },
+				{ type: "range", id: "inactive-blur", key: "inactiveBlurPx", labelKey: "inactiveBlur" },
+			],
+		},
+	],
+	motion: [
+		{
+			id: "motion-animation",
+			titleKey: "animations",
+			descriptionKey: "animationsDescription",
+			controls: [
+				{ type: "toggle", id: "motion-enabled", key: "motionEnabled", labelKey: "animations", refresh: true },
+				{ type: "toggle", id: "reduce-motion", key: "reduceMotion", labelKey: "reduceMotion", refresh: true },
+				{ type: "range", id: "motion-intensity", key: "motionIntensity", labelKey: "intensity", disabledReason: motionDisabledReason },
+				{ type: "range", id: "spring-softness", key: "springSoftness", labelKey: "springSoftness", disabledReason: motionDisabledReason },
+			],
+		},
+		{
+			id: "motion-emphasis",
+			titleKey: "emphasis",
+			descriptionKey: "emphasisDescription",
+			controls: [{ type: "range", id: "glow-strength", key: "glowStrength", labelKey: "glow" }],
+		},
+	],
+	advanced: [
+		{
+			id: "advanced-diagnostics",
+			titleKey: "diagnostics",
+			descriptionKey: "diagnosticsDescription",
+			controls: [{ type: "toggle", id: "debug-mode", key: "debugMode", labelKey: "debugMode" }],
+		},
+		{
+			id: "advanced-maintenance",
+			titleKey: "maintenance",
+			descriptionKey: "maintenanceDescription",
+			controls: [],
+			customId: "maintenanceActions",
+		},
+		{
+			id: "advanced-reset",
+			titleKey: "reset",
+			descriptionKey: "resetDescription",
+			controls: [],
+			customId: "resetConfirmation",
+		},
+	],
 };
 
 export class SettingsPanelRenderer {
@@ -61,238 +346,98 @@ export class SettingsPanelRenderer {
 	}
 
 	private sectionGroups(section: SettingsSection, settings: ExtensionSettings): HTMLElement[] {
+		if (section === "providers") {
+			const language = settings.language;
+			const groups = this.providerPanel.render(settings);
+			return [
+				this.group("providers-priority", "priority", "priorityDescription", language, groups.priority),
+				this.group("providers-auth", "authentication", "authenticationDescription", language, groups.authentication),
+				this.group("providers-network", "network", "networkDescription", language, groups.network),
+			];
+		}
+		return SECTION_CONTROLS[section].map((group) => this.renderControlGroup(group, settings));
+	}
+
+	private renderControlGroup(spec: ControlGroupSpec, settings: ExtensionSettings): HTMLElement {
 		const language = settings.language;
-		switch (section) {
-			case "general":
-				return [
-					this.group("general-language", "language", "languageDescription", language, [
-						this.controls.select(
-							"language",
-							translate("language", language),
-							settings.language,
-							["en", "ko", "ja"],
-							(value) => {
-								const result = this.update({ language: value as UiLanguage });
-								this.callbacks.onScheduleRefresh(true);
-								return result.persisted;
-							},
-							(value) => this.optionLabel("language", value, language),
-							{ description: translate("languageDescription", language) }
-						),
-					]),
-					this.group("general-preset", "preset", "presetDescription", language, [
-						this.controls.select(
-							"preset",
-							translate("preset", language),
-							settings.preset,
-							Object.keys(PRESETS).concat("custom"),
-							(value) => {
-								const result =
-									value === "custom"
-										? this.store.updateWithResult({ preset: "custom" }, false)
-										: this.store.applyPresetWithResult(value as Exclude<ExtensionSettings["preset"], "custom">);
-								this.callbacks.onScheduleRefresh();
-								return result.persisted;
-							},
-							(value) => this.optionLabel("preset", value, language),
-							{ description: translate("presetDescription", language) }
-						),
-					]),
-				];
-			case "lyrics": {
-				const pseudoDisabled = settings.syncPreference === "line-only" ? translate("pseudoKaraokeUnavailable", language) : undefined;
-				const interludeDisabled = !settings.showInterludes ? translate("interludeUnavailable", language) : undefined;
-				return [
-					this.group("lyrics-current", "trackTiming", "trackTimingDescription", language, [this.currentTrackDelayCard(settings)]),
-					this.group("lyrics-default", "timing", "timingDescription", language, [
-						this.numericRange("lyrics-delay", "defaultLyricsDelay", "lyricsDelayMs", settings.lyricsDelayMs, language, (value) =>
-							this.preview({ lyricsDelayMs: value })
-						),
-					]),
-					this.group("lyrics-sync", "syncText", "syncTextDescription", language, [
-						this.controls.select(
-							"sync",
-							translate("sync", language),
-							settings.syncPreference,
-							["prefer-syllable", "line-only"],
-							(value) => {
-								const result = this.update({ syncPreference: value as ExtensionSettings["syncPreference"] });
-								this.callbacks.onScheduleRefresh();
-								return result.persisted;
-							},
-							(value) => this.optionLabel("sync", value, language),
-							{ description: translate("syncTextDescription", language) }
-						),
-						this.controls.toggle(
-							"pseudo-karaoke",
-							translate("pseudoKaraoke", language),
-							settings.pseudoKaraoke,
-							(value) => this.update({ pseudoKaraoke: value }).persisted,
-							{ description: translate("syncTextDescription", language), disabledReason: pseudoDisabled }
-						),
-						this.controls.toggle(
-							"show-translation",
-							translate("showTranslation", language),
-							settings.showTranslation,
-							(value) => this.update({ showTranslation: value }).persisted,
-							{ description: translate("syncTextDescription", language) }
-						),
-					]),
-					this.group("lyrics-alignment", "alignmentContext", "alignmentContextDescription", language, [
-						this.controls.select(
-							"alignment",
-							translate("alignment", language),
-							settings.alignmentMode,
-							["natural", "center", "left"],
-							(value) => this.update({ alignmentMode: value as ExtensionSettings["alignmentMode"] }).persisted,
-							(value) => this.optionLabel("alignment", value, language),
-							{ description: translate("alignmentContextDescription", language) }
-						),
-						this.numericRange("context-lines", "contextLines", "visibleContextLines", settings.visibleContextLines, language, (value) =>
-							this.preview({ visibleContextLines: value })
-						),
-					]),
-					this.group("lyrics-interludes", "interludes", "interludesDescription", language, [
-						this.controls.toggle(
-							"show-interludes",
-							translate("showInterludes", language),
-							settings.showInterludes,
-							(value) => {
-								const result = this.update({ showInterludes: value });
-								this.callbacks.onScheduleRefresh();
-								return result.persisted;
-							},
-							{ description: translate("interludesDescription", language) }
-						),
-						this.controls.select(
-							"interlude-style",
-							translate("interludeStyle", language),
-							settings.interludeStyle,
-							["frame", "dots", "wave"],
-							(value) => this.update({ interludeStyle: value as ExtensionSettings["interludeStyle"] }).persisted,
-							(value) => this.optionLabel("interlude", value, language),
-							{ description: translate("interludesDescription", language), disabledReason: interludeDisabled }
-						),
-					]),
-				];
-			}
-			case "appearance":
-				return [
-					this.group("appearance-background", "background", "backgroundDescription", language, [
-						this.numericRange("background-blur", "blur", "backgroundBlurPx", settings.backgroundBlurPx, language, (value) =>
-							this.preview({ backgroundBlurPx: value })
-						),
-						this.numericRange("background-dim", "dim", "backgroundDim", settings.backgroundDim, language, (value) =>
-							this.preview({ backgroundDim: value })
-						),
-						this.numericRange("background-saturation", "saturation", "backgroundSaturation", settings.backgroundSaturation, language, (value) =>
-							this.preview({ backgroundSaturation: value })
-						),
-						this.numericRange("vignette", "vignette", "vignetteStrength", settings.vignetteStrength, language, (value) =>
-							this.preview({ vignetteStrength: value })
-						),
-					]),
-					this.group("appearance-highlight", "highlighting", "highlightingDescription", language, [
-						this.controls.select(
-							"highlight-effect",
-							translate("highlightEffect", language),
-							settings.highlightEffect,
-							["fill", "glow-sweep", "underline", "marker", "outline-fill", "spotlight"],
-							(value) => {
-								const result = this.update({ highlightEffect: value as ExtensionSettings["highlightEffect"] });
-								this.callbacks.onScheduleRefresh();
-								return result.persisted;
-							},
-							(value) => this.optionLabel("highlightEffect", value, language),
-							{ description: translate("highlightingDescription", language) }
-						),
-						this.controls.select(
-							"highlight-motion",
-							translate("highlightMotion", language),
-							settings.highlightMotion,
-							["spring", "pulse", "bounce", "elastic", "wave", "ripple"],
-							(value) => {
-								const result = this.update({ highlightMotion: value as ExtensionSettings["highlightMotion"] });
-								this.callbacks.onScheduleRefresh();
-								return result.persisted;
-							},
-							(value) => this.optionLabel("highlightMotion", value, language),
-							{ description: translate("highlightingDescription", language) }
-						),
-						this.highlightPreview(settings),
-					]),
-					this.group("appearance-readability", "readability", "readabilityDescription", language, [
-						this.numericRange("font-scale", "fontScale", "fontScale", settings.fontScale, language, (value) => this.preview({ fontScale: value })),
-						this.numericRange("inactive-blur", "inactiveBlur", "inactiveBlurPx", settings.inactiveBlurPx, language, (value) =>
-							this.preview({ inactiveBlurPx: value })
-						),
-					]),
-				];
-			case "motion": {
-				const motionDisabled = !settings.motionEnabled || settings.reduceMotion ? translate("motionUnavailable", language) : undefined;
-				return [
-					this.group("motion-animation", "animations", "animationsDescription", language, [
-						this.controls.toggle(
-							"motion-enabled",
-							translate("animations", language),
-							settings.motionEnabled,
-							(value) => {
-								const result = this.update({ motionEnabled: value });
-								this.callbacks.onScheduleRefresh();
-								return result.persisted;
-							},
-							{ description: translate("animationsDescription", language) }
-						),
-						this.controls.toggle(
-							"reduce-motion",
-							translate("reduceMotion", language),
-							settings.reduceMotion,
-							(value) => {
-								const result = this.update({ reduceMotion: value });
-								this.callbacks.onScheduleRefresh();
-								return result.persisted;
-							},
-							{ description: translate("animationsDescription", language) }
-						),
-						this.numericRange(
-							"motion-intensity",
-							"intensity",
-							"motionIntensity",
-							settings.motionIntensity,
-							language,
-							(value) => this.preview({ motionIntensity: value }),
-							motionDisabled
-						),
-					]),
-					this.group("motion-emphasis", "emphasis", "emphasisDescription", language, [
-						this.numericRange("glow-strength", "glow", "glowStrength", settings.glowStrength, language, (value) =>
-							this.preview({ glowStrength: value })
-						),
-					]),
-				];
-			}
-			case "providers": {
-				const groups = this.providerPanel.render(settings);
-				return [
-					this.group("providers-priority", "priority", "priorityDescription", language, groups.priority),
-					this.group("providers-auth", "authentication", "authenticationDescription", language, groups.authentication),
-					this.group("providers-network", "network", "networkDescription", language, groups.network),
-				];
-			}
-			case "advanced":
-				return [
-					this.group("advanced-diagnostics", "diagnostics", "diagnosticsDescription", language, [
-						this.controls.toggle(
-							"debug-mode",
-							translate("debugMode", language),
-							settings.debugMode,
-							(value) => this.update({ debugMode: value }).persisted,
-							{ description: translate("diagnosticsDescription", language) }
-						),
-					]),
-					this.group("advanced-maintenance", "maintenance", "maintenanceDescription", language, this.maintenanceActions(language)),
-					this.group("advanced-reset", "reset", "resetDescription", language, [this.resetConfirmation(language)]),
-				];
+		const children = spec.controls.map((control) => this.renderControl(control, spec, settings));
+		if (spec.customId) {
+			children.push(...this.renderCustomGroupContent(spec.customId, settings, language));
+		}
+		return this.group(spec.id, spec.titleKey, spec.descriptionKey, language, children);
+	}
+
+	private renderControl(control: ControlSpec, group: ControlGroupSpec, settings: ExtensionSettings): HTMLElement {
+		const language = settings.language;
+		const disabledReason = control.disabledReason?.(settings, language);
+		const groupDescriptionId = `aura-settings-group-${group.id}-description`;
+
+		if (control.type === "select") {
+			const value = settings[control.key] as string;
+			return this.controls.select(
+				control.id,
+				translate(control.labelKey, language),
+				value,
+				control.options as string[],
+				(nextValue) => {
+					const result = control.apply
+						? control.apply(this.store, nextValue)
+						: this.store.updateWithResult({ [control.key]: nextValue } as Partial<ExtensionSettings>);
+					if (control.refreshNavigation) {
+						this.callbacks.onScheduleRefresh(true);
+					} else if (control.refresh) {
+						this.callbacks.onScheduleRefresh();
+					}
+					return result.persisted;
+				},
+				(optionValue) => this.optionLabel(control.optionGroup, optionValue, language),
+				{ description: translate(control.descriptionKey ?? group.descriptionKey, language), disabledReason, groupDescriptionId }
+			);
+		}
+
+		if (control.type === "toggle") {
+			const value = settings[control.key] as boolean;
+			return this.controls.toggle(
+				control.id,
+				translate(control.labelKey, language),
+				value,
+				(nextValue) => {
+					const result = this.store.updateWithResult({ [control.key]: nextValue } as Partial<ExtensionSettings>);
+					if (control.refresh) {
+						this.callbacks.onScheduleRefresh();
+					}
+					return result.persisted;
+				},
+				{ description: translate(control.descriptionKey ?? group.descriptionKey, language), disabledReason, groupDescriptionId }
+			);
+		}
+
+		const spec = NUMERIC_SETTING_SPECS[control.key];
+		const value = settings[control.key] as number;
+		return this.controls.range(
+			control.id,
+			translate(control.labelKey, language),
+			value,
+			spec,
+			(next) => this.formatNumeric(next, spec, language),
+			(next) => {
+				this.store.preview({ [control.key]: next } as Partial<ExtensionSettings>);
+				return this.store.get()[control.key] as number;
+			},
+			{ disabledReason, groupDescriptionId }
+		);
+	}
+
+	private renderCustomGroupContent(id: CustomGroupId, settings: ExtensionSettings, language: UiLanguage): HTMLElement[] {
+		switch (id) {
+			case "currentTrackDelay":
+				return [this.currentTrackDelayCard(settings)];
+			case "highlightPreview":
+				return [this.highlightPreview(settings)];
+			case "maintenanceActions":
+				return this.maintenanceActions(language);
+			case "resetConfirmation":
+				return [this.resetConfirmation(language)];
 		}
 	}
 
@@ -308,35 +453,18 @@ export class SettingsPanelRenderer {
 		description.id = `aura-settings-group-${id}-description`;
 		description.textContent = translate(descriptionKey, language);
 		section.append(title, description, ...children);
+		// Escape-hatch controls (bespoke buttons, the provider panel) aren't wired with the group's
+		// description id at construction, so keep this as a fallback. It's dedup-safe: controls that
+		// already carry the id (via ControlPresentation.groupDescriptionId, wired in renderControl)
+		// are skipped rather than getting the id appended twice.
 		for (const control of Array.from(section.querySelectorAll<HTMLElement>("input, select, button"))) {
 			const current = control.getAttribute("aria-describedby");
+			if (current?.split(" ").includes(description.id)) {
+				continue;
+			}
 			control.setAttribute("aria-describedby", current ? `${current} ${description.id}` : description.id);
 		}
 		return section;
-	}
-
-	private numericRange(
-		controlId: string,
-		labelKey: TranslationKey,
-		key: keyof typeof NUMERIC_SETTING_SPECS,
-		value: number,
-		language: UiLanguage,
-		onChange: (value: number) => void,
-		disabledReason?: string
-	): HTMLElement {
-		const spec = NUMERIC_SETTING_SPECS[key];
-		return this.controls.range(
-			controlId,
-			translate(labelKey, language),
-			value,
-			spec,
-			(next) => this.formatNumeric(next, spec, language),
-			(next) => {
-				onChange(next);
-				return this.store.get()[key];
-			},
-			{ disabledReason }
-		);
 	}
 
 	private formatNumeric(value: number, spec: NumericSettingSpec, language: UiLanguage): string {
@@ -518,14 +646,6 @@ export class SettingsPanelRenderer {
 
 	private feedback(state: SettingsFeedbackState, key: TranslationKey, durationMs?: number): void {
 		this.callbacks.onFeedback?.(state, translate(key, this.store.get().language), durationMs);
-	}
-
-	private update(patch: Partial<ExtensionSettings>): SettingsUpdateResult {
-		return this.store.updateWithResult(patch);
-	}
-
-	private preview(patch: Partial<ExtensionSettings>): ExtensionSettings {
-		return this.store.preview(patch);
 	}
 
 	private optionLabel(group: Parameters<typeof translatedOptionLabel>[0], value: string, language: UiLanguage): string {
