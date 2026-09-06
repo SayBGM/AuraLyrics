@@ -3,6 +3,8 @@ import { settingsStyles } from "./settingsStyles";
 import { translate } from "./settingsTranslations";
 import { SETTINGS_SECTIONS, type SettingsFeedbackState, type SettingsSection, settingsPanelId, settingsTabId } from "./settingsViewTypes";
 
+const SETTINGS_STYLES_ELEMENT_ID = "aura-lyrics-settings-styles";
+
 type SettingsModalShellCallbacks = {
 	language(): "en" | "ja" | "ko";
 	onActivate(section: SettingsSection, focusTab: boolean): void;
@@ -48,9 +50,8 @@ export class SettingsModalShell {
 		this.feedbackBar = feedbackBar;
 		content.append(panelScroller, feedbackBar);
 		layout.append(navigation, content);
-		const styles = this.ownerDocument.createElement("style");
-		styles.textContent = settingsStyles;
-		container.replaceChildren(styles, layout);
+		container.replaceChildren(layout);
+		this.ensureStylesInjected();
 		this.refreshText();
 		this.syncActiveSection(activeSection);
 	}
@@ -120,6 +121,17 @@ export class SettingsModalShell {
 
 	public focusActiveTab(): void {
 		this.navigation.querySelector<HTMLButtonElement>(`[data-section="${this.activeSection}"]`)?.focus();
+	}
+
+	/** Injects `settingsStyles` into the owner document's `<head>` once, guarded by element id, instead of re-parsing it on every mount. */
+	private ensureStylesInjected(): void {
+		if (this.ownerDocument.getElementById(SETTINGS_STYLES_ELEMENT_ID)) {
+			return;
+		}
+		const styles = this.ownerDocument.createElement("style");
+		styles.id = SETTINGS_STYLES_ELEMENT_ID;
+		styles.textContent = settingsStyles;
+		this.ownerDocument.head.append(styles);
 	}
 
 	private navigationTab(section: (typeof SETTINGS_SECTIONS)[number]): HTMLButtonElement {

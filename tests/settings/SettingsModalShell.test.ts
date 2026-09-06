@@ -45,4 +45,23 @@ describe("SettingsModalShell", () => {
 		expect(container.querySelector('[data-section="appearance"]')?.textContent).toContain("화면");
 		expect(container.querySelector('[data-section="general"]')).toBe(general);
 	});
+
+	test("injects settings styles into the owner document head once, not per mount or per shell", () => {
+		const ownerDocument = document.implementation.createHTMLDocument("settings");
+		const containerA = ownerDocument.createElement("div");
+		const shellA = new SettingsModalShell(ownerDocument, { language: () => "en", onActivate: vi.fn() });
+		shellA.mount(containerA, "general");
+
+		const injected = ownerDocument.head.querySelectorAll("#aura-lyrics-settings-styles");
+		expect(injected).toHaveLength(1);
+		expect(containerA.querySelector("style")).toBeNull();
+
+		// Remounting the same shell, and mounting a second shell in the same document, must not duplicate it.
+		shellA.mount(containerA, "lyrics");
+		const containerB = ownerDocument.createElement("div");
+		const shellB = new SettingsModalShell(ownerDocument, { language: () => "en", onActivate: vi.fn() });
+		shellB.mount(containerB, "general");
+
+		expect(ownerDocument.head.querySelectorAll("#aura-lyrics-settings-styles")).toHaveLength(1);
+	});
 });
