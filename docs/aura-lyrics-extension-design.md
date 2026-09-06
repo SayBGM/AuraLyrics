@@ -49,7 +49,11 @@ src/
   extension.ts
   app/
     ExtensionApp.ts
-    MusicStateMachine.ts
+    createExtensionServices.ts
+    PresentationController.ts
+    TrackTransitionPresenter.ts
+    TrackDelayController.ts
+    TrackEpoch.ts
     TopbarController.ts
   pip/
     DocumentPipController.ts
@@ -110,7 +114,7 @@ flowchart LR
   end
 
   subgraph App["ExtensionApp"]
-    State["MusicStateMachine"]
+    Presentation["PresentationController"]
     Clock["PlaybackClock"]
     Settings["SettingsStore"]
     Track["SpicetifyPlayerAdapter"]
@@ -148,11 +152,11 @@ flowchart LR
   Player --> Track
   Player --> Clock
   Storage --> Settings
-  Settings --> State
-  Track --> State
-  Clock --> State
+  Settings --> Presentation
+  Track --> Presentation
+  Clock --> Presentation
 
-  State --> Service
+  Presentation --> Service
   Service --> Cache
   Service --> Registry
   Registry --> Providers
@@ -160,9 +164,9 @@ flowchart LR
   Providers --> Parsers
   Parsers --> Normalize
   Normalize --> Interlude
-  Interlude --> State
+  Interlude --> Presentation
 
-  State --> LyricsRenderer
+  Presentation --> LyricsRenderer
   Clock --> LyricsRenderer
   LyricsRenderer --> Scroller
   LyricsRenderer --> Line
@@ -242,7 +246,8 @@ export type LyricsDocument = StaticLyrics | LineLyrics | SyllableLyrics;
 
 - `Spicetify.Player`, `CosmosAsync`, `LocalStorage`, `Topbar` 준비 확인
 - `TopbarController` 등록
-- `MusicStateMachine` 생성
+- `TrackEpoch` 기준으로 트랙 전환/테마/프레젠테이션의 stale 판정을 일원화
+- `PresentationController`, `TrackTransitionPresenter`, `TrackDelayController`에 렌더 조율·전환·딜레이 책임 위임
 - PiP open/close lifecycle 관리
 - dispose 시 이벤트와 RAF 정리
 
@@ -382,11 +387,11 @@ class Spring {
 Topbar click
   -> DocumentPipController.open()
   -> PipWindowView.mount()
-  -> MusicStateMachine starts active session
+  -> ExtensionApp starts a PiP session (TrackEpoch 시작)
 
 Spicetify.Player songchange
   -> SpicetifyPlayerAdapter emits trackChanged
-  -> MusicStateMachine: TrackResolving
+  -> ExtensionApp: 새 TrackEpoch 생성, 이전 로드 무효화
   -> LyricsService.load(track)
   -> LyricsCache lookup
   -> ProviderRegistry fallback
@@ -403,7 +408,7 @@ PlaybackClock RAF
   -> DOM style update in PiP document
 ```
 
-Canvas 기반 구현에서는 tick이 그리기와 상태 판단을 모두 수행했지만, 새 설계에서는 `PlaybackClock`이 시간만 공급하고 `MusicStateMachine`이 상태를 판단하며 `LyricsRenderer`가 DOM 업데이트만 맡는다.
+Canvas 기반 구현에서는 tick이 그리기와 상태 판단을 모두 수행했지만, 새 설계에서는 `PlaybackClock`이 시간만 공급하고 `PresentationController`(intro/outro gate 포함)가 무엇을 보여줄지 판단하며 `LyricsRenderer`가 DOM 업데이트만 맡는다.
 
 ### 7.1 런타임 시퀀스
 
@@ -412,7 +417,7 @@ sequenceDiagram
   participant U as User
   participant T as TopbarController
   participant P as DocumentPipController
-  participant S as MusicStateMachine
+  participant S as PresentationController
   participant A as SpicetifyPlayerAdapter
   participant L as LyricsService
   participant R as ProviderRegistry
@@ -602,7 +607,7 @@ Syllable span은 `background-clip: text` 또는 pseudo-element overlay로 sung p
 
 ## 13. 테스트 전략
 
-- Unit: `LrcParser`, `LyricsNormalizer`, `InterludeBuilder`, `Spring`, `MusicStateMachine`
+- Unit: `LrcParser`, `LyricsNormalizer`, `InterludeBuilder`, `Spring`, `TrackTransitionPresenter`, `TrackDelayController`
 - Fixture: Spotify line payload, Musixmatch subtitle payload, LRCLIB synced/enhanced LRC
 - DOM test: `SyllableVocals.animate()`가 active/sung class와 CSS 변수 값을 갱신하는지 확인
 - Manual Spicetify test: PiP open/close, track change, pause/play, seek, delay 변경, provider fallback, cover background, CEF Document PiP 동작
