@@ -1,6 +1,7 @@
 import type { AudioAnalysisBeat, AudioAnalysisData, AudioAnalysisSection, AudioAnalysisSegment } from "../audio/types";
 import type { TrackIdentity } from "../domain/types";
 import type { Interlude } from "../lyrics/types";
+import { median } from "../shared/math";
 
 export type {
 	AudioAnalysisBeat,
@@ -285,12 +286,6 @@ const normalizeInterludeWindow = (values: number[]): number[] => {
 };
 
 const clampBar = (value: number): number => Math.min(1, Math.max(MIN_BAR_HEIGHT, value));
-
-const median = (values: number[]): number => {
-	const sorted = [...values].sort((a, b) => a - b);
-	const middle = Math.floor(sorted.length / 2);
-	return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-};
 
 const hashString = (value: string): number => {
 	let hash = 2166136261;
