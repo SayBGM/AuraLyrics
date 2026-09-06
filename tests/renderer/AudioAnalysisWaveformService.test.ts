@@ -338,4 +338,42 @@ describe("AudioAnalysisWaveformService", () => {
 		freshRequest.resolve(freshAnalysis);
 		await expect(Promise.all([freshResult, concurrentFreshResult])).resolves.toEqual([freshAnalysis, freshAnalysis]);
 	});
+
+	test("bounds the positive analysis cache to five entries, evicting least recently used", async () => {
+		const trackFor = (index: number): TrackIdentity => ({ ...track, uri: `spotify:track:${index}` });
+		const getAudioData = vi.fn<() => Promise<AudioAnalysisData | undefined>>().mockResolvedValue(usableAnalysis());
+		const service = new AudioAnalysisWaveformService(getAudioData);
+
+		for (let index = 0; index < 5; index += 1) {
+			await service.getAnalysis(trackFor(index));
+		}
+		expect(getAudioData).toHaveBeenCalledTimes(5);
+
+		// Touch track 0 so it becomes most-recently-used and survives the next insertion.
+		await service.getAnalysis(trackFor(0));
+		expect(getAudioData).toHaveBeenCalledTimes(5);
+
+		// Inserting a sixth track evicts the least-recently-used entry (track 1, since track 0 was just touched).
+		await service.getAnalysis(trackFor(5));
+		expect(getAudioData).toHaveBeenCalledTimes(6);
+
+		await service.getAnalysis(trackFor(0));
+		expect(getAudioData).toHaveBeenCalledTimes(6);
+
+		await service.getAnalysis(trackFor(1));
+		expect(getAudioData).toHaveBeenCalledTimes(7);
+	});
+
+	test("clear drops cached analysis, generations, and in-flight requests", async () => {
+		const analysis = usableAnalysis();
+		const getAudioData = vi.fn<() => Promise<AudioAnalysisData | undefined>>().mockResolvedValue(analysis);
+		const service = new AudioAnalysisWaveformService(getAudioData);
+		await service.getAnalysis(track);
+		expect(getAudioData).toHaveBeenCalledTimes(1);
+
+		service.clear();
+
+		await service.getAnalysis(track);
+		expect(getAudioData).toHaveBeenCalledTimes(2);
+	});
 });

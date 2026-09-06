@@ -54,6 +54,8 @@ const idleSnapshot = (): TrackSessionSnapshot => ({
 	timingSource: "native",
 });
 
+const MAX_PSEUDO_KARAOKE_ENTRIES = 5;
+
 export class TrackSessionController {
 	private generation = 0;
 	private presentationRevision = 0;
@@ -193,7 +195,9 @@ export class TrackSessionController {
 	}
 
 	private async ensurePseudoKaraoke(track: TrackIdentity, lineLyrics: LineLyrics, generation: number, presentationRevision: number): Promise<void> {
-		if (this.pseudoKaraokeByUri.get(track.uri)?.source === lineLyrics) {
+		const existing = this.pseudoKaraokeByUri.get(track.uri);
+		if (existing?.source === lineLyrics) {
+			this.touchPseudoKaraoke(track.uri, existing);
 			return;
 		}
 		const analysis = await this.waveformService.getAnalysis(track);
@@ -202,7 +206,7 @@ export class TrackSessionController {
 		}
 		const lyrics = this.buildPseudoKaraoke(lineLyrics, analysis, track.durationMs);
 		if (lyrics) {
-			this.pseudoKaraokeByUri.set(track.uri, { source: lineLyrics, lyrics });
+			this.touchPseudoKaraoke(track.uri, { source: lineLyrics, lyrics });
 		}
 	}
 
@@ -211,7 +215,24 @@ export class TrackSessionController {
 			return loadState.lyrics;
 		}
 		const entry = this.pseudoKaraokeByUri.get(loadState.track.uri);
-		return entry?.source === loadState.lyrics ? entry.lyrics : loadState.lyrics;
+		if (entry?.source === loadState.lyrics) {
+			this.touchPseudoKaraoke(loadState.track.uri, entry);
+			return entry.lyrics;
+		}
+		return loadState.lyrics;
+	}
+
+	/** Marks `uri` as most-recently-used and evicts the least-recently-used synthesis past the cache bound. */
+	private touchPseudoKaraoke(uri: string, entry: PseudoKaraokeEntry): void {
+		this.pseudoKaraokeByUri.delete(uri);
+		this.pseudoKaraokeByUri.set(uri, entry);
+		while (this.pseudoKaraokeByUri.size > MAX_PSEUDO_KARAOKE_ENTRIES) {
+			const oldestKey = this.pseudoKaraokeByUri.keys().next().value;
+			if (oldestKey === undefined) {
+				break;
+			}
+			this.pseudoKaraokeByUri.delete(oldestKey);
+		}
 	}
 
 	private isGenerationCurrent(generation: number): boolean {

@@ -269,6 +269,32 @@ describe("TrackSessionController", () => {
 		expect(buildPseudoKaraoke.mock.calls[1]?.[0]).toBe(sourceB);
 	});
 
+	test("evicts the least recently used pseudo-karaoke synthesis once five tracks are cached", async () => {
+		const tracks = Array.from({ length: 6 }, (_, index) => track(`spotify:track:lru-${index}`));
+		const sources = tracks.map((_, index) => lineLyrics(index));
+		const { buildPseudoKaraoke, controller, load } = createController();
+		for (const [index, currentTrack] of tracks.entries()) {
+			load.mockResolvedValueOnce(ready(currentTrack, sources[index]));
+		}
+		// Re-load track 0 with its original LineLyrics source after the cache should have evicted it.
+		load.mockResolvedValueOnce(ready(tracks[0], sources[0]));
+
+		for (const [index, currentTrack] of tracks.entries()) {
+			const snapshot = await controller.load(currentTrack, settings(), false);
+			if (!snapshot) throw new Error("Expected a track session snapshot.");
+			await controller.enrichmentFor(snapshot);
+			expect(buildPseudoKaraoke).toHaveBeenCalledTimes(index + 1);
+		}
+
+		// Track 0's synthesis was evicted by the 5-entry LRU once 6 distinct tracks were cached, so
+		// requesting it again recomputes rather than reusing the earlier memoized SyllableLyrics.
+		const revisited = await controller.load(tracks[0], settings(), false);
+		if (!revisited) throw new Error("Expected a track session snapshot.");
+		await controller.enrichmentFor(revisited);
+
+		expect(buildPseudoKaraoke).toHaveBeenCalledTimes(7);
+	});
+
 	test("retries pseudo-karaoke synthesis after a failed result", async () => {
 		const currentTrack = track("spotify:track:synthesis-retry");
 		const source = lineLyrics();
