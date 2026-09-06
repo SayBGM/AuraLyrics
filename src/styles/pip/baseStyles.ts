@@ -133,12 +133,14 @@ body {
 		inset 0 0 0 1px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.52),
 		inset 0 18px 28px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.16),
 		inset 0 -18px 32px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.26),
-		0 0 calc((18px + 32px * var(--pip-interlude-progress, 0)) * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.1 + var(--pip-interlude-progress, 0) * 0.18)),
+		0 0 calc(34px * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.1 + var(--pip-interlude-progress, 0) * 0.18)),
 		0 20px 44px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.42);
 	filter:
 		saturate(calc(0.9 + var(--pip-interlude-progress, 0) * 0.6))
 		brightness(calc(0.92 + var(--pip-interlude-progress, 0) * 0.22));
-	transition: border-color 120ms linear, box-shadow 120ms linear, filter 120ms linear;
+	/* The glow follows progress through its alpha only: a fixed blur radius keeps the
+	   shadow off the per-frame repaint path, and transitioning it would restart every frame. */
+	transition: border-color 120ms linear;
 }
 
 .pip-frame-surface::before,
@@ -163,7 +165,7 @@ body {
 	border: var(--pip-frame-size) solid rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.08 + var(--pip-interlude-progress, 0) * 0.2));
 	box-shadow:
 		inset 0 0 34px rgba(var(--pip-scrim-rgb, 0, 0, 0), 0.58),
-		0 0 calc((16px + 26px * var(--pip-interlude-progress, 0)) * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.1 + var(--pip-interlude-progress, 0) * 0.18));
+		0 0 calc(29px * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), calc(0.1 + var(--pip-interlude-progress, 0) * 0.18));
 }
 
 .pip-frame-inner-shadow {
@@ -189,36 +191,43 @@ body {
 		0 0 calc((16px + 26px * var(--pip-interlude-progress, 0)) * var(--motion-intensity, 1)) rgba(var(--pip-accent-rgb, 255, 255, 255), 0.28),
 		inset 0 0 0 1px rgba(var(--pip-foreground-rgb, 255, 255, 255), 0.46);
 	opacity: calc(0.72 + var(--pip-interlude-progress, 0) * 0.28);
-	transition: width 80ms linear, height 80ms linear, opacity 120ms linear;
+	/* Each segment keeps its full size and scales, so per-frame progress never runs layout. */
+	transition: transform 80ms linear, opacity 120ms linear;
 }
 
 .pip-frame-progress-top {
 	top: 0;
 	left: 0;
-	width: calc(100% * var(--pip-frame-progress-top, 0));
+	width: 100%;
 	height: var(--pip-frame-size);
+	transform: scaleX(var(--pip-frame-progress-top, 0));
+	transform-origin: left;
 }
 
 .pip-frame-progress-right {
 	top: var(--pip-frame-size);
 	right: 0;
 	width: var(--pip-frame-size);
-	height: calc((100% - (var(--pip-frame-size) * 2)) * var(--pip-frame-progress-right, 0));
+	height: calc(100% - (var(--pip-frame-size) * 2));
+	transform: scaleY(var(--pip-frame-progress-right, 0));
 	transform-origin: top;
 }
 
 .pip-frame-progress-bottom {
 	right: 0;
 	bottom: 0;
-	width: calc(100% * var(--pip-frame-progress-bottom, 0));
+	width: 100%;
 	height: var(--pip-frame-size);
+	transform: scaleX(var(--pip-frame-progress-bottom, 0));
+	transform-origin: right;
 }
 
 .pip-frame-progress-left {
 	left: 0;
 	bottom: var(--pip-frame-size);
 	width: var(--pip-frame-size);
-	height: calc((100% - (var(--pip-frame-size) * 2)) * var(--pip-frame-progress-left, 0));
+	height: calc(100% - (var(--pip-frame-size) * 2));
+	transform: scaleY(var(--pip-frame-progress-left, 0));
 	transform-origin: bottom;
 }
 
@@ -235,7 +244,6 @@ body {
 	transform-origin: center;
 	filter: blur(0) saturate(1);
 	opacity: 1;
-	will-change: transform, filter, opacity;
 	transition:
 		transform 560ms cubic-bezier(.16, 1, .3, 1),
 		filter 420ms ease,
@@ -243,6 +251,7 @@ body {
 }
 
 #aura-lyrics-root.interlude-frame-active .pip-content {
+	will-change: transform, filter, opacity;
 	transform: translate3d(0, 0, 0) scale(0.94);
 	filter: saturate(0.92);
 	opacity: 0.82;

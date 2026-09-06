@@ -564,11 +564,16 @@ describe("pipStyles", () => {
 		expect(pipStyles).toContain("--pip-frame-size: clamp(12px, 3.4vmin, 18px)");
 		expect(pipStyles).not.toContain("--pip-frame-size: 18px");
 		expect(pipStyles).toContain("inset: -1px");
-		expect(pipStyles).toContain("width: calc(100% * var(--pip-frame-progress-top, 0))");
+		expect(pipStyles).toContain("transform: scaleX(var(--pip-frame-progress-top, 0))");
+		expect(pipStyles).toContain("transform: scaleX(var(--pip-frame-progress-bottom, 0))");
 		expect(pipStyles).toContain("top: var(--pip-frame-size)");
 		expect(pipStyles).toContain("bottom: var(--pip-frame-size)");
-		expect(pipStyles).toContain("height: calc((100% - (var(--pip-frame-size) * 2)) * var(--pip-frame-progress-right, 0))");
-		expect(pipStyles).toContain("height: calc((100% - (var(--pip-frame-size) * 2)) * var(--pip-frame-progress-left, 0))");
+		expect(pipStyles).toContain("height: calc(100% - (var(--pip-frame-size) * 2))");
+		expect(pipStyles).toContain("transform: scaleY(var(--pip-frame-progress-right, 0))");
+		expect(pipStyles).toContain("transform: scaleY(var(--pip-frame-progress-left, 0))");
+		// Progress must never drive width/height: that would run layout on every frame.
+		expect(pipStyles).not.toContain("width: calc(100% * var(--pip-frame-progress-top, 0))");
+		expect(pipStyles).not.toContain("transition: width 80ms linear, height 80ms linear, opacity 120ms linear");
 		expect(pipStyles).toContain("border-radius: 0");
 		expect(pipStyles).toContain("--pip-interlude-progress: 0");
 		expect(pipStyles).toContain("--pip-interlude-progress-percent: 0%");
