@@ -1,7 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { ExtensionApp } from "../../src/app/ExtensionApp";
 import type { IntroPresentationGate } from "../../src/app/IntroPresentationGate";
-import type { MusicStateMachine } from "../../src/app/MusicStateMachine";
 import type { OutroPresentationController } from "../../src/app/OutroPresentationController";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
@@ -3895,7 +3894,6 @@ describe("ExtensionApp", () => {
 			lyricsService: {
 				load: () => Promise<LyricsLoadState>;
 			};
-			stateMachine: MusicStateMachine;
 			loadCurrentTrack: (refresh: boolean) => Promise<void>;
 		};
 		internals.session = {
@@ -3907,7 +3905,6 @@ describe("ExtensionApp", () => {
 			load: vi.fn(async () => ({ status: "empty", reason: "instrumental", track }) as const),
 		};
 		const acceptIntro = vi.spyOn(introGateOf(app), "accept");
-		const dispatchState = vi.spyOn(internals.stateMachine, "dispatch");
 
 		await internals.loadCurrentTrack(false);
 
@@ -3920,7 +3917,6 @@ describe("ExtensionApp", () => {
 		expect(content.querySelector(".track-metadata-title")?.textContent).toBe(track.title);
 		expect(content.querySelector(".track-metadata-byline")?.textContent).toBe(`${track.artist} · ${track.album}`);
 		expect(content.querySelector(".lyrics-track, .status-card, .album-art-scene")).toBeNull();
-		expect(dispatchState).toHaveBeenCalledWith({ type: "noLyrics", message: "instrumental" });
 		expect(acceptIntro).not.toHaveBeenCalled();
 	});
 

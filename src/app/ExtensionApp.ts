@@ -23,7 +23,6 @@ import type { CurrentTrackLyricsDelayState } from "../settings/settingsViewTypes
 import { TrackLyricsDelayStore } from "../settings/TrackLyricsDelayStore";
 import { pipStyles } from "../styles/pipStyles";
 import { IntroPresentationGate } from "./IntroPresentationGate";
-import { MusicStateMachine } from "./MusicStateMachine";
 import { OutroPresentationController, type OutroPresentationResult } from "./OutroPresentationController";
 import { rendererSettingsChange } from "./SettingsChange";
 import { TopbarController } from "./TopbarController";
@@ -38,6 +37,14 @@ import { TrackThemeService } from "./TrackThemeService";
 import { type TrackTransitionDirection, TrackTransitionDirectionController } from "./TrackTransitionDirectionController";
 
 const SETTINGS_PERSISTENCE_ERROR = "AuraLyrics settings could not be saved.";
+
+/**
+ * `deltaTime` sentinel for renderer updates that must not advance motion: `Spring.update` returns the
+ * current position unchanged for `deltaTime <= 0`, and `SyllableVocals.animate` treats it as `immediate`
+ * and `set()`s each spring straight to its sampled target. Used both for one-off re-renders that do not
+ * advance playback time and for frames where motion is disabled.
+ */
+const SNAP_DELTA_TIME = 0;
 type OutroRenderOutcome = "none" | "lyrics-rendered";
 
 type ActiveTrackTransition = {
@@ -62,7 +69,6 @@ export class ExtensionApp {
 	private readonly playbackSynchronizer: PlaybackSynchronizer;
 	private readonly pip = new DocumentPipController();
 	private readonly renderer = new LyricsRenderer();
-	private readonly stateMachine = new MusicStateMachine();
 	private readonly introGate = new IntroPresentationGate();
 	private readonly outroController = new OutroPresentationController();
 	private readonly directionController = new TrackTransitionDirectionController();
@@ -146,7 +152,7 @@ export class ExtensionApp {
 			onAdjustCurrentTrackLyricsDelay: (uri, deltaMs) => this.adjustCurrentTrackLyricsDelay(uri, deltaMs),
 			onRefreshLyrics: () => this.loadCurrentTrack(true),
 			onClearCache: () => {
-				this.cache.clear();
+				this.lyricsService.clearCache();
 			},
 			onMusixmatchTokenAccepted: () => undefined,
 			onRefreshMusixmatchToken: () => this.fetchMusixmatchToken(),
@@ -227,7 +233,6 @@ export class ExtensionApp {
 
 	private async openPipOnce(): Promise<void> {
 		try {
-			this.stateMachine.dispatch({ type: "openPiP" });
 			this.isPlaybackActive = this.player.isPlaying();
 			this.session = await this.pip.open(this.settings.get(), pipStyles, {
 				isPlaying: this.isPlaybackActive,
@@ -242,7 +247,6 @@ export class ExtensionApp {
 				},
 				onClose: () => this.closePip(),
 			});
-			this.stateMachine.dispatch({ type: "pipReady" });
 			this.topbar.setActive(true);
 			this.clock = new PlaybackClock(this.session.window, (deltaTime) => this.tick(deltaTime));
 			this.clock.start();
@@ -263,7 +267,6 @@ export class ExtensionApp {
 			await this.loadCurrentTrack(false);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			this.stateMachine.dispatch({ type: "pipFailed", message });
 			this.spicetify.showNotification?.(message, true);
 		}
 	}
@@ -285,7 +288,6 @@ export class ExtensionApp {
 		}
 		this.session = undefined;
 		this.topbar.setActive(false);
-		this.stateMachine.dispatch({ type: "closePiP" });
 	}
 
 	private async onTrackChanged(event: TrackChangedEvent): Promise<void> {
@@ -309,7 +311,6 @@ export class ExtensionApp {
 			return;
 		}
 		this.playbackSynchronizer.resync();
-		this.stateMachine.dispatch({ type: "trackChanged" });
 		await this.loadCurrentTrack(false, {
 			direction: sceneDirectionForTrackTransition(direction),
 			playbackTrackEpoch,
@@ -335,10 +336,8 @@ export class ExtensionApp {
 			this.session.setCover(undefined);
 			this.session.applyTheme(undefined);
 			this.showStatus("Waiting for music", "Start playing a Spotify track.");
-			this.stateMachine.dispatch({ type: "invalidTrack" });
 			return;
 		}
-		this.stateMachine.dispatch({ type: "validTrack" });
 		const revealedSnapshot = this.revealedSnapshotFor(track);
 		if (!revealedSnapshot) {
 			if (trackChange) {
@@ -466,7 +465,7 @@ export class ExtensionApp {
 		}
 		const outroOutcome = this.evaluateOutro(timestampSec);
 		if (!didRenderLyrics && outroOutcome === "none" && this.hasMountedLyricsPresentation()) {
-			this.renderer.update(timestampSec, 0);
+			this.renderer.update(timestampSec, SNAP_DELTA_TIME);
 		}
 	}
 
@@ -501,15 +500,9 @@ export class ExtensionApp {
 				this.presentReadySnapshot(state.snapshot);
 				return;
 			case "instrumental":
-				this.stateMachine.dispatch({ type: "noLyrics", message: "instrumental" });
 				this.renderer.showTrackMetadata(this.session.root, { mode: "persistent", track: state.track }, this.settings.get());
 				return;
 			case "metadata":
-				if (state.reason === "error") {
-					this.stateMachine.dispatch({ type: "providerError", message: state.message ?? "error" });
-				} else {
-					this.stateMachine.dispatch({ type: "noLyrics", message: state.reason });
-				}
 				this.renderer.showTrackMetadata(this.session.root, { mode: "persistent", track: state.track }, this.settings.get());
 		}
 	}
@@ -573,7 +566,7 @@ export class ExtensionApp {
 		const settings = this.appliedSettings;
 		if (!this.isPlaybackActive) {
 			if (this.hasMountedLyricsPresentation()) {
-				this.renderer.update(this.playbackSynchronizer.timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
+				this.renderer.update(this.playbackSynchronizer.timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : SNAP_DELTA_TIME);
 			}
 			return;
 		}
@@ -586,7 +579,7 @@ export class ExtensionApp {
 		}
 		didRenderLyrics = this.evaluateOutro(timestampSec) === "lyrics-rendered" || didRenderLyrics;
 		if (this.hasMountedLyricsPresentation() && !didRenderLyrics) {
-			this.renderer.update(timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : 1);
+			this.renderer.update(timestampSec, settings.motionEnabled && !settings.reduceMotion ? deltaTime : SNAP_DELTA_TIME);
 		}
 	}
 
@@ -633,7 +626,7 @@ export class ExtensionApp {
 			const timestampSec = this.playbackSynchronizer.timestampSec;
 			const outroOutcome = this.evaluateOutro(timestampSec);
 			if (outroOutcome === "none" && this.hasMountedLyricsPresentation()) {
-				this.renderer.update(timestampSec, 0);
+				this.renderer.update(timestampSec, SNAP_DELTA_TIME);
 			}
 		}
 		if (!session || change !== "structural") {
@@ -686,7 +679,6 @@ export class ExtensionApp {
 			return "none";
 		}
 		this.revealedSnapshot = snapshot;
-		this.stateMachine.dispatch({ type: "lyricsReady" });
 		return this.renderOutroResult(this.outroController.accept(snapshot, this.settings.get(), timestampSec), timestampSec);
 	}
 
@@ -698,7 +690,7 @@ export class ExtensionApp {
 		if (!this.session) return "none";
 		if (result.kind === "show-lyrics") {
 			this.mountReadySnapshot(result.snapshot);
-			this.renderer.update(timestampSec, 0);
+			this.renderer.update(timestampSec, SNAP_DELTA_TIME);
 			return "lyrics-rendered";
 		}
 		if (result.kind === "show-metadata") {

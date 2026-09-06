@@ -108,11 +108,7 @@ export const buildPseudoKaraokeLine = (
 };
 
 // Convert line lyrics → syllable lyrics. Returns null when synthesis is not possible.
-export const buildPseudoKaraokeLyrics = (
-	lyrics: LineLyrics,
-	analysis: AudioAnalysisData | undefined,
-	_durationMs?: number
-): SyllableLyrics | null => {
+export const buildPseudoKaraokeLyrics = (lyrics: LineLyrics, analysis: AudioAnalysisData | undefined): SyllableLyrics | null => {
 	const context = buildTrackVocalContext(analysis);
 	if (context.scored.length === 0) {
 		return null;
