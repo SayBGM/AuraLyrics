@@ -95,6 +95,10 @@ export const alignPhraseUnitsWithDP = (
 		prefix.push(prefix[index] + weights[index]);
 	}
 	const cumMass = candidates.map((time) => getMassAtTime(curve, time));
+	// Precomputed once per phrase instead of once per (unitIndex, prev, current) transition —
+	// transitionCost only ever needs the value at `current`, so this collapses an O(n·m²) fan-out
+	// of getLocalMassAtTime calls into O(m).
+	const localMassNormByCandidate = candidates.map((time) => getLocalMassAtTime(curve, time) / averageLocalMass);
 	const m = candidates.length;
 
 	const transitionCost = (unitIndex: number, prev: number, current: number): number => {
@@ -126,8 +130,7 @@ export const alignPhraseUnitsWithDP = (
 				: Math.max(0, densityNorm - 1.15) * 0.12;
 
 		const isFinal = unitIndex === unitCount - 1;
-		const localMassNorm = getLocalMassAtTime(curve, time) / averageLocalMass;
-		const boundaryPenalty = isFinal ? 0 : localMassNorm * (0.11 + confidence * 0.06);
+		const boundaryPenalty = isFinal ? 0 : localMassNormByCandidate[current] * (0.11 + confidence * 0.06);
 		const longTailPenalty =
 			lexical && actualDurationRatio > expectedSegmentRatio * 2.4 ? (actualDurationRatio - expectedSegmentRatio * 2.4) * 1.1 : 0;
 

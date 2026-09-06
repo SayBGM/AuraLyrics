@@ -40,6 +40,26 @@ export const buildVocalMassCurve = (
 	return { frames, stepMs, totalMass: cumulative };
 };
 
+// Lower bound over `frames` on a key extracted from each frame: the smallest index whose
+// key is >= target (frames.length when every key is smaller than target). `frames` is
+// always time-sorted, so this works for both the `time` and `cumulative` keys below.
+const lowerBoundIndex = (frames: MassFrame[], target: number, key: (frame: MassFrame) => number): number => {
+	let lo = 0;
+	let hi = frames.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if (key(frames[mid]) < target) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+	return lo;
+};
+
+const frameTime = (frame: MassFrame): number => frame.time;
+const frameCumulative = (frame: MassFrame): number => frame.cumulative;
+
 export const getMassAtTime = (curve: VocalMassCurve, time: number): number => {
 	const { frames } = curve;
 	if (frames.length === 0) {
@@ -52,16 +72,14 @@ export const getMassAtTime = (curve: VocalMassCurve, time: number): number => {
 	if (time >= last.time) {
 		return last.cumulative;
 	}
-	for (let index = 1; index < frames.length; index += 1) {
-		const next = frames[index];
-		if (time <= next.time) {
-			const prev = frames[index - 1];
-			const span = next.time - prev.time || 1;
-			const progress = (time - prev.time) / span;
-			return prev.cumulative + (next.cumulative - prev.cumulative) * progress;
-		}
-	}
-	return last.cumulative;
+	// Original scan finds the first frame with `time <= next.time` starting at index 1,
+	// i.e. the lower-bound index of `time` clamped to at least 1.
+	const index = Math.max(1, lowerBoundIndex(frames, time, frameTime));
+	const next = frames[index];
+	const prev = frames[index - 1];
+	const span = next.time - prev.time || 1;
+	const progress = (time - prev.time) / span;
+	return prev.cumulative + (next.cumulative - prev.cumulative) * progress;
 };
 
 export const getLocalMassAtTime = (curve: VocalMassCurve, time: number): number => {
@@ -69,13 +87,23 @@ export const getLocalMassAtTime = (curve: VocalMassCurve, time: number): number 
 	if (frames.length === 0) {
 		return 0;
 	}
-	let closest = frames[0];
-	for (const frame of frames) {
-		if (Math.abs(frame.time - time) < Math.abs(closest.time - time)) {
-			closest = frame;
-		}
+	// Original scan keeps the first frame achieving the minimum |frame.time - time|, i.e. on
+	// an exact tie the earlier (smaller-index) one wins. When several frames share the exact
+	// same time (only ever the last two, from the curve builder's end-of-range clamp), the
+	// "winning" time value must resolve to its *first* occurrence, not whichever neighbor the
+	// bisection happened to land on.
+	const index = lowerBoundIndex(frames, time, frameTime);
+	let winningTime: number;
+	if (index === 0) {
+		winningTime = frames[0].time;
+	} else if (index >= frames.length) {
+		winningTime = frames[frames.length - 1].time;
+	} else {
+		const beforeTime = frames[index - 1].time;
+		const afterTime = frames[index].time;
+		winningTime = Math.abs(beforeTime - time) <= Math.abs(afterTime - time) ? beforeTime : afterTime;
 	}
-	return closest.mass;
+	return frames[lowerBoundIndex(frames, winningTime, frameTime)].mass;
 };
 
 export const getTimeByMassTarget = (curve: VocalMassCurve, targetMass: number): number => {
@@ -90,16 +118,14 @@ export const getTimeByMassTarget = (curve: VocalMassCurve, targetMass: number): 
 	if (targetMass >= last.cumulative) {
 		return last.time;
 	}
-	for (let index = 1; index < frames.length; index += 1) {
-		const next = frames[index];
-		if (targetMass <= next.cumulative) {
-			const prev = frames[index - 1];
-			const span = next.cumulative - prev.cumulative || 1;
-			const progress = (targetMass - prev.cumulative) / span;
-			return prev.time + (next.time - prev.time) * progress;
-		}
-	}
-	return last.time;
+	// Original scan finds the first frame with `targetMass <= next.cumulative` starting at
+	// index 1, i.e. the lower-bound index of `targetMass` clamped to at least 1.
+	const index = Math.max(1, lowerBoundIndex(frames, targetMass, frameCumulative));
+	const next = frames[index];
+	const prev = frames[index - 1];
+	const span = next.cumulative - prev.cumulative || 1;
+	const progress = (targetMass - prev.cumulative) / span;
+	return prev.time + (next.time - prev.time) * progress;
 };
 
 export const getTimeByMassRatio = (curve: VocalMassCurve, ratio: number): number => getTimeByMassTarget(curve, curve.totalMass * clamp01(ratio));
