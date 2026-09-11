@@ -1,4 +1,4 @@
-import type { TrackIdentity } from "../lyrics/types";
+import type { LyricsLoadDiagnostics, TrackIdentity } from "../lyrics/types";
 import type { ReadyTrackSessionSnapshot, TrackSessionSnapshot } from "./TrackSessionController";
 
 export type TrackPresentationState =
@@ -10,6 +10,7 @@ export type TrackPresentationState =
 			track: TrackIdentity;
 			reason: "error" | "no-lyrics" | "unsupported-local";
 			message?: string;
+			diagnostics?: LyricsLoadDiagnostics;
 	  }
 	| { kind: "instrumental"; track: TrackIdentity };
 
@@ -25,10 +26,21 @@ export const presentationStateForSnapshot = (snapshot: TrackSessionSnapshot): Tr
 		return { kind: "lyrics", snapshot: snapshot as ReadyTrackSessionSnapshot };
 	}
 	if (state.status === "error") {
-		return { kind: "metadata", track: state.track, reason: "error", message: state.message };
+		return {
+			kind: "metadata",
+			track: state.track,
+			reason: "error",
+			message: state.message,
+			...(state.diagnostics ? { diagnostics: state.diagnostics } : {}),
+		};
 	}
 	if (state.reason === "instrumental") {
 		return { kind: "instrumental", track: state.track };
 	}
-	return { kind: "metadata", track: state.track, reason: state.reason };
+	return {
+		kind: "metadata",
+		track: state.track,
+		reason: state.reason,
+		...(state.diagnostics ? { diagnostics: state.diagnostics } : {}),
+	};
 };

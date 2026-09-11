@@ -134,6 +134,13 @@ describe("pipStyles", () => {
 		expect(metadataStyles).not.toContain(["NOW", "PLAYING"].join(" "));
 	});
 
+	test("keeps metadata retry and diagnostics controls clickable inside the draggable PiP", () => {
+		expect(metadataStyles).toContain(".track-metadata-notice-action");
+		expect(metadataStyles).toContain(".track-metadata-diagnostics summary");
+		expect(metadataStyles.match(/\.track-metadata-notice-action \{[^}]+\}/)?.[0]).toContain("-webkit-app-region: no-drag");
+		expect(metadataStyles.match(/\.track-metadata-diagnostics summary \{[^}]+\}/)?.[0]).toContain("-webkit-app-region: no-drag");
+	});
+
 	test("keeps focused module boundaries free of unrelated selectors", () => {
 		expect(baseStyles).not.toContain(".pip-controls");
 		expect(baseStyles).not.toContain(".lyrics-viewport");
@@ -216,11 +223,13 @@ describe("pipStyles", () => {
 	});
 
 	test("allows long lyric lines to wrap inside the PiP viewport", () => {
-		expect(pipStyles).toContain("max-width: 80vw");
-		expect(pipStyles).toContain("white-space: normal");
-		expect(pipStyles).toContain("overflow-wrap: break-word");
-		expect(pipStyles).toContain("word-break: keep-all");
-		expect(pipStyles).not.toContain("overflow-wrap: anywhere");
+		const lyricRule = pipStyles.match(/\.vocals-group \{[^}]+\}/)?.[0] ?? "";
+
+		expect(lyricRule).toContain("max-width: 80vw");
+		expect(lyricRule).toContain("white-space: normal");
+		expect(lyricRule).toContain("overflow-wrap: break-word");
+		expect(lyricRule).toContain("word-break: keep-all");
+		expect(lyricRule).not.toContain("overflow-wrap: anywhere");
 	});
 
 	test("keeps PiP content and lyrics track inside a stable safe area", () => {
@@ -230,6 +239,13 @@ describe("pipStyles", () => {
 		expect(pipContentRule).toContain("padding: 7vh 6vw");
 		expect(pipContentRule).not.toContain("padding: 7vh 7vw");
 		expect(lyricsTrackRule).toContain("margin: 0 12px");
+	});
+
+	test("reserves transient control space for compact lyric scenes", () => {
+		const compactRule = lyricsStyles.slice(lyricsStyles.indexOf("@media (max-height: 359px)"), lyricsStyles.indexOf("@media (max-height: 219px)"));
+
+		expect(compactRule).toContain("#aura-lyrics-root.controls-visible .pip-content");
+		expect(compactRule).toContain("padding-bottom: 56px");
 	});
 
 	test("shows instrumental album art in its original framing", () => {

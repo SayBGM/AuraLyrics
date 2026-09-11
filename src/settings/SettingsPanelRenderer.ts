@@ -601,10 +601,15 @@ export class SettingsPanelRenderer {
 		const value = this.ownerDocument.createElement("output");
 		value.className = "track-delay-value";
 		value.setAttribute("aria-live", "polite");
+		value.setAttribute("aria-label", formatTranslation("currentTrackDelayAppliedValue", { amount: formatDelayMs(state.delayMs) }, language));
 		value.textContent = `${formatDelayMs(state.delayMs)} ms`;
 		const source = this.ownerDocument.createElement("span");
 		source.className = "track-delay-source";
-		source.textContent = translate(state.hasOverride ? "currentTrackDelayOverrideSource" : "currentTrackDelayDefaultSource", language);
+		source.textContent = formatTranslation(
+			state.hasOverride ? "currentTrackDelayOverrideSource" : "currentTrackDelayDefaultSource",
+			{ amount: formatDelayMs(state.defaultDelayMs) },
+			language
+		);
 		valueGroup.append(value, source);
 		header.append(metadata, valueGroup);
 
@@ -615,6 +620,8 @@ export class SettingsPanelRenderer {
 		actions.className = "track-delay-actions";
 		for (const step of [-100, -50, 50, 100]) {
 			const stepLabel = formatDelayMs(step);
+			const direction = translate(step < 0 ? "currentTrackDelayEarlier" : "currentTrackDelayLater", language);
+			const adjustmentLabel = formatTranslation("currentTrackDelayAdjust", { amount: stepLabel, direction }, language);
 			const button = this.controls.button(`track-delay-${step < 0 ? "minus" : "plus"}-${Math.abs(step)}`, `${stepLabel} ms`, () => {
 				const persisted = this.callbacks.onAdjustCurrentTrackLyricsDelay(state.uri, step);
 				this.reportPersistence(persisted);
@@ -623,7 +630,8 @@ export class SettingsPanelRenderer {
 				}
 			});
 			button.classList.add("track-delay-step");
-			button.setAttribute("aria-label", formatTranslation("currentTrackDelayAdjust", { amount: stepLabel }, language));
+			button.setAttribute("aria-label", adjustmentLabel);
+			button.title = adjustmentLabel;
 			actions.append(button);
 		}
 		const reset = this.controls.button("reset-track-delay", translate("resetTrackDelay", language), () => {

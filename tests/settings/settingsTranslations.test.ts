@@ -19,19 +19,19 @@ describe("settingsTranslations", () => {
 			current: "Current song delay",
 			defaults: "Default lyrics delay (ms)",
 			language: "en",
-			reset: "Use global default",
+			reset: "Reset to global default",
 		},
 		{
 			current: "현재 곡 지연",
 			defaults: "기본 가사 지연 (ms)",
 			language: "ko",
-			reset: "전역값으로 초기화",
+			reset: "전체 기본값으로 초기화",
 		},
 		{
 			current: "現在の曲の遅延",
 			defaults: "デフォルトの歌詞遅延 (ms)",
 			language: "ja",
-			reset: "全体のデフォルトに戻す",
+			reset: "全体のデフォルトにリセット",
 		},
 	] as const)("provides complete $language labels", ({ current, defaults, language, reset }) => {
 		const uiLanguage: UiLanguage = language;
@@ -39,6 +39,9 @@ describe("settingsTranslations", () => {
 		expect(translate("defaultLyricsDelay", uiLanguage)).toBe(defaults);
 		expect(translate("resetTrackDelay", uiLanguage)).toBe(reset);
 		expect(translate("currentTrackDelayHint", uiLanguage).length).toBeGreaterThan(0);
+		expect(translate("currentTrackDelayEarlier", uiLanguage).length).toBeGreaterThan(0);
+		expect(translate("currentTrackDelayLater", uiLanguage).length).toBeGreaterThan(0);
+		expect(translate("currentTrackDelayAppliedValue", uiLanguage)).toContain("{amount}");
 		expect(translate("noCurrentTrackDelay", uiLanguage).length).toBeGreaterThan(0);
 	});
 

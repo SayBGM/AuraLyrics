@@ -795,7 +795,7 @@ describe("ExtensionApp", () => {
 			track: metadataTrack("spotify:local:aura:night:signal:180", { isLocal: true }),
 			state: (track: TrackIdentity): LyricsLoadState => ({ status: "empty", track, reason: "unsupported-local" }),
 		},
-	])("keeps plain track metadata for $name", async ({ track, state }) => {
+	])("keeps track metadata and explains the final lyrics state for $name", async ({ track, state }) => {
 		const { spicetify } = createSpicetify();
 		const app = new ExtensionApp(spicetify);
 		const root = document.createElement("main");
@@ -817,7 +817,13 @@ describe("ExtensionApp", () => {
 		expect(root.querySelector(".track-metadata-eyebrow")).toBeNull();
 		expect(root.querySelector(".track-metadata-progress")).toBeNull();
 		expect(root.querySelector(".status-card")).toBeNull();
-		expect(root.querySelector("button")).toBeNull();
+		if (track.isLocal) {
+			expect(root.querySelector(".track-metadata-notice")?.textContent).toContain("Local files are not supported");
+			expect(root.querySelector("button")).toBeNull();
+		} else {
+			expect(root.querySelector(".track-metadata-notice")).not.toBeNull();
+			expect(root.querySelector("button")?.textContent).toBe("Retry this track");
+		}
 		expect(acceptIntro).not.toHaveBeenCalled();
 	});
 

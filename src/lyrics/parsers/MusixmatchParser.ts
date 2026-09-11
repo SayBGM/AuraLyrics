@@ -1,4 +1,5 @@
-import type { LineLyrics, Syllable, SyllableLyrics } from "../types";
+import type { LineLyrics, LineVocal, Syllable, SyllableLyrics } from "../types";
+import { parseLrc } from "./LrcParser";
 
 type MusixmatchSubtitleLine = {
 	text?: string;
@@ -119,28 +120,43 @@ const buildRichsyncSyllables = (line: MusixmatchRichsyncLine): Syllable[] => {
 	return syllables;
 };
 
-export const parseMusixmatchSubtitle = (subtitleBody: string, translations?: MusixmatchTranslationMap): LineLyrics | undefined => {
-	const lines = JSON.parse(subtitleBody) as MusixmatchSubtitleLine[];
-	if (!Array.isArray(lines) || lines.length === 0) {
-		return undefined;
-	}
-	const content = lines.map((line, index) => {
-		const startTime = line.time.total;
+export const parseMusixmatchSubtitle = (subtitleBody: string, translations?: MusixmatchTranslationMap): LineLyrics | SyllableLyrics | undefined => {
+	try {
+		const lines = JSON.parse(subtitleBody) as MusixmatchSubtitleLine[];
+		if (!Array.isArray(lines) || lines.length === 0) {
+			return undefined;
+		}
+		const content: LineVocal[] = [];
+		for (const [index, line] of lines.entries()) {
+			const startTime = line.time?.total;
+			if (!Number.isFinite(startTime)) {
+				return undefined;
+			}
+			const nextStartTime = lines[index + 1]?.time?.total;
+			content.push({
+				type: "vocal" as const,
+				text: line.text || "♪",
+				translatedText: lookupTranslation(translations, line.text),
+				startTime,
+				endTime: Number.isFinite(nextStartTime) ? nextStartTime : startTime + 4,
+				oppositeAligned: false,
+			});
+		}
 		return {
-			type: "vocal" as const,
-			text: line.text || "♪",
-			translatedText: lookupTranslation(translations, line.text),
-			startTime,
-			endTime: lines[index + 1]?.time.total ?? startTime + 4,
-			oppositeAligned: false,
+			type: "line",
+			startTime: content[0]?.startTime ?? 0,
+			endTime: content.at(-1)?.endTime ?? 0,
+			content,
 		};
-	});
-	return {
-		type: "line",
-		startTime: content[0].startTime,
-		endTime: content.at(-1)?.endTime ?? 0,
-		content,
-	};
+	} catch {
+		// Some macro.subtitles responses ignore subtitle_format=mxm and return LRC instead.
+		const lyrics = parseLrc(subtitleBody);
+		const hasVocals =
+			lyrics.type === "line"
+				? lyrics.content.some((item) => item.type === "vocal" && item.text.trim().length > 0)
+				: lyrics.content.some((item) => item.type === "vocal" && item.lead.syllables.some((syllable) => syllable.text.trim().length > 0));
+		return hasVocals ? lyrics : undefined;
+	}
 };
 
 export const parseMusixmatchRichsync = (richsyncBody: string, translations?: MusixmatchTranslationMap): SyllableLyrics | undefined => {

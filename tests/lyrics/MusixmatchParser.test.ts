@@ -175,6 +175,17 @@ describe("parseMusixmatchRichsync", () => {
 });
 
 describe("parseMusixmatchSubtitle", () => {
+	test("falls back to LRC when Musixmatch returns it instead of MXM JSON", () => {
+		const lyrics = parseMusixmatchSubtitle("[00:12.00]First line\n[00:16.50]Second line");
+
+		if (lyrics?.type !== "line") {
+			throw new Error("expected line lyrics");
+		}
+		const vocals = lyrics.content.filter((item) => item.type === "vocal");
+		expect(vocals.map((item) => item.text)).toEqual(["First line", "Second line"]);
+		expect(vocals[0]).toMatchObject({ startTime: 12, endTime: 16.5 });
+	});
+
 	test("attaches translations to matching lines and leaves the rest untranslated", () => {
 		const translations = buildMusixmatchTranslationMap([
 			{ translation: { subtitle_matched_line: "Loves all of you", description: "너의 모든 것을 사랑해" } },

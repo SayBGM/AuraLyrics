@@ -385,12 +385,13 @@ describe("SettingsView", () => {
 		expect(card.textContent).toContain("Northern Lights");
 		expect(card.textContent).toContain("Aura");
 		expect(card.textContent).toContain("+250 ms");
-		expect(card.textContent).toContain("Global default");
+		expect(card.textContent).toContain("Using global default: +250 ms");
+		expect(card.querySelector<HTMLOutputElement>(".track-delay-value")?.getAttribute("aria-label")).toBe("Applied to current song: +250 ms");
 		expect(control<HTMLButtonElement>(content, "reset-track-delay").disabled).toBe(true);
-		expect(control(content, "track-delay-minus-100").getAttribute("aria-label")).toBe("Adjust current song lyrics by -100 ms");
+		expect(control(content, "track-delay-minus-100").getAttribute("aria-label")).toBe("Show this song's lyrics earlier (-100 ms)");
 		expect(control(content, "track-delay-minus-50").textContent).toBe("-50 ms");
 		expect(control(content, "track-delay-plus-50").textContent).toBe("+50 ms");
-		expect(control(content, "track-delay-plus-100").getAttribute("aria-label")).toBe("Adjust current song lyrics by +100 ms");
+		expect(control(content, "track-delay-plus-100").getAttribute("aria-label")).toBe("Show this song's lyrics later (+100 ms)");
 
 		const plus = control<HTMLButtonElement>(content, "track-delay-plus-50");
 		plus.focus();
@@ -399,7 +400,7 @@ describe("SettingsView", () => {
 
 		expect(onAdjust).toHaveBeenCalledWith("spotify:track:northern-lights", 50);
 		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("+300 ms");
-		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("Song-specific setting");
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("Song-specific setting · global default: +250 ms");
 		expect(document.activeElement).toBe(control(content, "track-delay-plus-50"));
 		expect(control<HTMLButtonElement>(content, "reset-track-delay").disabled).toBe(false);
 
@@ -408,7 +409,7 @@ describe("SettingsView", () => {
 
 		expect(onReset).toHaveBeenCalledWith("spotify:track:northern-lights");
 		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("+250 ms");
-		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("Global default");
+		expect(control<HTMLElement>(content, "current-track-delay").textContent).toContain("Using global default: +250 ms");
 	});
 
 	test("refreshes an open lyrics panel when the current track changes", async () => {

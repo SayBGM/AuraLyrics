@@ -3,9 +3,20 @@ import type { TrackIdentity } from "../../lyrics/types";
 export type TrackMetadataViewModel = {
 	mode: "loading" | "persistent" | "intro";
 	track: TrackIdentity;
+	notice?: TrackMetadataNotice;
 };
 
-export const createTrackMetadataScene = (document: Document, { mode, track }: TrackMetadataViewModel): HTMLDivElement => {
+export type TrackMetadataNotice = {
+	title: string;
+	detail: string;
+	diagnosticsLabel?: string;
+	diagnostics?: string[];
+	actionLabel?: string;
+	onAction?: () => void;
+	tone?: "neutral" | "danger";
+};
+
+export const createTrackMetadataScene = (document: Document, { mode, track, notice }: TrackMetadataViewModel): HTMLDivElement => {
 	const scene = document.createElement("div");
 	scene.className = `aura-lyrics track-metadata-scene ${mode}`;
 
@@ -47,6 +58,9 @@ export const createTrackMetadataScene = (document: Document, { mode, track }: Tr
 		byline.textContent = bylineText;
 		copy.append(byline);
 	}
+	if (notice) {
+		copy.append(createMetadataNotice(document, notice));
+	}
 
 	if (mode === "loading") {
 		const progress = document.createElement("span");
@@ -58,6 +72,49 @@ export const createTrackMetadataScene = (document: Document, { mode, track }: Tr
 	layout.append(copy);
 	scene.append(layout);
 	return scene;
+};
+
+const createMetadataNotice = (document: Document, notice: TrackMetadataNotice): HTMLDivElement => {
+	const container = document.createElement("div");
+	container.className = `track-metadata-notice ${notice.tone ?? "neutral"}`;
+	container.setAttribute("role", notice.tone === "danger" ? "alert" : "status");
+
+	const title = document.createElement("strong");
+	title.className = "track-metadata-notice-title";
+	title.textContent = notice.title;
+	container.append(title);
+
+	const detail = document.createElement("span");
+	detail.className = "track-metadata-notice-detail";
+	detail.textContent = notice.detail;
+	container.append(detail);
+
+	if (notice.actionLabel && notice.onAction) {
+		const button = document.createElement("button");
+		button.type = "button";
+		button.className = "track-metadata-notice-action";
+		button.textContent = notice.actionLabel;
+		button.addEventListener("click", notice.onAction);
+		container.append(button);
+	}
+
+	if (notice.diagnostics?.length) {
+		const details = document.createElement("details");
+		details.className = "track-metadata-diagnostics";
+		const summary = document.createElement("summary");
+		summary.textContent = notice.diagnosticsLabel ?? "Diagnostics";
+		details.append(summary);
+		const list = document.createElement("ul");
+		for (const diagnostic of notice.diagnostics) {
+			const item = document.createElement("li");
+			item.textContent = diagnostic;
+			list.append(item);
+		}
+		details.append(list);
+		container.append(details);
+	}
+
+	return container;
 };
 
 const normalizedMetadata = (value: string | undefined): string | undefined => {

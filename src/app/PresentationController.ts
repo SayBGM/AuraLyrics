@@ -1,3 +1,4 @@
+import { lyricsLoadNoticeFor } from "../lyrics/lyricsLoadNotice";
 import type { LyricsDocument, TrackIdentity } from "../lyrics/types";
 import type { PipSession } from "../pip/DocumentPipController";
 import type { AudioAnalysisWaveformService, TrackWaveformProfile } from "../renderer/AudioAnalysisWaveformService";
@@ -85,8 +86,29 @@ export class PresentationController {
 				this.presentReadySnapshot(state.snapshot);
 				return;
 			case "instrumental":
-			case "metadata":
 				this.host.renderer.showTrackMetadata(session.root, { mode: "persistent", track: state.track }, this.host.settings);
+				return;
+			case "metadata": {
+				const notice = lyricsLoadNoticeFor(state.reason, this.host.settings.language, state.message, state.diagnostics);
+				this.host.renderer.showTrackMetadata(
+					session.root,
+					{
+						mode: "persistent",
+						track: state.track,
+						notice: {
+							title: notice.title,
+							detail: notice.detail,
+							diagnosticsLabel: notice.diagnosticsLabel,
+							diagnostics: notice.diagnostics,
+							actionLabel: notice.tryAgainLabel,
+							onAction: notice.tryAgainLabel ? () => this.host.reloadCurrentTrack() : undefined,
+							tone: notice.tone,
+						},
+					},
+					this.host.settings
+				);
+				return;
+			}
 		}
 	}
 

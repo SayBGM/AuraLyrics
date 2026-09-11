@@ -41,12 +41,12 @@ describe("presentationStateForSnapshot", () => {
 
 	test("maps error load state to a metadata presentation with the error reason and message", () => {
 		const snapshot: TrackSessionSnapshot = {
-			loadState: { status: "error", track, message: "boom" },
+			loadState: { status: "error", track, message: "boom", diagnostics },
 			lyrics: undefined,
 			timingSource: "native",
 			waveformProfile: undefined,
 		};
-		expect(presentationStateForSnapshot(snapshot)).toEqual({ kind: "metadata", track, reason: "error", message: "boom" });
+		expect(presentationStateForSnapshot(snapshot)).toEqual({ kind: "metadata", track, reason: "error", message: "boom", diagnostics });
 	});
 
 	test("maps an empty/instrumental load state to the instrumental presentation kind", () => {
@@ -61,12 +61,12 @@ describe("presentationStateForSnapshot", () => {
 
 	test("maps other empty load states (no-lyrics, unsupported-local) to metadata without a message", () => {
 		const noLyrics: TrackSessionSnapshot = {
-			loadState: { status: "empty", track, reason: "no-lyrics" },
+			loadState: { status: "empty", track, reason: "no-lyrics", diagnostics },
 			lyrics: undefined,
 			timingSource: "native",
 			waveformProfile: undefined,
 		};
-		expect(presentationStateForSnapshot(noLyrics)).toEqual({ kind: "metadata", track, reason: "no-lyrics" });
+		expect(presentationStateForSnapshot(noLyrics)).toEqual({ kind: "metadata", track, reason: "no-lyrics", diagnostics });
 
 		const unsupportedLocal: TrackSessionSnapshot = {
 			loadState: { status: "empty", track, reason: "unsupported-local" },

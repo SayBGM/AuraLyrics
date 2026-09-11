@@ -145,10 +145,6 @@ body {
 	background: rgba(0, 0, 0, 0.72);
 }
 
-.pip-content {
-	padding: 7vh 6vw;
-}
-
 *:not(.pip-cover), *::before, *::after {
 	animation-duration: 0s !important;
 	animation-delay: 0s !important;

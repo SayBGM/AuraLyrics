@@ -159,6 +159,102 @@ describe("MusixmatchProvider", () => {
 		expect(vocal.type === "vocal" && vocal.translatedText).toBe("안녕");
 	});
 
+	test("renders LRC subtitles when richsync is unavailable", async () => {
+		const provider = new MusixmatchProvider();
+		const context: ProviderContext = {
+			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
+				if (url.includes("crowd.track.translations.get") || url.includes("track.richsync.get")) {
+					throw new Error("unavailable");
+				}
+				return {
+					message: {
+						body: {
+							macro_calls: {
+								"matcher.track.get": {
+									message: { header: { status_code: 200 }, body: { track: { track_id: 123 } } },
+								},
+								"track.subtitles.get": {
+									message: { body: { subtitle_list: [{ subtitle: { subtitle_body: "[00:01.00]Hello" } }] } },
+								},
+							},
+						},
+					},
+				} as T;
+			},
+			fetch,
+			userAgent: "test",
+			musixmatchToken: "token",
+		};
+
+		const result = await provider.fetch(track, context);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok || result.lyrics.type !== "line") {
+			throw new Error("expected LRC line lyrics");
+		}
+		expect(result.lyrics.content[0]).toMatchObject({ type: "vocal", text: "Hello", startTime: 1 });
+	});
+
+	test("rejects a macro response matched to another track before requesting follow-ups", async () => {
+		const urls: string[] = [];
+		const provider = new MusixmatchProvider();
+		const context: ProviderContext = {
+			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
+				urls.push(url);
+				return {
+					message: {
+						body: {
+							macro_calls: {
+								"matcher.track.get": {
+									message: {
+										header: { status_code: 200 },
+										body: { track: { track_id: 123, track_name: "NOKIA", artist_name: "Another artist", track_length: 836 } },
+									},
+								},
+							},
+						},
+					},
+				} as T;
+			},
+			fetch,
+			userAgent: "test",
+			musixmatchToken: "token",
+		};
+
+		const result = await provider.fetch(track, context);
+
+		expect(result).toMatchObject({ ok: false, reason: "no-lyrics", message: "Musixmatch returned a different track." });
+		expect(urls).toHaveLength(1);
+	});
+
+	test("rejects a same-titled track by a different artist", async () => {
+		const provider = new MusixmatchProvider();
+		const context: ProviderContext = {
+			cosmosGet: async <T = unknown>(): Promise<T> =>
+				({
+					message: {
+						body: {
+							macro_calls: {
+								"matcher.track.get": {
+									message: {
+										header: { status_code: 200 },
+										body: { track: { track_id: 123, track_name: "Birthday", artist_name: "Other performer", track_length: 7 } },
+									},
+								},
+							},
+						},
+					},
+				}) as T,
+			fetch,
+			userAgent: "test",
+			musixmatchToken: "token",
+		};
+
+		const result = await provider.fetch(track, context);
+
+		expect(result).toMatchObject({ ok: false, reason: "no-lyrics", message: "Musixmatch returned a different track." });
+	});
+
 	test("still returns lyrics when the translation request fails", async () => {
 		const provider = new MusixmatchProvider();
 		const context: ProviderContext = {

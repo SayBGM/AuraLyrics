@@ -367,8 +367,8 @@ test("settings lyrics panel keeps the current-song delay card readable and reach
 	await expect(card).toContainText("+150 ms");
 	await expect(card).toContainText("Song-specific setting");
 	await expect(card.locator("button")).toHaveCount(5);
-	await expect(page.locator('[data-control-id="track-delay-minus-100"]')).toHaveAttribute("aria-label", "Adjust current song lyrics by -100 ms");
-	await expect(page.locator('[data-control-id="track-delay-plus-100"]')).toHaveAttribute("aria-label", "Adjust current song lyrics by +100 ms");
+	await expect(page.locator('[data-control-id="track-delay-minus-100"]')).toHaveAttribute("aria-label", "Show this song's lyrics earlier (-100 ms)");
+	await expect(page.locator('[data-control-id="track-delay-plus-100"]')).toHaveAttribute("aria-label", "Show this song's lyrics later (+100 ms)");
 	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-track-delay.png", screenshotTolerance);
 });
 
@@ -444,6 +444,30 @@ test("translated line lyrics remain readable in a 480 by 270 PiP", async ({ page
 
 	await expect(page.locator(".line-group.active .lyric-translation")).toHaveText("Starlight shines on us");
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("translated-line-480x270.png", screenshotTolerance);
+});
+
+test("compact PiP keeps a translated active row above transient controls", async ({ page }) => {
+	await page.setViewportSize({ width: 480, height: 270 });
+	await renderScenario(page, "translated-line");
+	await page.locator("#aura-lyrics-root").evaluate((root) => root.classList.add("controls-visible"));
+
+	const metrics = await page.evaluate(() => {
+		const active = document.querySelector<HTMLElement>(".line-group.active");
+		const controls = document.querySelector<HTMLElement>(".pip-controls");
+		if (!active || !controls) {
+			throw new Error("Missing compact PiP active row or controls.");
+		}
+		const activeRect = active.getBoundingClientRect();
+		const controlsRect = controls.getBoundingClientRect();
+		return {
+			activeBottom: activeRect.bottom,
+			controlsTop: controlsRect.top,
+			controlsOpacity: getComputedStyle(controls).opacity,
+		};
+	});
+
+	expect(metrics.controlsOpacity).toBe("1");
+	expect(metrics.activeBottom).toBeLessThanOrEqual(metrics.controlsTop - 4);
 });
 
 test("a 320 by 180 PiP shows only the active lyric row", async ({ page }) => {

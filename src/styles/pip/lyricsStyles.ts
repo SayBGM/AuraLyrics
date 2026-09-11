@@ -809,6 +809,12 @@ export const lyricsStyles = `
 		--lyrics-size: clamp(17px, calc(9.2vmin * var(--font-scale)), 40px);
 	}
 
+	/* The playback controls float over the PiP scene while the pointer is active.
+	   Keep compact lyric scenes above that transient chrome, including 480x270. */
+	#aura-lyrics-root.controls-visible .pip-content {
+		padding-bottom: 56px;
+	}
+
 	.lyrics-track {
 		gap: calc(var(--lyrics-size) * 0.48);
 	}
@@ -821,10 +827,6 @@ export const lyricsStyles = `
 @media (max-height: 219px) {
 	.aura-lyrics {
 		--lyrics-size: clamp(16px, calc(8.6vmin * var(--font-scale)), 34px);
-	}
-
-	#aura-lyrics-root.controls-visible .pip-content {
-		padding-bottom: 56px;
 	}
 
 	.lyrics-track {

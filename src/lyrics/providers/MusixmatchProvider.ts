@@ -27,6 +27,13 @@ type MusixmatchHeader = {
 	mode?: string;
 };
 
+type MusixmatchTrack = {
+	track_id?: unknown;
+	track_name?: unknown;
+	artist_name?: unknown;
+	track_length?: unknown;
+};
+
 type MusixmatchRichsyncResponse = {
 	message?: {
 		header?: {
@@ -51,6 +58,22 @@ type MusixmatchTranslationsResponse = {
 
 const TEMPORARY_BLOCK_COOLDOWN_MS = 1000 * 60 * 10;
 const TRANSLATION_LANGUAGE = "ko";
+const MAX_DURATION_DIFFERENCE_SECONDS = 15;
+
+const normalizedMetadata = (value: string): string =>
+	value
+		.normalize("NFKC")
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}]+/gu, "");
+
+const isCompatibleMetadata = (expected: string, candidate: unknown): boolean => {
+	if (typeof candidate !== "string" || candidate.trim() === "") {
+		return true;
+	}
+	const normalizedExpected = normalizedMetadata(expected);
+	const normalizedCandidate = normalizedMetadata(candidate);
+	return normalizedExpected.includes(normalizedCandidate) || normalizedCandidate.includes(normalizedExpected);
+};
 
 export class MusixmatchProvider implements LyricsProvider {
 	public readonly id = "musixmatch";
@@ -104,6 +127,9 @@ export class MusixmatchProvider implements LyricsProvider {
 				};
 			}
 			return { ok: false, reason: "error", message: matcher?.header.hint ?? "Musixmatch request failed." };
+		}
+		if (!this.matchesTrack(track, matcher.body)) {
+			return { ok: false, reason: "no-lyrics", message: "Musixmatch returned a different track." };
 		}
 		const trackId = this.extractTrackId(matcher.body);
 		if (trackId && context.signal?.aborted) {
@@ -181,12 +207,29 @@ export class MusixmatchProvider implements LyricsProvider {
 	}
 
 	private extractTrackId(body: Record<string, unknown>): number | undefined {
-		const track = body.track;
-		if (!track || typeof track !== "object") {
-			return undefined;
-		}
-		const trackId = (track as { track_id?: unknown }).track_id;
+		const track = this.extractTrack(body);
+		const trackId = track?.track_id;
 		return typeof trackId === "number" && Number.isFinite(trackId) ? trackId : undefined;
+	}
+
+	private matchesTrack(requested: TrackIdentity, body: Record<string, unknown>): boolean {
+		const matched = this.extractTrack(body);
+		if (!matched) {
+			return true;
+		}
+		if (!isCompatibleMetadata(requested.title, matched.track_name)) {
+			return false;
+		}
+		if (!isCompatibleMetadata(requested.artist, matched.artist_name)) {
+			return false;
+		}
+		const duration = typeof matched.track_length === "number" ? matched.track_length : Number(matched.track_length);
+		return !Number.isFinite(duration) || duration <= 0 || Math.abs(duration * 1000 - requested.durationMs) <= MAX_DURATION_DIFFERENCE_SECONDS * 1000;
+	}
+
+	private extractTrack(body: Record<string, unknown>): MusixmatchTrack | undefined {
+		const track = body.track;
+		return track && typeof track === "object" && !Array.isArray(track) ? (track as MusixmatchTrack) : undefined;
 	}
 
 	private isTemporaryBlock(header: MusixmatchHeader): boolean {

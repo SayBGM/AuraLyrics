@@ -63,6 +63,66 @@ export const metadataStyles = `
 	white-space: nowrap;
 }
 
+.track-metadata-notice {
+	display: grid;
+	gap: 4px;
+	max-width: min(100%, 420px);
+	margin-top: clamp(5px, 1.2vmin, 10px);
+	padding: clamp(8px, 1.5vmin, 12px);
+	border: 1px solid rgba(var(--pip-foreground-rgb), 0.16);
+	border-radius: 10px;
+	background: rgba(var(--pip-scrim-rgb), 0.35);
+	box-sizing: border-box;
+}
+
+.track-metadata-notice.danger {
+	border-color: rgba(255, 126, 126, 0.38);
+}
+
+.track-metadata-notice-title {
+	color: var(--pip-foreground-color);
+	font-size: clamp(12px, 2.2vmin, 16px);
+	line-height: 1.15;
+}
+
+.track-metadata-notice-detail {
+	color: var(--pip-muted-foreground-color);
+	font-size: clamp(10px, 1.8vmin, 13px);
+	line-height: 1.35;
+}
+
+.track-metadata-notice-action {
+	-webkit-app-region: no-drag;
+	justify-self: start;
+	margin-top: 3px;
+	padding: 5px 9px;
+	border: 0;
+	border-radius: 999px;
+	background: var(--pip-foreground-color);
+	color: rgb(var(--pip-scrim-rgb));
+	font-size: clamp(10px, 1.8vmin, 13px);
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.track-metadata-diagnostics {
+	color: var(--pip-muted-foreground-color);
+	font-size: clamp(9px, 1.5vmin, 11px);
+	line-height: 1.3;
+}
+
+.track-metadata-diagnostics summary {
+	-webkit-app-region: no-drag;
+	cursor: pointer;
+}
+
+.track-metadata-diagnostics ul {
+	max-width: 100%;
+	margin: 5px 0 0;
+	padding-left: 16px;
+	overflow-wrap: anywhere;
+}
+
 .track-metadata-progress {
 	position: relative;
 	display: block;
