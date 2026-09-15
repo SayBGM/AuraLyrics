@@ -22,6 +22,8 @@ AuraLyrics turns the current album art into a soft blurred backdrop and renders 
 - Persistent lyrics cache with first-priority-provider-only cache policy.
 - PiP playback controls for previous, play/pause, next, and close.
 - Responsive settings modal with live visual updates.
+- Per-song lyrics provider preference with automatic fallback.
+- Compact PiP mode for small windows (automatic, always, or off).
 
 ## Installation
 
@@ -75,12 +77,9 @@ Cache behavior is intentionally conservative: lyrics are cached only when the cu
 
 Musixmatch may occasionally return captcha, rate-limit, blocked, or `401/403/429` responses. AuraLyrics handles that by temporarily skipping Musixmatch and falling through to the next provider instead of showing an immediate error.
 
-Token generation uses two attempts:
-
-1. Desktop endpoint: `apic-desktop.musixmatch.com` with `app_id=web-desktop-app-v1.0`.
-2. Mobile fallback endpoint: `apic-appmobile.musixmatch.com` with `app_id=mac-ios-v2.0`.
-
-If both fail, the settings UI reports that both desktop and mobile token requests failed.
+Token and lyrics requests use Musixmatch's mobile endpoint: `apic-appmobile.musixmatch.com` with `app_id=mac-ios-v2.0`.
+Word timings are requested with the initial lyrics response. Translations are fetched only when Korean
+translation metadata is present, after the original lyrics are visible.
 
 ## Settings
 
@@ -88,10 +87,11 @@ Settings are grouped into:
 
 - General: preset, lyrics delay, font scale.
 - Background: album background, blur, dim, saturation, vignette, inactive blur.
-- Lyrics: sync preference, alignment, centered active-line scroll, context lines, interludes.
+- Lyrics: sync preference, alignment, centered active-line scroll, context lines, interludes, performer labels.
 - Motion: animation, intensity, glow, reduced motion.
 - Providers: provider order, enabled state, Musixmatch token.
-- Advanced: debug mode, refresh lyrics, clear cache, reset settings.
+- Current-song provider preference and compact window mode are available in the Lyrics and Providers settings.
+- Advanced: debug mode, next-track preload, refresh lyrics, clear cache, reset settings.
 
 The default visual preset is `Immersive`.
 

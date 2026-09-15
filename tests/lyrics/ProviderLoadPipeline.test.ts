@@ -163,6 +163,42 @@ describe("ProviderLoadPipeline", () => {
 		expect(result.attempts.map((attempt) => attempt.status)).toEqual(["no-lyrics", "instrumental"]);
 	});
 
+	test("keeps restricted as the final empty state when no provider succeeds", async () => {
+		const restricted: LyricsProvider = {
+			id: "musixmatch",
+			supports: () => true,
+			fetch: async () => ({ ok: false, reason: "restricted" }),
+		};
+		const instrumental: LyricsProvider = {
+			id: "lrclib",
+			supports: () => true,
+			fetch: async () => ({ ok: false, reason: "instrumental" }),
+		};
+		const pipeline = new ProviderLoadPipeline(() => context, { retryDelayMs: 0 });
+
+		const result = await pipeline.load(track, DEFAULT_SETTINGS, [restricted, instrumental], () => true);
+
+		expect(result.state).toEqual({ status: "empty", reason: "restricted" });
+		expect(result.attempts.map((attempt) => attempt.status)).toEqual(["restricted", "instrumental"]);
+	});
+
+	test("carries provider metadata on a successful result", async () => {
+		const provider: LyricsProvider = {
+			id: "musixmatch",
+			supports: () => true,
+			fetch: async () => ({
+				ok: true,
+				lyrics: lineLyrics("Metadata"),
+				metadata: { musixmatch: { trackId: 22, translationLanguages: ["ko"] } },
+			}),
+		};
+		const pipeline = new ProviderLoadPipeline(() => context, { retryDelayMs: 0 });
+
+		await expect(pipeline.load(track, DEFAULT_SETTINGS, [provider], () => true)).resolves.toMatchObject({
+			state: { status: "ready", metadata: { musixmatch: { trackId: 22, translationLanguages: ["ko"] } } },
+		});
+	});
+
 	test("retries only the provider that errored, leaving a provider with a definitive outcome untouched", async () => {
 		let noLyricsCalls = 0;
 		const noLyrics: LyricsProvider = {

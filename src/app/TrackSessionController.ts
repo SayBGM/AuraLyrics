@@ -1,6 +1,6 @@
 import type { AudioAnalysisData } from "../audio/types";
 import { buildPseudoKaraokeLyrics } from "../lyrics/pseudoKaraoke/buildPseudoKaraoke";
-import type { LineLyrics, LyricsDocument, LyricsLoadState, SyllableLyrics, TrackIdentity } from "../lyrics/types";
+import type { LineLyrics, LyricsDocument, LyricsLoadState, LyricsProviderMetadata, SyllableLyrics, TrackIdentity } from "../lyrics/types";
 import type { TrackWaveformProfile } from "../renderer/AudioAnalysisWaveformService";
 import type { ExtensionSettings } from "../settings/settingsSchema";
 
@@ -24,9 +24,22 @@ export type ReadyTrackSessionSnapshot = {
 export type TrackSessionSnapshot = NonReadyTrackSessionSnapshot | ReadyTrackSessionSnapshot;
 
 export type TrackSessionLyricsService = {
-	load(track: TrackIdentity, settings: ExtensionSettings, refresh: boolean): Promise<LyricsLoadState>;
+	load(
+		track: TrackIdentity,
+		settings: ExtensionSettings,
+		refresh: boolean,
+		preferredProvider?: import("../domain/types").ProviderId
+	): Promise<LyricsLoadState>;
 	refreshCooldowns(): void;
 	invalidate(): void;
+	fetchTranslation?(
+		track: TrackIdentity,
+		lyrics: LyricsDocument,
+		provider: import("../domain/types").ProviderId,
+		metadata: LyricsProviderMetadata | undefined,
+		settings: ExtensionSettings,
+		signal?: AbortSignal
+	): Promise<LyricsDocument | undefined>;
 };
 
 export type TrackSessionWaveformService = {
@@ -95,7 +108,12 @@ export class TrackSessionController {
 		this.lyricsService.invalidate();
 	}
 
-	public async load(track: TrackIdentity, settings: ExtensionSettings, refresh: boolean): Promise<TrackSessionSnapshot | undefined> {
+	public async load(
+		track: TrackIdentity,
+		settings: ExtensionSettings,
+		refresh: boolean,
+		preferredProvider?: import("../domain/types").ProviderId
+	): Promise<TrackSessionSnapshot | undefined> {
 		const generation = ++this.generation;
 		this.presentationRevision += 1;
 		this.settings = settings;
@@ -110,7 +128,7 @@ export class TrackSessionController {
 			this.waveformService.invalidateAnalysis(track);
 		}
 		const waveformProfilePromise = this.waveformService.loadProfile(track).catch(() => undefined);
-		const loadState = await this.lyricsService.load(track, settings, refresh);
+		const loadState = await this.lyricsService.load(track, settings, refresh, preferredProvider);
 		if (!this.isGenerationCurrent(generation)) {
 			return undefined;
 		}
@@ -142,6 +160,25 @@ export class TrackSessionController {
 		return this.present(loadState, waveformProfile, generation, presentationRevision, settings);
 	}
 
+	/** Replaces only the current track's lyric text metadata after deferred translation completes. */
+	public applyDeferredLyrics(translatedLyrics: LyricsDocument): ReadyTrackSessionSnapshot | undefined {
+		const current = this.snapshot;
+		if (current.loadState.status !== "ready") {
+			return undefined;
+		}
+		const readyCurrent = current as ReadyTrackSessionSnapshot;
+		const canonical: LyricsDocument = translatedLyrics;
+		const displayed = mergeDeferredTranslation(readyCurrent.lyrics, canonical);
+		const loadState = { ...readyCurrent.loadState, lyrics: canonical };
+		const next: ReadyTrackSessionSnapshot = { ...readyCurrent, loadState, lyrics: displayed };
+		const enrichment = this.enrichmentBySnapshot.get(readyCurrent);
+		if (enrichment) {
+			this.enrichmentBySnapshot.set(next, enrichment);
+		}
+		this.snapshot = next;
+		return next;
+	}
+
 	private async enrich(
 		loadState: ReadyLoadState,
 		waveformProfilePromise: Promise<TrackWaveformProfile | undefined>,
@@ -151,11 +188,16 @@ export class TrackSessionController {
 		if (!this.isGenerationCurrent(generation)) {
 			return undefined;
 		}
+		const currentSnapshot = this.snapshot;
+		const currentLoadState =
+			currentSnapshot.loadState.status === "ready" && currentSnapshot.loadState.track.uri === loadState.track.uri
+				? currentSnapshot.loadState
+				: loadState;
 		const settings = this.settings;
 		if (!settings) {
 			return undefined;
 		}
-		return this.present(loadState, waveformProfile, generation, this.presentationRevision, settings);
+		return this.present(currentLoadState, waveformProfile, generation, this.presentationRevision, settings);
 	}
 
 	private async present(
@@ -247,3 +289,47 @@ export class TrackSessionController {
 		return currentProfile ?? candidate;
 	}
 }
+
+/** Keeps synthetic timing and waveform state intact while copying translated line text into it. */
+const mergeDeferredTranslation = (displayed: LyricsDocument, translated: LyricsDocument): LyricsDocument => {
+	if (displayed.type === "static" || translated.type === "static") {
+		return translated;
+	}
+	if (displayed.type === "line" && translated.type === "line") {
+		const translatedVocals = translated.content.filter((item) => item.type === "vocal");
+		let vocalIndex = 0;
+		return {
+			...displayed,
+			content: displayed.content.map((item) => {
+				if (item.type !== "vocal") return item;
+				const source = translatedVocals[vocalIndex++];
+				return source?.type === "vocal" ? { ...item, translatedText: source.translatedText, performers: source.performers ?? item.performers } : item;
+			}),
+		};
+	}
+	if (displayed.type === "syllable" && translated.type === "syllable") {
+		const translatedVocals = translated.content.filter((item) => item.type === "vocal");
+		let vocalIndex = 0;
+		return {
+			...displayed,
+			content: displayed.content.map((item) => {
+				if (item.type !== "vocal") return item;
+				const source = translatedVocals[vocalIndex++];
+				return source?.type === "vocal" ? { ...item, translatedText: source.translatedText, performers: source.performers ?? item.performers } : item;
+			}),
+		};
+	}
+	if (displayed.type === "syllable" && translated.type === "line") {
+		const translatedVocals = translated.content.filter((item) => item.type === "vocal");
+		let vocalIndex = 0;
+		return {
+			...displayed,
+			content: displayed.content.map((item) => {
+				if (item.type !== "vocal") return item;
+				const source = translatedVocals[vocalIndex++];
+				return source?.type === "vocal" ? { ...item, translatedText: source.translatedText, performers: source.performers ?? item.performers } : item;
+			}),
+		};
+	}
+	return translated;
+};

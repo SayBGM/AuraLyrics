@@ -79,4 +79,23 @@ describe("LineVocals highlighting", () => {
 
 		expect(setProperty).toHaveBeenCalled();
 	});
+
+	test("renders a sanitized performer label separately when enabled", () => {
+		const vocals = new LineVocals(
+			{
+				...line,
+				performers: [{ name: "Lead" }, { name: "  Guest  " }, { name: "Lead" }, { name: "" }],
+			},
+			{ ...DEFAULT_SETTINGS, showPerformers: true }
+		);
+
+		expect(vocals.element.querySelector(".lyric-performers")?.textContent).toBe("Lead, Guest");
+		expect(vocals.element.querySelector(".line")?.textContent).toBe(line.text);
+	});
+
+	test("does not render performer data when the option is off", () => {
+		const vocals = new LineVocals({ ...line, performers: [{ name: "Lead" }] }, DEFAULT_SETTINGS);
+
+		expect(vocals.element.querySelector(".lyric-performers")).toBeNull();
+	});
 });

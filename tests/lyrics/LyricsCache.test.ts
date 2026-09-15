@@ -94,6 +94,25 @@ describe("LyricsCache", () => {
 		expect(restored?.lyrics).toMatchObject(lyrics);
 	});
 
+	test("persists provider metadata in the v3 cache", () => {
+		const storage = new MemoryStorage();
+		const metadata = { musixmatch: { trackId: 42, translationLanguages: ["ko", "ja", "ko"] } };
+		new LyricsCache(storage, { schedule: syncSchedule }).set("spotify:track:metadata", lyrics, "musixmatch", metadata);
+
+		expect(new LyricsCache(storage).get("spotify:track:metadata")).toMatchObject({
+			provider: "musixmatch",
+			metadata: { musixmatch: { trackId: 42, translationLanguages: ["ko", "ja"] } },
+		});
+	});
+
+	test("ignores v2 caches so metadata is never inferred", () => {
+		const storage = new MemoryStorage();
+		const entry = JSON.stringify([["spotify:track:legacy-v2", { lyrics, provider: "spotify", updatedAt: Date.now() }]]);
+		storage.set("aura-lyrics:lyrics-cache-v2", entry);
+
+		expect(new LyricsCache(storage).get("spotify:track:legacy-v2")).toBeUndefined();
+	});
+
 	test("ignores stale v1 caches so tracks re-fetch with translations", () => {
 		const storage = new MemoryStorage();
 		const entry = JSON.stringify([["spotify:track:legacy", { lyrics, provider: "spotify", updatedAt: Date.now() }]]);
@@ -156,7 +175,7 @@ describe("LyricsCache", () => {
 		);
 		expect(cache.get("spotify:track:large")).toBeUndefined();
 		for (let index = 0; index < 10; index += 1) cache.set(`spotify:track:${index}`, lyrics, "spotify");
-		expect(storage.values.get("aura-lyrics:lyrics-cache-v2")?.length).toBeLessThanOrEqual(600);
+		expect(storage.values.get("aura-lyrics:lyrics-cache-v3")?.length).toBeLessThanOrEqual(600);
 	});
 
 	test("debounces persistence so bursts of writes coalesce into a single storage write", () => {
@@ -195,7 +214,7 @@ describe("LyricsCache", () => {
 
 		cache.clear();
 
-		expect(storage.values.get("aura-lyrics:lyrics-cache-v2")).toBe("[]");
+		expect(storage.values.get("aura-lyrics:lyrics-cache-v3")).toBe("[]");
 	});
 
 	test("resolves persistence with real timers when no schedule override is provided", async () => {

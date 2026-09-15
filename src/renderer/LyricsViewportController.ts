@@ -43,7 +43,7 @@ export const contextStateForRow = (index: number, focusedIndex: number | undefin
 type FocusedRow = { row: HTMLElement; index: number };
 
 export class LyricsViewportController {
-	private settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">;
+	private settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines"> & Partial<Pick<ExtensionSettings, "compactMode">>;
 	private lastAnnouncement = "";
 	private lastAnnouncedRow?: HTMLElement;
 	private readonly resizeObserver?: ResizeObserver;
@@ -60,7 +60,7 @@ export class LyricsViewportController {
 		private readonly lyricsTrack: HTMLElement,
 		private readonly lyricsViewport: HTMLElement,
 		private readonly container: HTMLElement,
-		settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">,
+		settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines"> & Partial<Pick<ExtensionSettings, "compactMode">>,
 		groups: AnimatedGroup[],
 		private readonly announcer?: HTMLElement,
 		observeResize = true
@@ -76,7 +76,9 @@ export class LyricsViewportController {
 		}
 	}
 
-	public applySettings(settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines">): void {
+	public applySettings(
+		settings: Pick<ExtensionSettings, "interludeStyle" | "visibleContextLines"> & Partial<Pick<ExtensionSettings, "compactMode">>
+	): void {
 		this.settings = settings;
 		this.measurementDirty = true;
 	}
@@ -87,6 +89,7 @@ export class LyricsViewportController {
 	}
 
 	public update(force = false): void {
+		const compact = this.updateCompactMode();
 		const previewRow = this.settings.interludeStyle === "frame" ? this.getInterludePreviewRow() : undefined;
 		const focused = this.getFocusedRow(previewRow);
 		const focusedIndex = focused?.index ?? -1;
@@ -98,7 +101,7 @@ export class LyricsViewportController {
 		// Layout is read once per focused row change, alongside the row offset the scroll needs.
 		this.viewportHeight = this.measureViewportHeight();
 		const contextLines = Math.min(Math.max(0, Math.round(this.settings.visibleContextLines)), contextCapacity(this.viewportHeight));
-		const effectiveContextLines = focused?.row.classList.contains("provider-credit-timed") ? 0 : contextLines;
+		const effectiveContextLines = focused?.row.classList.contains("provider-credit-timed") || compact ? 0 : contextLines;
 		if (focusedIndex !== this.lastFocusedIndex || effectiveContextLines !== this.lastContextLines || this.measurementDirty || force) {
 			this.updateContextVisibility(focused, effectiveContextLines);
 		}
@@ -107,6 +110,14 @@ export class LyricsViewportController {
 		this.lastContextLines = effectiveContextLines;
 		this.measurementDirty = false;
 		this.announce(focused?.row);
+	}
+
+	private updateCompactMode(): boolean {
+		const height = this.lyricsViewport.clientHeight || this.container.clientHeight;
+		const compact = isCompactLayout(this.lyricsViewport, this.container, this.settings.compactMode);
+		this.container.classList.toggle("compact-mode", compact);
+		this.container.classList.toggle("compact-overflow", compact && height > 0 && height < 220);
+		return compact;
 	}
 
 	/** Stops observing without tearing the scene down, for a scene that is fading out. */
@@ -205,6 +216,19 @@ export class LyricsViewportController {
 		this.announcer.textContent = text;
 	}
 }
+
+const isCompactLayout = (viewport: HTMLElement, container: HTMLElement, compactMode: "auto" | "always" | "off" | undefined): boolean => {
+	if (compactMode === "always") {
+		return true;
+	}
+	if (compactMode !== "auto") {
+		return false;
+	}
+	const width = viewport.clientWidth || container.clientWidth;
+	const height = viewport.clientHeight || container.clientHeight;
+	// During initial layout (and in jsdom), zero means unknown rather than a tiny PiP.
+	return (width > 0 && width < 400) || (height > 0 && height < 300);
+};
 
 const SCROLL_ROW_SELECTOR = ".vocals-group:not(.syllable-group), .syllable-row[data-scroll-row='true']";
 

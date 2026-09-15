@@ -1,6 +1,15 @@
 import type { ExtensionSettings } from "../settings/SettingsStore";
 import { prepareProviderLyrics } from "./LyricsDocumentTransforms";
-import type { LyricsDocument, LyricsProvider, ProviderAttempt, ProviderAttemptStatus, ProviderContext, ProviderId, TrackIdentity } from "./types";
+import type {
+	LyricsDocument,
+	LyricsProvider,
+	LyricsProviderMetadata,
+	ProviderAttempt,
+	ProviderAttemptStatus,
+	ProviderContext,
+	ProviderId,
+	TrackIdentity,
+} from "./types";
 
 export type ProviderLoadPipelineOptions = {
 	maxAttempts: number;
@@ -18,9 +27,14 @@ const DEFAULT_OPTIONS: ProviderLoadPipelineOptions = {
 
 export type ProviderLoadState =
 	| { status: "idle" }
-	| { status: "ready"; lyrics: LyricsDocument; provider: ProviderId }
-	| { status: "empty"; reason: "no-lyrics" | "instrumental" }
+	| { status: "ready"; lyrics: LyricsDocument; provider: ProviderId; metadata?: LyricsProviderMetadata }
+	| { status: "empty"; reason: "no-lyrics" | "instrumental" | "restricted" }
 	| { status: "error"; message: string };
+
+export type ProviderLoadExecutionOptions = {
+	/** Background prefetches must not spend the foreground retry budget. */
+	maxAttempts?: number;
+};
 
 export type ProviderLoadResult = {
 	state: ProviderLoadState;
@@ -31,7 +45,7 @@ export type ProviderLoadResult = {
 type TerminalOutcome = { status: Exclude<ProviderAttemptStatus, "success">; message?: string };
 
 type RoundResult = {
-	ready?: { lyrics: LyricsDocument; provider: ProviderId };
+	ready?: { lyrics: LyricsDocument; provider: ProviderId; metadata?: LyricsProviderMetadata };
 	outcomes: Map<ProviderId, TerminalOutcome>;
 };
 
@@ -48,10 +62,11 @@ export class ProviderLoadPipeline {
 		settings: ExtensionSettings,
 		providers: LyricsProvider[],
 		isCurrent: () => boolean,
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		executionOptions: ProviderLoadExecutionOptions = {}
 	): Promise<ProviderLoadResult> {
 		const attempts: ProviderAttempt[] = [];
-		const options = this.resolvedOptions();
+		const options = { ...this.resolvedOptions(), ...executionOptions };
 		const latestOutcomes = new Map<ProviderId, TerminalOutcome>();
 		let providersToTry = providers;
 		for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
@@ -60,7 +75,7 @@ export class ProviderLoadPipeline {
 			}
 			const round = await this.tryLoadOnce(track, settings, providersToTry, attempts, isCurrent, signal);
 			if (round.ready) {
-				return { state: { status: "ready", lyrics: round.ready.lyrics, provider: round.ready.provider }, attempts };
+				return { state: { status: "ready", lyrics: round.ready.lyrics, provider: round.ready.provider, metadata: round.ready.metadata }, attempts };
 			}
 			if (!isCurrent()) {
 				return { state: { status: "idle" }, attempts };
@@ -119,7 +134,7 @@ export class ProviderLoadPipeline {
 				if (result.ok) {
 					const lyrics = prepareProviderLyrics(result.lyrics);
 					attempts.push({ provider: provider.id, status: "success" });
-					return { ready: { lyrics, provider: provider.id }, outcomes };
+					return { ready: { lyrics, provider: provider.id, metadata: result.metadata }, outcomes };
 				}
 				if (result.reason === "temporarily-unavailable") {
 					this.cooldownUntil.set(provider.id, options.now() + (result.cooldownMs ?? options.temporaryUnavailableCooldownMs));
@@ -130,6 +145,11 @@ export class ProviderLoadPipeline {
 				if (result.reason === "instrumental") {
 					attempts.push({ provider: provider.id, status: "instrumental", message: result.message });
 					outcomes.set(provider.id, { status: "instrumental", message: result.message });
+					continue;
+				}
+				if (result.reason === "restricted") {
+					attempts.push({ provider: provider.id, status: "restricted", message: result.message });
+					outcomes.set(provider.id, { status: "restricted", message: result.message });
 					continue;
 				}
 				const status = result.reason === "no-lyrics" ? "no-lyrics" : "error";
@@ -153,6 +173,7 @@ export class ProviderLoadPipeline {
 		const errors: string[] = [];
 		const unavailable: string[] = [];
 		let sawInstrumental = false;
+		let sawRestricted = false;
 		for (const provider of providers) {
 			const outcome = outcomes.get(provider.id);
 			if (!outcome) {
@@ -164,11 +185,16 @@ export class ProviderLoadPipeline {
 				unavailable.push(`${provider.id}: ${outcome.message ?? "Lyrics provider is temporarily unavailable."}`);
 			} else if (outcome.status === "instrumental") {
 				sawInstrumental = true;
+			} else if (outcome.status === "restricted") {
+				sawRestricted = true;
 			}
 		}
 		const failureMessages = [...errors, ...unavailable];
 		if (failureMessages.length > 0) {
 			return { status: "error", message: failureMessages.join("\n") };
+		}
+		if (sawRestricted) {
+			return { status: "empty", reason: "restricted" };
 		}
 		if (sawInstrumental) {
 			return { status: "empty", reason: "instrumental" };

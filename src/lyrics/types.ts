@@ -13,6 +13,21 @@ export type TextMetadata = {
 	translatedText?: string;
 };
 
+/** Attribution supplied by a provider for one lyric line. It remains separate from lyric text so
+ * renderer settings can show or hide it without rewriting the document. */
+export type LyricsPerformer = {
+	id?: string;
+	name: string;
+};
+
+/** Persistable metadata that enables deferred provider work without retaining a raw response. */
+export type LyricsProviderMetadata = {
+	musixmatch?: {
+		trackId: number;
+		translationLanguages: string[];
+	};
+};
+
 export type Interlude = TimeRange & {
 	type: "interlude";
 	/** True when synthesized from a gap rather than supplied by a provider. */
@@ -28,6 +43,7 @@ export type LineVocal = TimeRange &
 	TextMetadata & {
 		type: "vocal";
 		oppositeAligned: boolean;
+		performers?: LyricsPerformer[];
 	};
 
 export type LineLyrics = TimeRange & {
@@ -50,6 +66,7 @@ export type SyllableVocalSet = {
 	lead: SyllableVocal;
 	background?: SyllableVocal[];
 	translatedText?: string;
+	performers?: LyricsPerformer[];
 };
 
 export type SyllableLyrics = TimeRange & {
@@ -65,7 +82,7 @@ export type LyricsCacheStatus =
 	| { status: "miss"; primaryProvider?: ProviderId }
 	| { status: "provider-mismatch"; provider: ProviderId; primaryProvider?: ProviderId };
 
-export type ProviderAttemptStatus = "success" | "no-lyrics" | "instrumental" | "temporarily-unavailable" | "cooldown" | "error";
+export type ProviderAttemptStatus = "success" | "no-lyrics" | "instrumental" | "restricted" | "temporarily-unavailable" | "cooldown" | "error";
 
 export type ProviderAttempt = {
 	provider: ProviderId;
@@ -76,6 +93,7 @@ export type ProviderAttempt = {
 export type LyricsLoadDiagnostics = {
 	cache: LyricsCacheStatus;
 	attempts: ProviderAttempt[];
+	prefetch?: "hit" | "miss";
 };
 
 export type LyricsLoadState =
@@ -87,16 +105,22 @@ export type LyricsLoadState =
 			lyrics: LyricsDocument;
 			provider: ProviderId;
 			source: "cache" | "network";
+			metadata?: LyricsProviderMetadata;
 			diagnostics: LyricsLoadDiagnostics;
 	  }
-	| { status: "empty"; track: TrackIdentity; reason: "no-lyrics" | "instrumental" | "unsupported-local"; diagnostics?: LyricsLoadDiagnostics }
+	| {
+			status: "empty";
+			track: TrackIdentity;
+			reason: "no-lyrics" | "instrumental" | "restricted" | "unsupported-local";
+			diagnostics?: LyricsLoadDiagnostics;
+	  }
 	| { status: "error"; track: TrackIdentity; message: string; diagnostics?: LyricsLoadDiagnostics };
 
 export type ProviderResult =
-	| { ok: true; lyrics: LyricsDocument }
+	| { ok: true; lyrics: LyricsDocument; metadata?: LyricsProviderMetadata }
 	| {
 			ok: false;
-			reason: "no-lyrics" | "instrumental" | "unsupported-local" | "error" | "temporarily-unavailable";
+			reason: "no-lyrics" | "instrumental" | "restricted" | "unsupported-local" | "error" | "temporarily-unavailable";
 			message?: string;
 			cooldownMs?: number;
 	  };
@@ -117,4 +141,12 @@ export interface LyricsProvider {
 	id: ProviderId;
 	supports(track: TrackIdentity): boolean;
 	fetch(track: TrackIdentity, context: ProviderContext): Promise<ProviderResult>;
+	/** Optional deferred work such as a translation request. It must return a document built from
+	 * `lyrics`, and must never make the original provider load fail. */
+	fetchTranslation?(
+		track: TrackIdentity,
+		lyrics: LyricsDocument,
+		metadata: LyricsProviderMetadata,
+		context: ProviderContext
+	): Promise<LyricsDocument | undefined>;
 }

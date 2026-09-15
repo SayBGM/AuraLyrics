@@ -14,6 +14,12 @@ declare global {
 
 export type SpicetifyGlobal = {
 	Player: {
+		origin?: {
+			_events?: {
+				addListener(event: "queue_update", listener: (event?: { data?: SpicetifyQueue }) => void): void;
+				removeListener(event: "queue_update", listener: (event?: { data?: SpicetifyQueue }) => void): void;
+			};
+		};
 		data?: {
 			item?: {
 				uri: string;
@@ -37,6 +43,7 @@ export type SpicetifyGlobal = {
 		removeEventListener?(event: "songchange" | "onplaypause", listener: () => void): void;
 		removeEventListener?(event: "onprogress", listener: (event?: Event & { data: number }) => void): void;
 	};
+	Queue?: SpicetifyQueue;
 	CosmosAsync?: {
 		get<T = unknown>(url: string, body?: unknown, headers?: Record<string, string>): Promise<T>;
 	};
@@ -56,6 +63,7 @@ export type SpicetifyGlobal = {
 			deregister?: () => void;
 		};
 	};
+	/** Legacy Spicetify API retained for compatibility with external consumers and test fixtures. */
 	PopupModal?: {
 		display(options: { title: string; content: HTMLElement }): void;
 		hide?: () => void;
@@ -71,6 +79,20 @@ export type SpicetifyGlobal = {
 	colorExtractor?: (uri: string) => Promise<SpicetifyColorPalette>;
 	getAudioData?: (uri?: string) => Promise<AudioAnalysisData | undefined>;
 	showNotification?: (message: string, isError?: boolean, timeout?: number) => void;
+};
+
+export type SpicetifyQueueItem = {
+	uri: string;
+	metadata?: Record<string, string>;
+	images?: Array<{ url?: string; uri?: string }>;
+	album?: {
+		images?: Array<{ url?: string; uri?: string }>;
+	};
+};
+
+export type SpicetifyQueue = {
+	queued?: SpicetifyQueueItem[];
+	nextUp?: SpicetifyQueueItem[];
 };
 
 export type SpicetifyColorPalette = {

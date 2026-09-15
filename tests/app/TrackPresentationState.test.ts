@@ -59,7 +59,7 @@ describe("presentationStateForSnapshot", () => {
 		expect(presentationStateForSnapshot(snapshot)).toEqual({ kind: "instrumental", track });
 	});
 
-	test("maps other empty load states (no-lyrics, unsupported-local) to metadata without a message", () => {
+	test("maps other empty load states (no-lyrics, restricted, unsupported-local) to metadata without a message", () => {
 		const noLyrics: TrackSessionSnapshot = {
 			loadState: { status: "empty", track, reason: "no-lyrics", diagnostics },
 			lyrics: undefined,
@@ -67,6 +67,14 @@ describe("presentationStateForSnapshot", () => {
 			waveformProfile: undefined,
 		};
 		expect(presentationStateForSnapshot(noLyrics)).toEqual({ kind: "metadata", track, reason: "no-lyrics", diagnostics });
+
+		const restricted: TrackSessionSnapshot = {
+			loadState: { status: "empty", track, reason: "restricted", diagnostics },
+			lyrics: undefined,
+			timingSource: "native",
+			waveformProfile: undefined,
+		};
+		expect(presentationStateForSnapshot(restricted)).toEqual({ kind: "metadata", track, reason: "restricted", diagnostics });
 
 		const unsupportedLocal: TrackSessionSnapshot = {
 			loadState: { status: "empty", track, reason: "unsupported-local" },

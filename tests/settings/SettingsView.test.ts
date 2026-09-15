@@ -102,8 +102,6 @@ const openView = (
 ) => {
 	const storage = new MemoryStorage();
 	const store = new SettingsStore(storage);
-	let content: HTMLElement | undefined;
-	let modal: HTMLElement | undefined;
 	const trigger = options.withTrigger ? document.createElement("button") : undefined;
 	if (trigger) {
 		trigger.textContent = "Open settings";
@@ -111,47 +109,25 @@ const openView = (
 		trigger.focus();
 	}
 	const media = options.media ?? createMediaQueryList();
-	const hide = vi.fn(() => {
-		modal?.remove();
-	});
 	vi.stubGlobal(
 		"matchMedia",
 		vi.fn(() => media)
 	);
-	window.Spicetify = {
-		PopupModal: {
-			display: (modalOptions: { content: HTMLElement; title: string }) => {
-				content = modalOptions.content;
-				modal = document.createElement("div");
-				modal.className = "test-popup-modal main-trackCreditsModal-container";
-				const title = document.createElement("h1");
-				title.dataset.modalTitle = "true";
-				title.textContent = modalOptions.title;
-				const mainSection = document.createElement("div");
-				mainSection.className = "main-trackCreditsModal-mainSection";
-				const originalCredits = document.createElement("div");
-				originalCredits.className = "main-trackCreditsModal-originalCredits";
-				originalCredits.append(modalOptions.content);
-				mainSection.append(originalCredits);
-				modal.append(title, mainSection);
-				document.querySelector(".test-popup-modal")?.remove();
-				document.body.append(modal);
-			},
-			hide,
-		},
-	} as unknown as typeof window.Spicetify;
+	window.Spicetify = {} as typeof window.Spicetify;
 	const view = new SettingsView(store, providers, {
 		...callbacks(options.onRefreshMusixmatchToken),
 		...options.callbacks,
 	});
 	view.open();
-	if (!content) {
+	const renderedContent = document.querySelector<HTMLElement>(".aura-lyrics-settings");
+	const renderedModal = document.querySelector<HTMLElement>(".aura-lyrics-settings-modal");
+	if (!renderedContent) {
 		throw new Error("Settings content was not displayed.");
 	}
-	if (!modal) {
+	if (!renderedModal) {
 		throw new Error("Settings modal was not displayed.");
 	}
-	return { content, hide, media, modal, storage, store, trigger, view };
+	return { content: renderedContent, media, modal: renderedModal, storage, store, trigger, view };
 };
 
 const tab = (content: HTMLElement, section: string): HTMLButtonElement => {
@@ -199,9 +175,10 @@ afterEach(() => {
 describe("SettingsView", () => {
 	test("uses one stable popup title without a duplicate internal title", async () => {
 		const { content, modal } = openView();
-		const modalTitle = modal.querySelector<HTMLElement>("[data-modal-title]");
+		const modalTitle = modal.querySelector<HTMLElement>("#aura-lyrics-settings-title");
 
-		expect(modalTitle?.textContent).toBe("AuraLyrics");
+		expect(modalTitle?.textContent).toBe("AuraLyrics Settings");
+		expect(modal.querySelector(".aura-lyrics-settings-modal-close")?.getAttribute("aria-label")).toBe("Close settings");
 		expect(content.getAttribute("aria-label")).toBe("AuraLyrics Settings");
 		expect(content.querySelector(".settings-title")).toBeNull();
 		expect(content.textContent).not.toContain("AuraLyrics");
@@ -211,7 +188,8 @@ describe("SettingsView", () => {
 		language.dispatchEvent(new Event("change", { bubbles: true }));
 		await flushTimers();
 
-		expect(modalTitle?.textContent).toBe("AuraLyrics");
+		expect(modalTitle?.textContent).toBe("AuraLyrics 설정");
+		expect(modal.querySelector(".aura-lyrics-settings-modal-close")?.getAttribute("aria-label")).toBe("설정 닫기");
 		expect(content.textContent).not.toContain("AuraLyrics");
 	});
 
@@ -647,30 +625,22 @@ describe("SettingsView", () => {
 		// Settings styles are injected once into the owner document's <head> (guarded by id) rather
 		// than re-parsed into the modal container on every open.
 		const css = document.getElementById("aura-lyrics-settings-styles")?.textContent ?? "";
-		const containerRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-container");
-		const mainSectionRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection");
-		const originalCreditsRule = cssRule(css, "body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits");
+		const containerRule = cssRule(css, ".aura-lyrics-settings-modal");
 		const settingsRule = cssRule(css, ".aura-lyrics-settings");
 
 		expect(css).toContain("max-height: min(760px, calc(100vh - 32px))");
 		expect(containerRule).toContain("display: flex");
 		expect(containerRule).toContain("flex-direction: column");
 		expect(containerRule).toContain("overflow: hidden");
-		expect(mainSectionRule).toContain("display: flex");
-		expect(mainSectionRule).toContain("flex: 1 1 auto");
-		expect(mainSectionRule).toContain("min-height: 0");
-		expect(mainSectionRule).toContain("overflow: hidden");
-		expect(originalCreditsRule).toContain("display: flex");
-		expect(originalCreditsRule).toContain("flex: 1 1 auto");
-		expect(originalCreditsRule).toContain("min-height: 0");
-		expect(originalCreditsRule).toContain("overflow: hidden");
+		expect(css).toContain(".aura-lyrics-settings-modal::backdrop");
+		expect(css).toContain("background: rgb(0 0 0 / 72%)");
 		expect(settingsRule).toContain("flex: 1 1 auto");
 		expect(settingsRule).toContain("height: 100%");
 		expect(settingsRule).toContain("max-height: 100%");
 		expect(settingsRule).toContain("min-height: 0");
 		expect(settingsRule).toContain("overflow: hidden");
 		expect(css).not.toContain("calc(100vh - 92px)");
-		expect(css).not.toContain(".main-trackCreditsModal-content");
+		expect(css).not.toContain("main-trackCreditsModal");
 		expect(css).toContain("grid-template-columns: 200px minmax(0, 1fr)");
 		expect(css).toContain(".settings-panel-scroll");
 		expect(css).toContain("overflow-y: auto");
@@ -690,9 +660,7 @@ describe("SettingsView", () => {
 		expect(css).toContain(".settings-feedback");
 		expect(css).toContain(":focus-visible");
 		expect(css).not.toContain("settings-hero");
-		expect(content.parentElement?.classList.contains("main-trackCreditsModal-originalCredits")).toBe(true);
-		expect(content.parentElement?.parentElement?.classList.contains("main-trackCreditsModal-mainSection")).toBe(true);
-		expect(content.closest(".main-trackCreditsModal-container")).not.toBeNull();
+		expect(content.closest(".aura-lyrics-settings-modal")).not.toBeNull();
 	});
 
 	test("focuses the active tab and restores the connected trigger on close", () => {
@@ -708,7 +676,7 @@ describe("SettingsView", () => {
 	});
 
 	test("does not steal focus from another connected surface on detach", () => {
-		const { content, trigger } = openView({ withTrigger: true });
+		const { modal, trigger } = openView({ withTrigger: true });
 		if (!trigger) {
 			throw new Error("Settings trigger was not created.");
 		}
@@ -717,23 +685,23 @@ describe("SettingsView", () => {
 		document.body.append(otherSurface);
 		otherSurface.focus();
 
-		content.remove();
+		modal.remove();
 		FakeMutationObserver.instances[0].trigger();
 
 		expect(document.activeElement).toBe(otherSurface);
 	});
 
 	test("does not steal focus when the host modal root is reused", () => {
-		const { content, modal, trigger } = openView({ withTrigger: true });
+		const { modal, trigger } = openView({ withTrigger: true });
 		if (!trigger) {
 			throw new Error("Settings trigger was not created.");
 		}
 		const replacement = document.createElement("button");
 		replacement.textContent = "Replacement modal";
-		modal.append(replacement);
+		document.body.append(replacement);
 		replacement.focus();
 
-		content.remove();
+		modal.remove();
 		FakeMutationObserver.instances[0].trigger();
 
 		expect(document.activeElement).toBe(replacement);
@@ -744,8 +712,8 @@ describe("SettingsView", () => {
 		if (!trigger) {
 			throw new Error("Settings trigger was not created.");
 		}
-		const replacementModal = document.createElement("div");
-		replacementModal.className = "main-trackCreditsModal-container";
+		const replacementModal = document.createElement("dialog");
+		replacementModal.setAttribute("open", "");
 
 		modal.remove();
 		document.body.append(replacementModal);
@@ -756,12 +724,12 @@ describe("SettingsView", () => {
 	});
 
 	test("restores the connected trigger after a natural detach", () => {
-		const { content, trigger } = openView({ withTrigger: true });
+		const { modal, trigger } = openView({ withTrigger: true });
 		if (!trigger) {
 			throw new Error("Settings trigger was not created.");
 		}
 
-		content.remove();
+		modal.remove();
 		FakeMutationObserver.instances[0].trigger();
 
 		expect(document.activeElement).toBe(trigger);
@@ -769,15 +737,14 @@ describe("SettingsView", () => {
 
 	test("cleans up observers and media listeners across detach, reopen, and destroy", () => {
 		const firstMedia = createMediaQueryList();
-		const { content, hide, view } = openView({ media: firstMedia });
+		const { modal, view } = openView({ media: firstMedia });
 		const firstObserver = FakeMutationObserver.instances[0];
 		expect(firstObserver.observe).toHaveBeenCalledOnce();
 
-		content.remove();
+		modal.remove();
 		firstObserver.trigger();
 		expect(firstObserver.disconnect).toHaveBeenCalledOnce();
 		expect(firstMedia.removeListenerSpy).toHaveBeenCalledOnce();
-		expect(hide).not.toHaveBeenCalled();
 		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
 
 		view.open();
@@ -788,74 +755,40 @@ describe("SettingsView", () => {
 
 		view.destroy();
 		expect(secondObserver.disconnect).toHaveBeenCalledOnce();
-		expect(hide).toHaveBeenCalledOnce();
+		expect(document.querySelector(".aura-lyrics-settings-modal")).toBeNull();
 		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
 	});
 
-	test("only hides a connected modal on explicit destroy", () => {
-		const { hide, view } = openView();
+	test("only removes a connected modal on explicit destroy", () => {
+		const { view } = openView();
 
 		view.open();
-		expect(hide).not.toHaveBeenCalled();
+		expect(document.querySelectorAll(".aura-lyrics-settings-modal")).toHaveLength(1);
 
 		view.destroy();
-		expect(hide).toHaveBeenCalledOnce();
+		expect(document.querySelectorAll(".aura-lyrics-settings-modal")).toHaveLength(0);
 
 		view.destroy();
-		expect(hide).toHaveBeenCalledOnce();
+		expect(document.querySelectorAll(".aura-lyrics-settings-modal")).toHaveLength(0);
 	});
 
-	test("allows a container to connect within the bounded attach task", async () => {
-		const store = new SettingsStore(new MemoryStorage());
-		const media = createMediaQueryList();
-		vi.stubGlobal(
-			"matchMedia",
-			vi.fn(() => media)
-		);
-		let content: HTMLElement | undefined;
-		window.Spicetify = {
-			PopupModal: {
-				display: (options) => {
-					content = options.content;
-				},
-			},
-		} as typeof window.Spicetify;
-		const view = new SettingsView(store, providers, callbacks());
+	test("opens without PopupModal and keeps a single native dialog", () => {
+		const { view } = openView();
 		view.open();
-		const observer = FakeMutationObserver.instances[0];
-
-		observer.trigger();
-		expect(observer.disconnect).not.toHaveBeenCalled();
-		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(true);
-
-		queueMicrotask(() => document.body.append(content as HTMLElement));
-		await flushTimers();
-		(content as HTMLElement).remove();
-		observer.trigger();
-		expect(observer.disconnect).toHaveBeenCalledOnce();
-		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
+		expect(document.querySelectorAll("dialog.aura-lyrics-settings-modal")).toHaveLength(1);
 	});
 
-	test("cleans up when the container misses the bounded attach task", async () => {
-		const store = new SettingsStore(new MemoryStorage());
-		const media = createMediaQueryList();
-		vi.stubGlobal(
-			"matchMedia",
-			vi.fn(() => media)
-		);
-		window.Spicetify = {
-			PopupModal: {
-				display: vi.fn(),
-			},
-		} as unknown as typeof window.Spicetify;
-		const view = new SettingsView(store, providers, callbacks());
-		view.open();
-		const observer = FakeMutationObserver.instances[0];
+	test("closes from the close button, Escape, and the backdrop", () => {
+		const first = openView();
+		first.modal.querySelector<HTMLButtonElement>(".aura-lyrics-settings-modal-close")?.click();
+		expect(first.modal.isConnected).toBe(false);
 
-		await flushTimers();
+		const second = openView();
+		second.modal.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+		expect(second.modal.isConnected).toBe(false);
 
-		expect(observer.disconnect).toHaveBeenCalledOnce();
-		expect(media.removeListenerSpy).toHaveBeenCalledOnce();
-		expect(document.body.classList.contains("aura-lyrics-settings-open")).toBe(false);
+		const third = openView();
+		third.modal.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(third.modal.isConnected).toBe(false);
 	});
 });

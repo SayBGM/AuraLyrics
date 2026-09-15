@@ -8,7 +8,7 @@ export type TrackPresentationState =
 	| {
 			kind: "metadata";
 			track: TrackIdentity;
-			reason: "error" | "no-lyrics" | "unsupported-local";
+			reason: "error" | "no-lyrics" | "restricted" | "unsupported-local";
 			message?: string;
 			diagnostics?: LyricsLoadDiagnostics;
 	  }

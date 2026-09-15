@@ -15,6 +15,7 @@ import { SettingsView } from "../settings/SettingsView";
 import type { ExtensionSettings } from "../settings/settingsSchema";
 import type { CurrentTrackLyricsDelayState } from "../settings/settingsViewTypes";
 import { TrackLyricsDelayStore } from "../settings/TrackLyricsDelayStore";
+import { TrackLyricsProviderStore } from "../settings/TrackLyricsProviderStore";
 import { TopbarController } from "./TopbarController";
 import { TrackSessionController, type TrackSessionLyricsService, type TrackSessionWaveformService } from "./TrackSessionController";
 import { TrackThemeService } from "./TrackThemeService";
@@ -28,6 +29,8 @@ export type ExtensionServicesHost = {
 	/** Playback delay in ms for the track currently playing, including any per-track override. */
 	resolvedLyricsDelayMs(): number;
 	currentTrackLyricsDelayState(): CurrentTrackLyricsDelayState | undefined;
+	currentTrackLyricsProvider(): { uri: string; provider?: import("../domain/types").ProviderId } | undefined;
+	setCurrentTrackLyricsProvider(uri: string, provider: import("../domain/types").ProviderId | undefined): boolean;
 	adjustCurrentTrackLyricsDelay(uri: string, deltaMs: number): boolean;
 	resetCurrentTrackLyricsDelay(uri: string): boolean;
 	/** Settings "refresh lyrics" action. */
@@ -45,6 +48,7 @@ export type ExtensionServicesHost = {
 	 * created below so they read `ExtensionApp`'s live `lyricsService` / `waveformService` fields.
 	 */
 	loadLyrics: TrackSessionLyricsService["load"];
+	fetchTranslation: TrackSessionLyricsService["fetchTranslation"];
 	refreshLyricsCooldowns: TrackSessionLyricsService["refreshCooldowns"];
 	invalidateLyrics: TrackSessionLyricsService["invalidate"];
 	loadWaveformProfile: TrackSessionWaveformService["loadProfile"];
@@ -55,6 +59,7 @@ export type ExtensionServicesHost = {
 export type ExtensionServices = {
 	settings: SettingsStore;
 	trackLyricsDelays: TrackLyricsDelayStore;
+	trackLyricsProviders: TrackLyricsProviderStore;
 	cache: LyricsCache;
 	player: SpicetifyPlayerAdapter;
 	playbackSynchronizer: PlaybackSynchronizer;
@@ -78,6 +83,7 @@ export const createExtensionServices = (spicetify: SpicetifyGlobal, host: Extens
 	const storage = new SpicetifyStorageAdapter(spicetify);
 	const settings = new SettingsStore(storage);
 	const trackLyricsDelays = new TrackLyricsDelayStore(storage);
+	const trackLyricsProviders = new TrackLyricsProviderStore(storage);
 	const cache = new LyricsCache(storage);
 	const registry = new ProviderRegistry([new SpotifyProvider(), new LrclibProvider(), new MusixmatchProvider()]);
 	const player = new SpicetifyPlayerAdapter(spicetify);
@@ -108,7 +114,7 @@ export const createExtensionServices = (spicetify: SpicetifyGlobal, host: Extens
 
 	const trackSession = new TrackSessionController(
 		{
-			load: (track, activeSettings, refresh) => host.loadLyrics(track, activeSettings, refresh),
+			load: (track, activeSettings, refresh, preferredProvider) => host.loadLyrics(track, activeSettings, refresh, preferredProvider),
 			refreshCooldowns: () => host.refreshLyricsCooldowns(),
 			invalidate: () => host.invalidateLyrics(),
 		},
@@ -121,6 +127,8 @@ export const createExtensionServices = (spicetify: SpicetifyGlobal, host: Extens
 
 	const settingsView = new SettingsView(settings, registry.all(), {
 		getCurrentTrackLyricsDelay: () => host.currentTrackLyricsDelayState(),
+		getCurrentTrackLyricsProvider: () => host.currentTrackLyricsProvider(),
+		onSetCurrentTrackLyricsProvider: (uri, provider) => host.setCurrentTrackLyricsProvider(uri, provider),
 		onAdjustCurrentTrackLyricsDelay: (uri, deltaMs) => host.adjustCurrentTrackLyricsDelay(uri, deltaMs),
 		onRefreshLyrics: () => host.reloadCurrentTrack(),
 		onClearCache: () => host.clearLyricsCache(),
@@ -138,6 +146,7 @@ export const createExtensionServices = (spicetify: SpicetifyGlobal, host: Extens
 	return {
 		settings,
 		trackLyricsDelays,
+		trackLyricsProviders,
 		cache,
 		player,
 		playbackSynchronizer,

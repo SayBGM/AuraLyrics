@@ -1,8 +1,9 @@
-import type { LyricsDocument, ProviderId } from "./types";
+import type { LyricsDocument, LyricsProviderMetadata, ProviderId } from "./types";
 
 type CachedLyrics = {
 	lyrics: LyricsDocument;
 	provider: ProviderId;
+	metadata?: LyricsProviderMetadata;
 	updatedAt: number;
 };
 
@@ -23,9 +24,10 @@ type LyricsCacheOptions = {
 	schedule: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
 };
 
-// v2: cached documents may carry per-line translatedText; v1 entries predate it and are discarded.
-const CACHE_KEY = "aura-lyrics:lyrics-cache-v2";
-const STALE_CACHE_KEYS = ["aura-lyrics:lyrics-cache-v1", "dynamic-popup-lyrics:lyrics-cache-v1"];
+// v3 adds persistable provider metadata used by deferred translation work. Earlier documents are
+// intentionally discarded so cached state never implies metadata that was not actually fetched.
+const CACHE_KEY = "aura-lyrics:lyrics-cache-v3";
+const STALE_CACHE_KEYS = ["aura-lyrics:lyrics-cache-v2", "aura-lyrics:lyrics-cache-v1", "dynamic-popup-lyrics:lyrics-cache-v1"];
 const textEncoder = new TextEncoder();
 const DEFAULT_OPTIONS: LyricsCacheOptions = {
 	maxEntries: 30,
@@ -60,13 +62,14 @@ export class LyricsCache {
 			this.schedulePersist();
 			return undefined;
 		}
-		return { lyrics: cached.lyrics, provider: cached.provider };
+		return { lyrics: cached.lyrics, provider: cached.provider, metadata: cached.metadata };
 	}
 
-	public set(uri: string, lyrics: LyricsDocument, provider: ProviderId): void {
+	public set(uri: string, lyrics: LyricsDocument, provider: ProviderId, metadata?: LyricsProviderMetadata): void {
 		const entry: CachedLyrics = {
 			lyrics,
 			provider,
+			metadata: sanitizeMetadata(metadata),
 			updatedAt: this.options.now(),
 		};
 		if (this.serializedSize([uri, entry]) > this.options.maxEntryBytes) {
@@ -124,8 +127,8 @@ export class LyricsCache {
 		try {
 			const parsed = JSON.parse(raw) as Array<[string, CachedLyrics]>;
 			for (const [uri, cached] of parsed) {
-				if (!this.isExpired(cached)) {
-					this.values.set(uri, cached);
+				if (typeof uri === "string" && isCachedLyrics(cached) && !this.isExpired(cached)) {
+					this.values.set(uri, { ...cached, metadata: sanitizeMetadata(cached.metadata) });
 				}
 			}
 			this.prune(false);
@@ -222,3 +225,24 @@ export class LyricsCache {
 		}
 	}
 }
+
+const isCachedLyrics = (value: unknown): value is CachedLyrics => {
+	if (typeof value !== "object" || value === null) {
+		return false;
+	}
+	const cached = value as Partial<CachedLyrics>;
+	return (
+		typeof cached.provider === "string" && typeof cached.updatedAt === "number" && Number.isFinite(cached.updatedAt) && cached.lyrics !== undefined
+	);
+};
+
+const sanitizeMetadata = (metadata: LyricsProviderMetadata | undefined): LyricsProviderMetadata | undefined => {
+	const musixmatch = metadata?.musixmatch;
+	if (!musixmatch || !Number.isFinite(musixmatch.trackId) || musixmatch.trackId <= 0 || !Array.isArray(musixmatch.translationLanguages)) {
+		return undefined;
+	}
+	const translationLanguages = [
+		...new Set(musixmatch.translationLanguages.filter((language): language is string => typeof language === "string" && language.length > 0)),
+	];
+	return { musixmatch: { trackId: musixmatch.trackId, translationLanguages } };
+};

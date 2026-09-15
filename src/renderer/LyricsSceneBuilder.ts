@@ -10,7 +10,7 @@ import type { HighlightDecorationTrack } from "./highlight/HighlightDecorationLa
 import { applyLifecycleClasses, createLifecycleCache } from "./highlight/highlightStyleWriter";
 import { interludeKey } from "./interludeProgress";
 import type { InterludeWaveformMap } from "./interludeWaveforms";
-import { applyHoldTiming, createTranslationElement, syllableToLine } from "./lyricsTrackHelpers";
+import { applyHoldTiming, createPerformersElement, createTranslationElement, syllableToLine } from "./lyricsTrackHelpers";
 
 export type LyricsScene = {
 	groups: AnimatedGroup[];
@@ -91,6 +91,7 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 		const group = ownerDocument.createElement("div");
 		group.className = "vocals-group syllable-group";
 		group.classList.toggle("opposite-aligned", item.oppositeAligned);
+		const performers = settings.showPerformers ? createPerformersElement(item.performers, ownerDocument) : undefined;
 		// A translation occupies the echo row, so parentheticals stay inline when it is visible.
 		const translatedText = settings.showTranslation ? item.translatedText : undefined;
 		const vocalOptions = { splitParentheticals: !translatedText };
@@ -109,6 +110,9 @@ export const buildLyricsScene = (lyricsTrack: HTMLElement, options: LyricsSceneO
 		highlightTracks.push(...lead.getHighlightDecorationTracks());
 		for (const background of backgrounds) {
 			highlightTracks.push(...background.getHighlightDecorationTracks());
+		}
+		if (performers) {
+			group.append(performers);
 		}
 		group.append(lead.element, ...backgrounds.map((background) => background.element));
 		if (translatedText) {

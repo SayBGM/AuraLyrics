@@ -14,6 +14,7 @@ import type { SettingsStore } from "../settings/SettingsStore";
 import type { SettingsView } from "../settings/SettingsView";
 import type { ExtensionSettings } from "../settings/settingsSchema";
 import type { TrackLyricsDelayStore } from "../settings/TrackLyricsDelayStore";
+import type { TrackLyricsProviderStore } from "../settings/TrackLyricsProviderStore";
 import { pipStyles } from "../styles/pipStyles";
 import { createExtensionServices, resolveProviderProxyBaseUrl } from "./createExtensionServices";
 import { IntroPresentationGate } from "./IntroPresentationGate";
@@ -48,6 +49,7 @@ type TrackChangeLoadOptions = {
 export class ExtensionApp {
 	private readonly settings: SettingsStore;
 	private readonly trackLyricsDelays: TrackLyricsDelayStore;
+	private readonly trackLyricsProviders: TrackLyricsProviderStore;
 	private readonly player: SpicetifyPlayerAdapter;
 	private readonly playbackSynchronizer: PlaybackSynchronizer;
 	private readonly pip = new DocumentPipController();
@@ -83,11 +85,22 @@ export class ExtensionApp {
 	private settingsPresentationGeneration = 0;
 	private playbackTrackEpoch = 0;
 	private pendingSettingsFrame?: number;
+	private translationAbortController?: AbortController;
+	private prefetchTimer?: number;
 
 	public constructor(private readonly spicetify: SpicetifyGlobal) {
 		const services = createExtensionServices(spicetify, {
 			resolvedLyricsDelayMs: () => this.trackDelays.resolvedLyricsDelayMs(),
 			currentTrackLyricsDelayState: () => this.trackDelays.currentTrackLyricsDelayState(),
+			currentTrackLyricsProvider: () => {
+				const track = this.currentTrack;
+				return track ? { uri: track.uri, title: track.title, artist: track.artist, provider: this.trackLyricsProviders.get(track.uri) } : undefined;
+			},
+			setCurrentTrackLyricsProvider: (uri, provider) => {
+				const persisted = provider ? this.trackLyricsProviders.set(uri, provider) : this.trackLyricsProviders.delete(uri);
+				if (persisted && this.currentTrack?.uri === uri) void this.loadCurrentTrack(true);
+				return persisted;
+			},
 			adjustCurrentTrackLyricsDelay: (uri, deltaMs) => this.trackDelays.adjustCurrentTrackLyricsDelay(uri, deltaMs),
 			resetCurrentTrackLyricsDelay: (uri) => this.trackDelays.resetCurrentTrackLyricsDelay(uri),
 			reloadCurrentTrack: () => this.loadCurrentTrack(true),
@@ -96,7 +109,9 @@ export class ExtensionApp {
 			refreshMusixmatchToken: (providers) => this.refreshMusixmatchToken(providers),
 			togglePip: () => void this.togglePip(),
 			openSettings: () => this.settingsView.open(),
-			loadLyrics: (track, settings, refresh) => this.lyricsService.load(track, settings, refresh),
+			loadLyrics: (track, settings, refresh, preferredProvider) => this.lyricsService.load(track, settings, refresh, preferredProvider),
+			fetchTranslation: (track, lyrics, provider, metadata, settings, signal) =>
+				this.lyricsService.fetchTranslation(track, lyrics, provider, metadata, settings, signal),
 			refreshLyricsCooldowns: () => this.lyricsService.refreshCooldowns(),
 			invalidateLyrics: () => this.lyricsService.invalidate(),
 			loadWaveformProfile: (track) => this.waveformService.loadProfile(track),
@@ -105,6 +120,7 @@ export class ExtensionApp {
 		});
 		this.settings = services.settings;
 		this.trackLyricsDelays = services.trackLyricsDelays;
+		this.trackLyricsProviders = services.trackLyricsProviders;
 		this.cache = services.cache;
 		this.player = services.player;
 		this.playbackSynchronizer = services.playbackSynchronizer;
@@ -184,6 +200,10 @@ export class ExtensionApp {
 			this.player.trackChanged.subscribe((event) => void this.onTrackChanged(event)),
 			this.player.playbackChanged.subscribe((isPlaying) => this.onPlaybackChanged(isPlaying)),
 			this.player.progressChanged.subscribe(() => this.onProgressChanged()),
+			this.player.queueChanged.subscribe(() => {
+				this.lyricsService.clearPrefetch?.();
+				this.schedulePrefetch();
+			}),
 			this.settings.subscribe((settings) => this.onSettingsChanged(settings)),
 			this.settings.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
 			this.trackLyricsDelays.persistenceFailed.subscribe(() => this.showSettingsPersistenceFailure()),
@@ -197,6 +217,9 @@ export class ExtensionApp {
 		this.directionController.clear();
 		this.transitions.discard();
 		this.trackSession.invalidate();
+		this.cancelDeferredTranslation();
+		this.clearPrefetchTimer();
+		this.lyricsService.clearPrefetch?.();
 		this.introGate.endTrackEpoch();
 		this.outroController.endTrackEpoch();
 		this.presentation.clearRevealedSnapshot();
@@ -284,6 +307,8 @@ export class ExtensionApp {
 		this.directionController.clear();
 		this.transitions.discard();
 		this.trackSession.invalidate();
+		this.cancelDeferredTranslation();
+		this.clearPrefetchTimer();
 		this.introGate.discardPendingSession();
 		this.outroController.discardSession();
 		this.themeGeneration += 1;
@@ -306,6 +331,7 @@ export class ExtensionApp {
 		this.transitions.discard();
 		this.trackSession.invalidate();
 		this.currentTrack = track;
+		this.cancelDeferredTranslation();
 		this.settingsView.refreshCurrentTrack();
 		this.presentation.clearRevealedSnapshot();
 		if (track) {
@@ -330,6 +356,9 @@ export class ExtensionApp {
 		if (!this.session) {
 			return;
 		}
+		if (refresh) {
+			this.cancelDeferredTranslation();
+		}
 		const session = this.session;
 		const epochId = trackChange?.playbackTrackEpoch ?? this.playbackTrackEpoch;
 		const themeGeneration = ++this.themeGeneration;
@@ -339,6 +368,7 @@ export class ExtensionApp {
 			this.directionController.clear();
 			this.transitions.discard();
 			this.trackSession.invalidate();
+			this.lyricsService.clearPrefetch?.();
 			this.introGate.endTrackEpoch();
 			this.outroController.endTrackEpoch();
 			this.presentation.clearRevealedSnapshot();
@@ -358,7 +388,7 @@ export class ExtensionApp {
 		}
 		session.setCover(track.coverUrl);
 		void this.applyTrackTheme(track, epoch);
-		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh);
+		const snapshot = await this.trackSession.load(track, this.settings.get(), refresh, this.trackLyricsProviders.get(track.uri));
 		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.isCurrentEpoch(epoch)) return;
 		this.playbackSynchronizer.resync();
 		if (!isReadyTrackSessionSnapshot(snapshot)) {
@@ -367,6 +397,10 @@ export class ExtensionApp {
 			this.outroController.discardSession();
 		}
 		this.presentation.renderLoadState(snapshot);
+		this.schedulePrefetch();
+		if (isReadyTrackSessionSnapshot(snapshot)) {
+			this.startDeferredTranslation(snapshot, epoch);
+		}
 		const enrichment = this.trackSession.enrichmentFor(snapshot);
 		if (enrichment && isReadyTrackSessionSnapshot(snapshot)) {
 			void this.renderEnrichment(enrichment, snapshot, epoch);
@@ -429,7 +463,7 @@ export class ExtensionApp {
 
 	private async renderEnrichment(enrichment: TrackSessionEnrichment, initialSnapshot: ReadyTrackSessionSnapshot, epoch: TrackEpoch): Promise<void> {
 		const snapshot = await enrichment;
-		if (!snapshot || !this.trackSession.isCurrent(snapshot) || !this.isCurrentEpoch(epoch)) {
+		if (!snapshot || !this.isCurrentEpoch(epoch)) {
 			return;
 		}
 		if (!hasRenderableEnrichmentChanges(initialSnapshot, snapshot, this.settings.get())) {
@@ -437,6 +471,78 @@ export class ExtensionApp {
 			return;
 		}
 		this.presentation.presentReadySnapshot(snapshot);
+		this.startDeferredTranslation(snapshot, epoch);
+	}
+
+	private startDeferredTranslation(snapshot: ReadyTrackSessionSnapshot, epoch: TrackEpoch): void {
+		const settings = this.settings.get();
+		if (
+			!settings.showTranslation ||
+			snapshot.loadState.provider !== "musixmatch" ||
+			!snapshot.loadState.metadata ||
+			hasTranslatedText(snapshot.loadState.lyrics)
+		) {
+			return;
+		}
+		this.cancelDeferredTranslation();
+		const controller = new AbortController();
+		this.translationAbortController = controller;
+		void this.lyricsService
+			.fetchTranslation(
+				snapshot.loadState.track,
+				snapshot.loadState.lyrics,
+				snapshot.loadState.provider,
+				snapshot.loadState.metadata,
+				settings,
+				controller.signal
+			)
+			.then((translated) => {
+				if (!translated || controller.signal.aborted || !this.isCurrentEpoch(epoch)) {
+					return;
+				}
+				const updated = this.trackSession.applyDeferredLyrics(translated);
+				if (updated && this.isCurrentEpoch(epoch)) {
+					this.presentation.presentReadySnapshot(updated);
+				}
+			})
+			.finally(() => {
+				if (this.translationAbortController === controller) {
+					this.translationAbortController = undefined;
+				}
+			});
+	}
+
+	private cancelDeferredTranslation(): void {
+		this.translationAbortController?.abort();
+		this.translationAbortController = undefined;
+	}
+
+	private schedulePrefetch(): void {
+		this.clearPrefetchTimer();
+		const session = this.session;
+		const current = this.currentTrack;
+		const settings = this.settings.get();
+		if (!session || !current || !settings.prefetchNextTrack) {
+			return;
+		}
+		const next = this.player.getNextTrack();
+		if (!next || next.uri === current.uri) {
+			return;
+		}
+		this.prefetchTimer = window.setTimeout(() => {
+			this.prefetchTimer = undefined;
+			if (!this.session || this.currentTrack?.uri !== current.uri || !this.settings.get().prefetchNextTrack) {
+				return;
+			}
+			void this.lyricsService.prefetch(next, this.settings.get(), this.trackLyricsProviders.get(next.uri));
+		}, 500);
+	}
+
+	private clearPrefetchTimer(): void {
+		if (this.prefetchTimer !== undefined) {
+			window.clearTimeout(this.prefetchTimer);
+			this.prefetchTimer = undefined;
+		}
 	}
 
 	private async applyTrackTheme(track: TrackIdentity, epoch: TrackEpoch): Promise<void> {
@@ -498,6 +604,15 @@ export class ExtensionApp {
 		const settings = this.settings.get();
 		const change = rendererSettingsChange(this.appliedSettings, settings);
 		this.appliedSettings = settings;
+		if (settings.prefetchNextTrack) {
+			this.schedulePrefetch();
+		} else {
+			this.clearPrefetchTimer();
+			this.lyricsService.clearPrefetch?.();
+		}
+		if (!settings.showTranslation) {
+			this.cancelDeferredTranslation();
+		}
 		this.session?.applySettings(settings);
 		this.renderer.applySettings(settings);
 		if (this.session) {
@@ -531,6 +646,12 @@ export class ExtensionApp {
 		)
 			return;
 		this.presentation.presentReadySnapshot(snapshot);
+		this.startDeferredTranslation(snapshot, {
+			id: this.playbackTrackEpoch,
+			uri: snapshot.loadState.track.uri,
+			session,
+			themeGeneration: this.themeGeneration,
+		});
 	}
 
 	/**
@@ -565,4 +686,11 @@ const hasRenderableEnrichmentChanges = (
 		return true;
 	}
 	return settings.interludeStyle === "wave" && enrichedSnapshot.lyrics.type !== "static";
+};
+
+const hasTranslatedText = (lyrics: import("../lyrics/types").LyricsDocument): boolean => {
+	if (lyrics.type === "static") {
+		return lyrics.lines.some((line) => Boolean(line.translatedText?.trim()));
+	}
+	return lyrics.content.some((item) => item.type === "vocal" && Boolean(item.translatedText?.trim()));
 };

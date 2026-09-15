@@ -1,6 +1,6 @@
 export const responsiveStyles = `
 @media (max-width: 680px) {
-	body.aura-lyrics-settings-open .main-trackCreditsModal-container {
+	.aura-lyrics-settings-modal {
 		width: calc(100vw - 16px);
 		max-width: calc(100vw - 16px);
 		height: min(760px, calc(100vh - 16px));

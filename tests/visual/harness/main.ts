@@ -38,6 +38,7 @@ type ScenarioName =
 	| "korean-tail"
 	| "multiline-active-row"
 	| "parenthetical-echo"
+	| "performer-label"
 	| "settings-general"
 	| "settings-lyrics"
 	| "settings-appearance"
@@ -533,6 +534,28 @@ const scenarios: Record<ScenarioName, Scenario> = {
 			],
 		},
 	},
+	"performer-label": {
+		timestamp: 5,
+		settings: { ...settingsForVisuals, showPerformers: true, showTranslation: true },
+		lyrics: {
+			type: "line",
+			startTime: 0,
+			endTime: 8,
+			content: [
+				{ type: "vocal", text: "Before the duet", startTime: 0, endTime: 3, oppositeAligned: false },
+				{
+					type: "vocal",
+					text: "우리의 목소리가 겹쳐",
+					translatedText: "Our voices meet",
+					performers: [{ name: "Lead" }, { name: "Guest" }],
+					startTime: 3,
+					endTime: 7,
+					oppositeAligned: false,
+				},
+				{ type: "vocal", text: "After the duet", startTime: 7, endTime: 8, oppositeAligned: false },
+			],
+		},
+	},
 	"word-sync": {
 		timestamp: 4.2,
 		settings: settingsForVisuals,
@@ -945,25 +968,7 @@ function renderSettingsScenario(section: SettingsSection, language: ExtensionSet
 	if (section === "providers") {
 		store.update({ providers: { ...store.get().providers, musixmatchToken: "visual-mxm-token" } });
 	}
-	window.Spicetify = {
-		PopupModal: {
-			display: ({ content }) => {
-				const overlay = document.createElement("div");
-				overlay.className = "harness-settings-overlay";
-				const modal = document.createElement("div");
-				modal.className = "main-trackCreditsModal-container";
-				const main = document.createElement("div");
-				main.className = "main-trackCreditsModal-mainSection";
-				const originalCredits = document.createElement("div");
-				originalCredits.className = "main-trackCreditsModal-originalCredits";
-				originalCredits.append(content);
-				main.append(originalCredits);
-				modal.append(main);
-				overlay.append(modal);
-				document.body.replaceChildren(overlay);
-			},
-		},
-	} as NonNullable<typeof window.Spicetify>;
+	window.Spicetify = {} as NonNullable<typeof window.Spicetify>;
 	const settingsView = new SettingsView(store, [], {
 		getCurrentTrackLyricsDelay: () => ({
 			artist: "Haneul Park",

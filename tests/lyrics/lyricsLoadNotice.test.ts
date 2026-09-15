@@ -43,6 +43,27 @@ describe("lyricsLoadNoticeFor", () => {
 		expect(notice.diagnostics).toBeUndefined();
 	});
 
+	test.each([
+		["restricted", "ko", "Musixmatch에서 이 가사의 제공이 제한되어 있습니다."],
+		["instrumental", "en", "This is an instrumental track with no lyrics."],
+		["restricted", "ja", "Musixmatch でこの歌詞の提供が制限されています。"],
+	] as const)("localizes %s notices in %s", (reason, language, detail) => {
+		const notice = lyricsLoadNoticeFor(reason, language);
+
+		expect(notice.detail).toBe(detail);
+		expect(notice.tone).toBe("neutral");
+		expect(notice.tryAgainLabel).toBeUndefined();
+	});
+
+	test("labels restricted provider attempts in diagnostics", () => {
+		const notice = lyricsLoadNoticeFor("restricted", "ko", undefined, {
+			cache: { status: "miss" },
+			attempts: [{ provider: "musixmatch", status: "restricted" }],
+		});
+
+		expect(notice.diagnostics).toEqual(["Musixmatch: 제한됨"]);
+	});
+
 	test("bounds provider messages before they are displayed", () => {
 		const message = "x".repeat(300);
 		const notice = lyricsLoadNoticeFor("error", "en", message);

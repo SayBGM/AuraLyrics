@@ -141,7 +141,8 @@ export class SettingsModalLifecycle {
 
 	private onContainerAttached(container: HTMLElement): void {
 		this.detachKeyboardListener();
-		this.modalFocusScope = container.closest<HTMLElement>(".main-trackCreditsModal-container") ?? container.parentElement ?? container;
+		this.modalFocusScope =
+			container instanceof this.realmFor(container.ownerDocument).HTMLDialogElement ? container : (container.parentElement ?? container);
 		const listener = (event: KeyboardEvent): void => this.onModalKeyDown(event);
 		this.keyListener = listener;
 		this.modalFocusScope.addEventListener("keydown", listener);
@@ -212,7 +213,7 @@ export class SettingsModalLifecycle {
 	}
 
 	private shouldRestorePreviousFocus(container: HTMLElement | undefined): boolean {
-		if (this.hasConnectedReplacementModal()) {
+		if (this.hasConnectedReplacementDialog()) {
 			return false;
 		}
 		const active = this.focusedElement();
@@ -229,9 +230,9 @@ export class SettingsModalLifecycle {
 		);
 	}
 
-	private hasConnectedReplacementModal(): boolean {
-		return Array.from(this.ownerDocument.querySelectorAll<HTMLElement>(".main-trackCreditsModal-container")).some(
-			(modal) => modal.isConnected && modal !== this.modalFocusScope
+	private hasConnectedReplacementDialog(): boolean {
+		return Array.from(this.ownerDocument.querySelectorAll<HTMLDialogElement>("dialog[open]")).some(
+			(dialog) => dialog.isConnected && dialog !== this.modalFocusScope
 		);
 	}
 

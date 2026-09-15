@@ -60,4 +60,17 @@ describe("LyricsCacheRepository", () => {
 		expect(cache.get("spotify:track:fallback")).toBeUndefined();
 		expect(cache.get("spotify:track:primary")).toMatchObject({ provider: "spotify" });
 	});
+
+	test("returns persisted provider metadata with a cache hit", () => {
+		const cache = new LyricsCache();
+		cache.set("spotify:track:metadata", lineLyrics("Cached"), "musixmatch", {
+			musixmatch: { trackId: 7, translationLanguages: ["ko"] },
+		});
+		const repository = new LyricsCacheRepository(cache);
+
+		expect(repository.lookup("spotify:track:metadata", "musixmatch", false)).toMatchObject({
+			status: "hit",
+			metadata: { musixmatch: { trackId: 7, translationLanguages: ["ko"] } },
+		});
+	});
 });

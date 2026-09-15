@@ -9,6 +9,7 @@ export type HighlightEffect = "fill" | "glow-sweep" | "underline" | "marker" | "
 export type HighlightMotion = "spring" | "pulse" | "bounce" | "elastic" | "wave" | "ripple";
 export type UiLanguage = "en" | "ko" | "ja";
 export type MusixmatchProxyMode = "default" | "custom";
+export type CompactMode = "auto" | "always" | "off";
 
 export type ExtensionSettings = {
 	language: UiLanguage;
@@ -25,8 +26,11 @@ export type ExtensionSettings = {
 	syncPreference: SyncPreference;
 	pseudoKaraoke: boolean;
 	showTranslation: boolean;
+	showPerformers: boolean;
+	prefetchNextTrack: boolean;
 	alignmentMode: AlignmentMode;
 	visibleContextLines: number;
+	compactMode: CompactMode;
 	showInterludes: boolean;
 	interludeStyle: InterludeStyle;
 	highlightEffect: HighlightEffect;
@@ -71,8 +75,11 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 	syncPreference: "prefer-syllable",
 	pseudoKaraoke: true,
 	showTranslation: true,
+	showPerformers: false,
+	prefetchNextTrack: true,
 	alignmentMode: "center",
 	visibleContextLines: 1,
+	compactMode: "auto",
 	showInterludes: true,
 	interludeStyle: "dots",
 	highlightEffect: "fill",
@@ -145,6 +152,7 @@ const isHighlightMotion = (value: unknown): value is HighlightMotion =>
 	value === "spring" || value === "pulse" || value === "bounce" || value === "elastic" || value === "wave" || value === "ripple";
 const isUiLanguage = (value: unknown): value is UiLanguage => value === "en" || value === "ko" || value === "ja";
 const isMusixmatchProxyMode = (value: unknown): value is MusixmatchProxyMode => value === "default" || value === "custom";
+const isCompactMode = (value: unknown): value is CompactMode => value === "auto" || value === "always" || value === "off";
 const isLyricsVisualPreset = (value: unknown): value is LyricsVisualPreset =>
 	value === "immersive" || value === "clean" || value === "karaoke" || value === "custom";
 const isSyncPreference = (value: unknown): value is SyncPreference => value === "prefer-syllable" || value === "line-only";
@@ -204,8 +212,11 @@ export const normalizeLoadedSettings = (raw: PersistedSettings): ExtensionSettin
 		syncPreference: isSyncPreference(settings.syncPreference) ? settings.syncPreference : defaults.syncPreference,
 		pseudoKaraoke: normalizeBoolean(settings.pseudoKaraoke, defaults.pseudoKaraoke),
 		showTranslation: normalizeBoolean(settings.showTranslation, defaults.showTranslation),
+		showPerformers: normalizeBoolean(settings.showPerformers, defaults.showPerformers),
+		prefetchNextTrack: normalizeBoolean(settings.prefetchNextTrack, defaults.prefetchNextTrack),
 		alignmentMode: isAlignmentMode(settings.alignmentMode) ? settings.alignmentMode : defaults.alignmentMode,
 		visibleContextLines: clampNumericSetting("visibleContextLines", settings.visibleContextLines, defaults.visibleContextLines),
+		compactMode: isCompactMode(settings.compactMode) ? settings.compactMode : defaults.compactMode,
 		showInterludes: normalizeBoolean(settings.showInterludes, defaults.showInterludes),
 		interludeStyle: isInterludeStyle(settings.interludeStyle) ? settings.interludeStyle : defaults.interludeStyle,
 		highlightEffect: isHighlightEffect(settings.highlightEffect) ? settings.highlightEffect : defaults.highlightEffect,

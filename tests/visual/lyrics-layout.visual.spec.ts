@@ -24,6 +24,7 @@ type ScenarioName =
 	| "korean-tail"
 	| "multiline-active-row"
 	| "parenthetical-echo"
+	| "performer-label"
 	| "settings-general"
 	| "settings-lyrics"
 	| "settings-appearance"
@@ -328,7 +329,7 @@ test("settings modal keeps its dark desktop sidebar layout within the viewport",
 	await renderScenario(page, "settings-general");
 
 	const metrics = await page.evaluate(() => {
-		const modal = document.querySelector<HTMLElement>(".main-trackCreditsModal-container");
+		const modal = document.querySelector<HTMLElement>(".aura-lyrics-settings-modal");
 		const navigation = document.querySelector<HTMLElement>(".settings-navigation");
 		const panel = document.querySelector<HTMLElement>(".settings-panel-scroll");
 		if (!modal || !navigation || !panel) {
@@ -354,7 +355,7 @@ test("settings modal keeps its dark desktop sidebar layout within the viewport",
 	expect(metrics.panelWidth).toBeGreaterThan(600);
 	expect(metrics.orientation).toBe("vertical");
 	expect(metrics.background).toBe("rgb(13, 13, 15)");
-	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-dark-sidebar.png", screenshotTolerance);
+	await expect(page.locator(".aura-lyrics-settings-modal")).toHaveScreenshot("settings-dark-sidebar.png", screenshotTolerance);
 });
 
 test("settings lyrics panel keeps the current-song delay card readable and reachable", async ({ page }) => {
@@ -369,7 +370,7 @@ test("settings lyrics panel keeps the current-song delay card readable and reach
 	await expect(card.locator("button")).toHaveCount(5);
 	await expect(page.locator('[data-control-id="track-delay-minus-100"]')).toHaveAttribute("aria-label", "Show this song's lyrics earlier (-100 ms)");
 	await expect(page.locator('[data-control-id="track-delay-plus-100"]')).toHaveAttribute("aria-label", "Show this song's lyrics later (+100 ms)");
-	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-track-delay.png", screenshotTolerance);
+	await expect(page.locator(".aura-lyrics-settings-modal")).toHaveScreenshot("settings-track-delay.png", screenshotTolerance);
 });
 
 for (const [scenario, snapshot] of [
@@ -384,7 +385,7 @@ for (const [scenario, snapshot] of [
 
 		await expect(page.locator(".settings-group").first()).toBeVisible();
 		await expect(page.locator(".settings-feedback")).toBeVisible();
-		await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot(snapshot, screenshotTolerance);
+		await expect(page.locator(".aura-lyrics-settings-modal")).toHaveScreenshot(snapshot, screenshotTolerance);
 	});
 }
 
@@ -401,7 +402,7 @@ test("highlight settings update the compact preview independently", async ({ pag
 	await expect(preview).toHaveAccessibleName("Highlight preview");
 	await expect(page.locator('[data-control-id="highlight-effect"]')).toHaveValue("marker");
 	await expect(page.locator('[data-control-id="highlight-motion"]')).toHaveValue("wave");
-	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-highlight-preview.png", screenshotTolerance);
+	await expect(page.locator(".aura-lyrics-settings-modal")).toHaveScreenshot("settings-highlight-preview.png", screenshotTolerance);
 });
 
 test("compact Korean lyrics settings keep long descriptions and touch targets readable", async ({ page }) => {
@@ -412,7 +413,7 @@ test("compact Korean lyrics settings keep long descriptions and touch targets re
 	await expect(page.locator(".settings-navigation")).toHaveAttribute("aria-orientation", "horizontal");
 	const buttonHeight = await page.locator('[data-control-id="track-delay-plus-50"]').evaluate((button) => button.getBoundingClientRect().height);
 	expect(buttonHeight).toBeGreaterThanOrEqual(44);
-	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-lyrics-ko-compact.png", screenshotTolerance);
+	await expect(page.locator(".aura-lyrics-settings-modal")).toHaveScreenshot("settings-lyrics-ko-compact.png", screenshotTolerance);
 });
 
 test("mobile Japanese provider settings keep masked credentials and 44px reorder targets", async ({ page }) => {
@@ -422,7 +423,7 @@ test("mobile Japanese provider settings keep masked credentials and 44px reorder
 	await expect(page.locator('[data-control-id="musixmatch-token"]')).toHaveAttribute("type", "password");
 	const reorderHeight = await page.locator('[data-control-id="provider-lrclib-up"]').evaluate((button) => button.getBoundingClientRect().height);
 	expect(reorderHeight).toBeGreaterThanOrEqual(44);
-	await expect(page.locator(".main-trackCreditsModal-container")).toHaveScreenshot("settings-providers-ja-mobile.png", screenshotTolerance);
+	await expect(page.locator(".aura-lyrics-settings-modal")).toHaveScreenshot("settings-providers-ja-mobile.png", screenshotTolerance);
 });
 
 test("static lyrics use a manually scrollable document layout with translation", async ({ page }) => {
@@ -444,6 +445,17 @@ test("translated line lyrics remain readable in a 480 by 270 PiP", async ({ page
 
 	await expect(page.locator(".line-group.active .lyric-translation")).toHaveText("Starlight shines on us");
 	await expect(page.locator("#aura-lyrics-root")).toHaveScreenshot("translated-line-480x270.png", screenshotTolerance);
+});
+
+test("performer labels sit above the lyric and outside translated text", async ({ page }) => {
+	await page.setViewportSize({ width: 480, height: 270 });
+	await renderScenario(page, "performer-label");
+
+	const label = page.locator(".line-group.active > .lyric-performers");
+	await expect(label).toHaveText("Lead, Guest");
+	await expect(page.locator(".line-group.active .line")).toHaveText("우리의 목소리가 겹쳐");
+	await expect(page.locator(".line-group.active .lyric-translation")).toHaveText("Our voices meet");
+	await expect(label).toHaveCSS("overflow-wrap", "anywhere");
 });
 
 test("compact PiP keeps a translated active row above transient controls", async ({ page }) => {

@@ -52,18 +52,6 @@ describe("MusixmatchProvider", () => {
 		const context: ProviderContext = {
 			cosmosGet: async <T = unknown>(url: string): Promise<T> => {
 				urls.push(url);
-				if (url.includes("track.richsync.get")) {
-					return {
-						message: {
-							header: { status_code: 200 },
-							body: {
-								richsync: {
-									richsync_body: JSON.stringify([{ ts: 1, te: 3, l: [{ c: "Hello", o: 0 }], x: "Hello" }]),
-								},
-							},
-						},
-					} as T;
-				}
 				return {
 					message: {
 						body: {
@@ -72,6 +60,14 @@ describe("MusixmatchProvider", () => {
 									message: {
 										header: { status_code: 200 },
 										body: { track: { track_id: 123, has_subtitles: true, instrumental: false } },
+									},
+								},
+								"track.richsync.get": {
+									message: {
+										header: { status_code: 200 },
+										body: {
+											richsync: { richsync_body: JSON.stringify([{ ts: 1, te: 3, l: [{ c: "Hello", o: 0 }], x: "Hello" }]) },
+										},
 									},
 								},
 								"track.subtitles.get": {
@@ -93,7 +89,7 @@ describe("MusixmatchProvider", () => {
 
 		const result = await provider.fetch(track, context);
 
-		expect(urls.some((url) => url.includes("track.richsync.get"))).toBe(true);
+		expect(urls).toHaveLength(1);
 		expect(result.ok).toBe(true);
 		if (!result.ok) {
 			throw new Error("expected lyrics");
@@ -126,7 +122,10 @@ describe("MusixmatchProvider", () => {
 								"matcher.track.get": {
 									message: {
 										header: { status_code: 200 },
-										body: { track: { track_id: 123, has_subtitles: true, instrumental: false } },
+										body: {
+											track: { track_id: 123, has_subtitles: true, instrumental: false },
+											track_lyrics_translation_status: [{ to: "ko" }],
+										},
 									},
 								},
 								"track.subtitles.get": {
@@ -148,15 +147,16 @@ describe("MusixmatchProvider", () => {
 
 		const result = await provider.fetch(track, context);
 
-		const translationUrl = urls.find((url) => url.includes("crowd.track.translations.get"));
-		expect(translationUrl).toContain("selected_language=ko");
-		expect(translationUrl).toContain("track_id=123");
 		expect(result.ok).toBe(true);
 		if (!result.ok || result.lyrics.type !== "line") {
 			throw new Error("expected line lyrics");
 		}
-		const vocal = result.lyrics.content[0];
-		expect(vocal.type === "vocal" && vocal.translatedText).toBe("안녕");
+		expect(result.metadata?.musixmatch?.translationLanguages).toContain("ko");
+		const translated = await provider.fetchTranslation(track, result.lyrics, result.metadata, context);
+		const vocal = translated?.type === "line" ? translated.content[0] : undefined;
+		expect(urls.some((url) => url.includes("crowd.track.translations.get"))).toBe(true);
+		expect(urls.find((url) => url.includes("crowd.track.translations.get"))).toContain("selected_language=ko");
+		expect(vocal?.type === "vocal" && vocal.translatedText).toBe("안녕");
 	});
 
 	test("renders LRC subtitles when richsync is unavailable", async () => {
@@ -314,7 +314,7 @@ describe("MusixmatchProvider", () => {
 
 		await provider.fetch(track, context);
 
-		expect(urls[0]).toMatch(/^https:\/\/apic-desktop\.musixmatch\.com\/ws\/1\.1\/macro\.subtitles\.get\?/);
+		expect(urls[0]).toMatch(/^https:\/\/apic-appmobile\.musixmatch\.com\/ws\/1\.1\/macro\.subtitles\.get\?/);
 	});
 
 	test("routes requests through a configured proxy via fetch, bypassing CosmosAsync entirely", async () => {
@@ -336,7 +336,7 @@ describe("MusixmatchProvider", () => {
 		await provider.fetch(track, context);
 
 		expect(fetchedUrls[0]).toMatch(
-			/^https:\/\/my-proxy\.example\.com\/\?url=https%3A%2F%2Fapic-desktop\.musixmatch\.com%2Fws%2F1\.1%2Fmacro\.subtitles\.get/
+			/^https:\/\/my-proxy\.example\.com\/\?url=https%3A%2F%2Fapic-appmobile\.musixmatch\.com%2Fws%2F1\.1%2Fmacro\.subtitles\.get/
 		);
 	});
 

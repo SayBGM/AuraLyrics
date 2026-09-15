@@ -74,6 +74,32 @@ describe("lyrics viewport model", () => {
 		controller.destroy();
 	});
 
+	test("keeps the configured context while auto compact mode has no measured dimensions", () => {
+		const container = document.createElement("div");
+		const viewport = document.createElement("div");
+		const track = document.createElement("div");
+		viewport.append(track);
+		container.append(viewport);
+		for (let index = 0; index < 3; index += 1) {
+			const row = document.createElement("div");
+			row.className = `vocals-group${index === 1 ? " active" : ""}`;
+			track.append(row);
+		}
+		const controller = new LyricsViewportController(
+			track,
+			viewport,
+			container,
+			{ interludeStyle: "dots", visibleContextLines: 1, compactMode: "auto" },
+			[]
+		);
+
+		controller.update();
+
+		expect(Array.from(track.children).every((row) => !row.classList.contains("out-of-context"))).toBe(true);
+		expect(container.classList.contains("compact-mode")).toBe(false);
+		controller.destroy();
+	});
+
 	test("writes no classes, measurements or transform while the focused row is unchanged", () => {
 		const container = document.createElement("div");
 		const viewport = document.createElement("div");

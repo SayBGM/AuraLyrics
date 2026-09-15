@@ -236,6 +236,23 @@ export const lyricsStyles = `
 	word-break: keep-all;
 }
 
+.lyric-performers {
+	display: block;
+	margin-bottom: calc(var(--lyrics-size) * 0.1);
+	font-size: calc(var(--lyrics-size) * 0.34);
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	line-height: 1.2;
+	color: var(--pip-muted-foreground-color);
+	text-transform: uppercase;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.vocals-group.active .lyric-performers {
+	color: var(--pip-foreground-color);
+}
+
 .vocals-group.active .lyric-translation {
 	color: var(--pip-muted-foreground-color);
 }
@@ -832,5 +849,10 @@ export const lyricsStyles = `
 	.lyrics-track {
 		gap: calc(var(--lyrics-size) * 0.4);
 	}
+}
+
+.aura-lyrics.compact-mode .lyrics-viewport {
+	overflow-y: auto;
+	overscroll-behavior: contain;
 }
 `;

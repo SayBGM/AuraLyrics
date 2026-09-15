@@ -10,7 +10,7 @@ import {
 	lifecycleUnchanged,
 	writeHighlightStyles,
 } from "../highlight/highlightStyleWriter";
-import { createTranslationElement } from "../lyricsTrackHelpers";
+import { createPerformersElement, createTranslationElement } from "../lyricsTrackHelpers";
 
 // Whole-line highlighting is sampled straight from the motion curves: unlike SyllableVocals
 // there are no per-glyph springs here, so `springSoftness` deliberately has no effect on it.
@@ -59,6 +59,10 @@ export class LineVocals implements HighlightDecorationTrackProvider {
 			host: this.lineElement,
 			pieces: tokens.map((element) => ({ element })),
 		});
+		const performers = settings.showPerformers ? createPerformersElement(line.performers, this.ownerDocument) : undefined;
+		if (performers) {
+			this.element.append(performers);
+		}
 		this.element.append(this.lineElement);
 		if (settings.showTranslation && line.translatedText) {
 			this.element.append(createTranslationElement(line.translatedText, this.ownerDocument));

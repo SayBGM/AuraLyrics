@@ -153,6 +153,36 @@ describe("buildLyricsScene", () => {
 		expect(track.querySelector(".syllable-group")).toBeNull();
 	});
 
+	test("renders performer labels for syllable lyrics and preserves them in line-only mode", () => {
+		const lyrics: SyllableLyrics = {
+			type: "syllable",
+			startTime: 0,
+			endTime: 4,
+			content: [
+				{
+					type: "vocal",
+					oppositeAligned: false,
+					performers: [{ name: "Lead" }, { name: "Guest" }],
+					lead: {
+						startTime: 0,
+						endTime: 4,
+						syllables: [{ text: "Line", startTime: 0, endTime: 4, isPartOfWord: false }],
+					},
+				},
+			],
+		};
+		const syllableTrack = document.createElement("div");
+		buildLyricsScene(syllableTrack, { lyrics, settings: { ...DEFAULT_SETTINGS, showPerformers: true } });
+		expect(syllableTrack.querySelector(".syllable-group > .lyric-performers")?.textContent).toBe("Lead, Guest");
+
+		const lineTrack = document.createElement("div");
+		buildLyricsScene(lineTrack, {
+			lyrics,
+			settings: { ...DEFAULT_SETTINGS, showPerformers: true, syncPreference: "line-only" },
+		});
+		expect(lineTrack.querySelector(".line-group > .lyric-performers")?.textContent).toBe("Lead, Guest");
+	});
+
 	test("marks the group when only a background vocal has a parenthetical", () => {
 		const track = document.createElement("div");
 		const lyrics: SyllableLyrics = {

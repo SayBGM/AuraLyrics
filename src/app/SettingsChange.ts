@@ -20,6 +20,7 @@ const SETTINGS_CHANGE_CLASSIFICATION = {
 	syncPreference: "structural",
 	pseudoKaraoke: "structural",
 	showTranslation: "structural",
+	showPerformers: "structural",
 	showInterludes: "structural",
 	interludeStyle: "structural",
 	debugMode: "structural",
@@ -34,6 +35,7 @@ const SETTINGS_CHANGE_CLASSIFICATION = {
 	inactiveBlurPx: "live",
 	alignmentMode: "live",
 	visibleContextLines: "live",
+	compactMode: "live",
 	highlightEffect: "live",
 	highlightMotion: "live",
 	motionEnabled: "live",
@@ -45,6 +47,7 @@ const SETTINGS_CHANGE_CLASSIFICATION = {
 	preset: "none",
 	providers: "none",
 	lyricsDelayMs: "none",
+	prefetchNextTrack: "none",
 } as const satisfies Record<keyof ExtensionSettings, RendererSettingsChange>;
 
 export const SETTINGS_CHANGE_KEYS = Object.keys(SETTINGS_CHANGE_CLASSIFICATION) as (keyof ExtensionSettings)[];

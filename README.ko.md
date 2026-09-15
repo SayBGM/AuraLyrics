@@ -20,6 +20,8 @@ AuraLyrics는 현재 재생 중인 앨범 커버를 부드러운 blur 배경으�
 - 1순위 provider 성공 결과만 저장하는 persistent lyrics cache.
 - PiP 내부 이전 곡, 재생/일시정지, 다음 곡, 닫기 컨트롤.
 - 열린 PiP에도 즉시 반영되는 반응형 설정 모달.
+- 곡별 가사 provider 지정과 실패 시 자동 fallback.
+- 작은 PiP 창을 위한 작은 창 모드(자동/항상/끔).
 
 ## 설치
 
@@ -73,12 +75,9 @@ Document Picture-in-Picture API는 확장 코드가 창 위치를 직접 지정�
 
 Musixmatch는 간헐적으로 captcha, rate-limit, blocked, `401/403/429` 응답을 반환할 수 있습니다. AuraLyrics는 이런 응답을 즉시 에러 화면으로 보여주지 않고, Musixmatch를 잠시 건너뛴 뒤 다음 provider로 자연스럽게 fallback합니다.
 
-Token 생성은 두 단계로 시도합니다.
-
-1. Desktop endpoint: `apic-desktop.musixmatch.com`, `app_id=web-desktop-app-v1.0`
-2. Mobile fallback endpoint: `apic-appmobile.musixmatch.com`, `app_id=mac-ios-v2.0`
-
-두 endpoint가 모두 실패하면 설정 UI에 desktop/mobile token 요청이 모두 실패했다는 메시지를 표시합니다.
+Token과 가사 요청은 Musixmatch 모바일 endpoint인 `apic-appmobile.musixmatch.com`과
+`app_id=mac-ios-v2.0`을 사용합니다. 단어별 타이밍은 첫 가사 응답에 함께 요청하며,
+한국어 번역 메타데이터가 있을 때만 원문을 표시한 뒤 번역을 추가로 요청합니다.
 
 ## 설정
 
@@ -86,10 +85,10 @@ Token 생성은 두 단계로 시도합니다.
 
 - General: preset, lyrics delay, font scale.
 - Background: album background, blur, dim, saturation, vignette, inactive blur.
-- Lyrics: sync preference, alignment, centered active-line scroll, context lines, interludes.
+- Lyrics: sync preference, alignment, centered active-line scroll, context lines, interludes, performer labels, small-window mode.
 - Motion: animation, intensity, glow, reduced motion.
-- Providers: provider order, enabled state, Musixmatch token.
-- Advanced: debug mode, refresh lyrics, clear cache, reset settings.
+- Providers: provider order, enabled state, Musixmatch token, current-song provider.
+- Advanced: debug mode, next-track preload, refresh lyrics, clear cache, reset settings.
 
 기본 visual preset은 `Immersive`입니다.
 

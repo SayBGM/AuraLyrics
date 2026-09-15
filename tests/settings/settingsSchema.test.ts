@@ -69,6 +69,19 @@ describe("settingsSchema", () => {
 		expect(normalizeLoadedSettings({ showTranslation: false }).showTranslation).toBe(false);
 	});
 
+	test("defaults performer labels off and next-track preload on", () => {
+		expect(DEFAULT_SETTINGS.showPerformers).toBe(false);
+		expect(DEFAULT_SETTINGS.prefetchNextTrack).toBe(true);
+		expect(normalizeLoadedSettings({ showPerformers: true, prefetchNextTrack: false })).toMatchObject({
+			showPerformers: true,
+			prefetchNextTrack: false,
+		});
+		expect(normalizeLoadedSettings({ showPerformers: "yes" as never, prefetchNextTrack: "no" as never })).toMatchObject({
+			showPerformers: false,
+			prefetchNextTrack: true,
+		});
+	});
+
 	test("defaults the musixmatch proxy mode to default", () => {
 		expect(DEFAULT_SETTINGS.providers.musixmatchProxyMode).toBe("default");
 	});

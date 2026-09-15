@@ -16,9 +16,13 @@ describe("MusixmatchTokenService", () => {
 		const service = new MusixmatchTokenService(cosmosGet, noFetch);
 
 		await expect(service.refresh()).resolves.toBe("token");
-		expect(cosmosGet).toHaveBeenCalledWith("https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0", null, {
-			authority: "apic-desktop.musixmatch.com",
-		});
+		expect(cosmosGet).toHaveBeenCalledWith(
+			"https://apic-appmobile.musixmatch.com/ws/1.1/token.get?app_id=mac-ios-v2.0",
+			null,
+			expect.objectContaining({
+				Host: "apic-appmobile.musixmatch.com",
+			})
+		);
 	});
 
 	test("surfaces rate-limit responses as a friendly error", async () => {
@@ -34,32 +38,25 @@ describe("MusixmatchTokenService", () => {
 		await expect(service.refresh()).rejects.toThrow("rate-limited");
 	});
 
-	test("falls back to the mobile token endpoint when desktop token generation is blocked", async () => {
-		const cosmosGet = vi
-			.fn()
-			.mockResolvedValueOnce({
-				message: {
-					header: { status_code: 401, hint: "captcha required" },
-				},
-			})
-			.mockResolvedValueOnce({
-				message: {
-					header: { status_code: 200 },
-					body: { user_token: "mobile-token" },
-				},
-			});
+	test("uses only the mobile token endpoint", async () => {
+		const cosmosGet = vi.fn().mockResolvedValueOnce({
+			message: {
+				header: { status_code: 200 },
+				body: { user_token: "mobile-token" },
+			},
+		});
 		const service = new MusixmatchTokenService(cosmosGet, noFetch);
 
 		await expect(service.refresh()).resolves.toBe("mobile-token");
-		expect(cosmosGet).toHaveBeenCalledTimes(2);
-		expect(cosmosGet.mock.calls[1]?.[0]).toContain("apic-appmobile.musixmatch.com");
-		expect(cosmosGet.mock.calls[1]?.[2]).toMatchObject({
+		expect(cosmosGet).toHaveBeenCalledTimes(1);
+		expect(cosmosGet.mock.calls[0]?.[0]).toContain("apic-appmobile.musixmatch.com");
+		expect(cosmosGet.mock.calls[0]?.[2]).toMatchObject({
 			Host: "apic-appmobile.musixmatch.com",
 			"X-User-Agent": expect.stringContaining("Musixmatch/"),
 		});
 	});
 
-	test("reports both token endpoints when desktop and mobile generation are blocked", async () => {
+	test("reports mobile token endpoint failure", async () => {
 		const service = new MusixmatchTokenService(
 			async () => ({
 				message: {
@@ -69,10 +66,10 @@ describe("MusixmatchTokenService", () => {
 			noFetch
 		);
 
-		await expect(service.refresh()).rejects.toThrow("desktop and mobile");
+		await expect(service.refresh()).rejects.toThrow("mobile");
 	});
 
-	test("routes the desktop token request through a configured proxy via fetch, bypassing CosmosAsync", async () => {
+	test("routes the mobile token request through a configured proxy via fetch", async () => {
 		const cosmosGet = vi.fn(async () => {
 			throw new Error("cosmosGet should not be used for the proxied desktop endpoint");
 		});
@@ -89,14 +86,14 @@ describe("MusixmatchTokenService", () => {
 			} as Response;
 		}) as typeof fetch;
 		const service = new MusixmatchTokenService(cosmosGet, fetchFn);
-		const realTargetUrl = "https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0";
+		const realTargetUrl = "https://apic-appmobile.musixmatch.com/ws/1.1/token.get?app_id=mac-ios-v2.0";
 
 		await expect(service.refresh("https://my-proxy.example.com/?url=")).resolves.toBe("token");
 		expect(cosmosGet).not.toHaveBeenCalled();
 		expect(fetchedUrls).toEqual([`https://my-proxy.example.com/?url=${encodeURIComponent(realTargetUrl)}`]);
 	});
 
-	test("keeps the real mobile host on CosmosAsync when the proxied desktop request fails", async () => {
+	test("surfaces custom proxy token failure", async () => {
 		const cosmosGet = vi.fn(async (_url: string) => ({
 			message: {
 				header: { status_code: 200 },
@@ -108,8 +105,7 @@ describe("MusixmatchTokenService", () => {
 		}) as typeof fetch;
 		const service = new MusixmatchTokenService(cosmosGet, fetchFn);
 
-		await expect(service.refresh("https://my-proxy.example.com/?url=")).resolves.toBe("mobile-token");
-		expect(cosmosGet).toHaveBeenCalledTimes(1);
-		expect(cosmosGet.mock.calls[0]?.[0]).toContain("apic-appmobile.musixmatch.com");
+		await expect(service.refresh("https://my-proxy.example.com/?url=")).rejects.toThrow("proxy unreachable");
+		expect(cosmosGet).not.toHaveBeenCalled();
 	});
 });

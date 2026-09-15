@@ -47,6 +47,7 @@ describe("SettingsPanelRenderer", () => {
 		expect(lyrics.querySelector('[data-control-id="lyrics-delay"]')).not.toBeNull();
 		expect(lyrics.querySelector('[data-control-id="current-track-delay"]')?.getAttribute("aria-disabled")).toBe("true");
 		expect(lyrics.querySelector('[data-control-id="interlude-style"]')).not.toBeNull();
+		expect(lyrics.querySelector('[data-control-id="show-performers"]')).not.toBeNull();
 		expect(appearance.querySelector('[data-control-id="background-dim"]')).not.toBeNull();
 		expect(appearance.querySelector('[data-control-id="highlight-effect"]')).not.toBeNull();
 		expect(appearance.querySelector('[data-control-id="highlight-motion"]')).not.toBeNull();
@@ -55,6 +56,7 @@ describe("SettingsPanelRenderer", () => {
 		expect(motion.querySelector('[data-control-id="reduce-motion"]')).not.toBeNull();
 		expect(advanced.querySelector('[data-control-id="refresh-current-lyrics"]')).not.toBeNull();
 		expect(advanced.querySelector('[data-control-id="reset-settings"]')).not.toBeNull();
+		expect(advanced.querySelector('[data-control-id="prefetch-next-track"]')).not.toBeNull();
 	});
 
 	test("uses shared numeric specs and connects controls to group descriptions", () => {

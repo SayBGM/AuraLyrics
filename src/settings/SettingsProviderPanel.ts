@@ -1,3 +1,4 @@
+import type { ProviderId } from "../domain/types";
 import type { LyricsProvider } from "../lyrics/types";
 import { providerDisplayName } from "../shared/providerDisplayNames";
 import type { SettingsControlFactory } from "./SettingsControlFactory";
@@ -6,6 +7,8 @@ import { formatTranslation, translate, translatedOptionLabel } from "./settingsT
 import type { SettingsFeedbackState } from "./settingsViewTypes";
 
 type SettingsProviderPanelCallbacks = {
+	getCurrentTrackLyricsProvider?(): { uri: string; provider?: ProviderId; title?: string; artist?: string } | undefined;
+	onSetCurrentTrackLyricsProvider?(uri: string, provider: ProviderId | undefined): boolean;
 	onFeedback?(state: SettingsFeedbackState, text: string, durationMs?: number): void;
 	onMusixmatchTokenAccepted(token: string): void;
 	onRefreshMusixmatchToken(): Promise<string | undefined>;
@@ -38,7 +41,10 @@ export class SettingsProviderPanel {
 		this.providerAnnouncement = undefined;
 		this.tokenRequestButton = undefined;
 		const language = settings.language;
-		const priority = settings.providers.order.map((provider, index) => this.providerRow(settings, provider, index));
+		const priority = [
+			this.currentTrackProvider(settings),
+			...settings.providers.order.map((provider, index) => this.providerRow(settings, provider, index)),
+		];
 		const order = this.ownerDocument.createElement("p");
 		order.className = "provider-order-summary";
 		order.textContent = formatTranslation("providerOrder", { order: settings.providers.order.map(providerDisplayName).join(" → ") }, language);
@@ -107,6 +113,44 @@ export class SettingsProviderPanel {
 		}
 		const authentication = [tokenRow, generateButton];
 		return Object.assign([...priority, ...authentication, ...network], { priority, authentication, network });
+	}
+
+	private currentTrackProvider(settings: ExtensionSettings): HTMLElement {
+		const state = this.callbacks.getCurrentTrackLyricsProvider?.();
+		const row = this.ownerDocument.createElement("div");
+		row.className = "setting-row current-track-provider";
+		const label = this.ownerDocument.createElement("span");
+		label.className = "setting-label";
+		label.textContent = state?.title
+			? `${state.title}${state.artist ? ` · ${state.artist}` : ""}`
+			: translate("currentTrackProvider", settings.language);
+		const select = this.ownerDocument.createElement("select");
+		select.dataset.controlId = "current-track-provider";
+		const options = [
+			{ value: "", label: translate("providerDefault", settings.language) },
+			...settings.providers.order.map((id) => ({ value: id, label: providerDisplayName(id) })),
+		];
+		for (const option of options) {
+			const node = this.ownerDocument.createElement("option");
+			node.value = option.value;
+			node.textContent = option.label;
+			node.disabled = option.value !== "" && !settings.providers.enabled[option.value as ProviderId];
+			select.append(node);
+		}
+		if (!state) select.disabled = true;
+		select.value = state?.provider ?? "";
+		select.addEventListener("change", () => {
+			if (!state) return;
+			const persisted = this.callbacks.onSetCurrentTrackLyricsProvider?.(state.uri, (select.value || undefined) as ProviderId | undefined) ?? false;
+			this.callbacks.onFeedback?.(
+				persisted ? "success" : "error",
+				translate(persisted ? "providerSelectionSaved" : "saveError", settings.language),
+				2500
+			);
+			if (persisted) this.callbacks.onScheduleRefresh();
+		});
+		row.append(label, select);
+		return row;
 	}
 
 	public clearTokenStatus(): void {

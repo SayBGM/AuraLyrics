@@ -1,3 +1,9 @@
+import {
+	MUSIXMATCH_MOBILE_APP_ID,
+	MUSIXMATCH_MOBILE_COSMOS_HEADERS,
+	MUSIXMATCH_MOBILE_FETCH_HEADERS,
+	musixmatchMobileUrl,
+} from "./MusixmatchMobileApi";
 import { requestMusixmatch } from "./musixmatchProxy";
 
 export type MusixmatchTokenResponse = {
@@ -14,59 +20,44 @@ export type MusixmatchTokenResponse = {
 
 type CosmosGet = (url: string, body?: unknown, headers?: Record<string, string>) => Promise<MusixmatchTokenResponse>;
 
-const TOKEN_ENDPOINTS = [
-	{
-		id: "desktop",
-		url: "https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0",
-		headers: {
-			authority: "apic-desktop.musixmatch.com",
-		},
-		allowProxy: true,
-	},
-	{
-		id: "mobile",
-		url: "https://apic-appmobile.musixmatch.com/ws/1.1/token.get?app_id=mac-ios-v2.0",
-		headers: {
-			Host: "apic-appmobile.musixmatch.com",
-			authority: "apic-appmobile.musixmatch.com",
-			"X-Cookie": "x-mxm-token-guid=",
-			"x-mxm-app-version": "10.1.1",
-			"X-User-Agent": "Musixmatch/2025120901 CFNetwork/3860.300.31 Darwin/25.2.0",
-			"Accept-Language": "en-US,en;q=0.9",
-			Connection: "keep-alive",
-			Accept: "application/json",
-		},
-		allowProxy: false,
-	},
-] as const;
+const tokenUrl = (): string => musixmatchMobileUrl("token.get", new URLSearchParams({ app_id: MUSIXMATCH_MOBILE_APP_ID }));
 
 export class MusixmatchTokenService {
+	private refreshing?: Promise<string>;
+
 	public constructor(
 		private readonly cosmosGet: CosmosGet,
 		private readonly fetchFn: typeof fetch
 	) {}
 
 	public async refresh(proxyBaseUrl?: string): Promise<string> {
-		const errors: string[] = [];
-		for (const endpoint of TOKEN_ENDPOINTS) {
-			try {
-				const response = await requestMusixmatch<MusixmatchTokenResponse>({
-					targetUrl: endpoint.url,
-					proxyBaseUrl: endpoint.allowProxy ? proxyBaseUrl : undefined,
-					cosmosGet: this.cosmosGet,
-					cosmosHeaders: endpoint.headers,
-					fetch: this.fetchFn,
-				});
-				const token = this.extractToken(response);
-				if (token) {
-					return token;
-				}
-				errors.push(`${endpoint.id}: ${this.errorMessage(response)}`);
-			} catch (error) {
-				errors.push(`${endpoint.id}: ${error instanceof Error ? error.message : String(error)}`);
-			}
+		if (!this.refreshing) {
+			this.refreshing = this.requestToken(proxyBaseUrl).finally(() => {
+				this.refreshing = undefined;
+			});
 		}
-		throw new Error(`Musixmatch desktop and mobile token requests failed. ${errors.join(" ")}`);
+		return this.refreshing;
+	}
+
+	private async requestToken(proxyBaseUrl?: string): Promise<string> {
+		try {
+			const response = await requestMusixmatch<MusixmatchTokenResponse>({
+				targetUrl: tokenUrl(),
+				proxyBaseUrl,
+				cosmosGet: this.cosmosGet,
+				cosmosHeaders: MUSIXMATCH_MOBILE_COSMOS_HEADERS,
+				fetchHeaders: MUSIXMATCH_MOBILE_FETCH_HEADERS,
+				fetch: this.fetchFn,
+				timeoutMs: 8000,
+			});
+			const token = this.extractToken(response);
+			if (token) {
+				return token;
+			}
+			throw new Error(this.errorMessage(response));
+		} catch (error) {
+			throw new Error(`Musixmatch mobile token request failed. ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	private extractToken(response: MusixmatchTokenResponse): string | undefined {

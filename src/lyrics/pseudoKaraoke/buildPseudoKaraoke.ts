@@ -128,7 +128,13 @@ export const buildPseudoKaraokeLyrics = (lyrics: LineLyrics, analysis: AudioAnal
 			continue;
 		}
 		synthesizedAny = true;
-		content.push({ type: "vocal", oppositeAligned: item.oppositeAligned, lead, translatedText: item.translatedText });
+		content.push({
+			type: "vocal",
+			oppositeAligned: item.oppositeAligned,
+			lead,
+			translatedText: item.translatedText,
+			...(item.performers ? { performers: item.performers } : {}),
+		});
 	}
 
 	if (!synthesizedAny) {
@@ -147,6 +153,7 @@ const lineToSingleSyllableSet = (line: LineVocal): SyllableVocalSet => ({
 	type: "vocal",
 	oppositeAligned: line.oppositeAligned,
 	translatedText: line.translatedText,
+	...(line.performers ? { performers: line.performers } : {}),
 	lead: {
 		startTime: line.startTime,
 		endTime: line.endTime,

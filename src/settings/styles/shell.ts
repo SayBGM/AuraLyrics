@@ -1,18 +1,72 @@
 export const shellStyles = `
-body.aura-lyrics-settings-open .main-trackCreditsModal-container {
+body.aura-lyrics-settings-open {
+	overflow: hidden;
+}
+
+.aura-lyrics-settings-modal {
 	display: flex;
 	flex-direction: column;
 	width: min(920px, calc(100vw - 32px));
 	max-width: min(920px, calc(100vw - 32px));
 	height: min(760px, calc(100vh - 32px));
 	max-height: min(760px, calc(100vh - 32px));
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
 	box-sizing: border-box;
 	overflow: hidden;
 	background: #0d0d0f;
 	color: #f5f5f7;
 }
 
-body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection {
+.aura-lyrics-settings-modal::backdrop {
+	background: rgb(0 0 0 / 72%);
+}
+
+.aura-lyrics-settings-modal-header {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 18px 20px;
+	border-bottom: 1px solid #2a2a31;
+	background: #141417;
+}
+
+.aura-lyrics-settings-modal-title {
+	margin: 0;
+	font-size: 20px;
+	font-weight: 700;
+	line-height: 1.25;
+}
+
+.aura-lyrics-settings-modal-close {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	color: #a7a7b0;
+	cursor: pointer;
+}
+
+.aura-lyrics-settings-modal-close:hover {
+	background: #232329;
+	color: #f5f5f7;
+}
+
+.aura-lyrics-settings-modal-close:focus-visible {
+	outline: 2px solid #ffd4ca;
+	outline-offset: 2px;
+}
+
+.aura-lyrics-settings-modal > .aura-lyrics-settings {
 	display: flex;
 	flex: 1 1 auto;
 	flex-direction: column;
@@ -21,17 +75,6 @@ body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection {
 	max-height: 100%;
 	overflow: hidden;
 	padding: 0;
-}
-
-body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits {
-	display: flex;
-	flex: 1 1 auto;
-	width: 100%;
-	height: 100%;
-	max-height: 100%;
-	min-height: 0;
-	overflow: hidden;
-	padding-bottom: 0;
 }
 
 .aura-lyrics-settings {

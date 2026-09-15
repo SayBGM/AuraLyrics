@@ -2,7 +2,7 @@ import type { UiLanguage } from "../settings/SettingsStore";
 import { providerDisplayName } from "../shared/providerDisplayNames";
 import type { LyricsLoadDiagnostics, ProviderAttemptStatus } from "./types";
 
-export type LyricsLoadFailureReason = "error" | "no-lyrics" | "unsupported-local";
+export type LyricsLoadFailureReason = "error" | "instrumental" | "no-lyrics" | "restricted" | "unsupported-local";
 
 export type LyricsLoadNotice = {
 	title: string;
@@ -58,6 +58,22 @@ const noticeCopy = (language: UiLanguage, reason: LyricsLoadFailureReason): Noti
 				tone: "neutral",
 			};
 		}
+		if (reason === "restricted") {
+			return {
+				title: "가사를 표시할 수 없습니다",
+				detail: "Musixmatch에서 이 가사의 제공이 제한되어 있습니다.",
+				diagnosticsLabel: "제공자 조회 결과",
+				tone: "neutral",
+			};
+		}
+		if (reason === "instrumental") {
+			return {
+				title: "연주곡입니다",
+				detail: "가사 없는 연주곡입니다.",
+				diagnosticsLabel: "제공자 조회 결과",
+				tone: "neutral",
+			};
+		}
 		return {
 			title: "로컬 파일은 지원하지 않습니다",
 			detail: "Spotify 로컬 파일의 가사는 AuraLyrics에서 불러올 수 없습니다.",
@@ -81,6 +97,22 @@ const noticeCopy = (language: UiLanguage, reason: LyricsLoadFailureReason): Noti
 				title: "歌詞が見つかりません",
 				detail: "有効な歌詞プロバイダーでこの曲の歌詞が見つかりませんでした。",
 				tryAgainLabel: "この曲を再試行",
+				diagnosticsLabel: "プロバイダーの結果",
+				tone: "neutral",
+			};
+		}
+		if (reason === "restricted") {
+			return {
+				title: "歌詞を表示できません",
+				detail: "Musixmatch でこの歌詞の提供が制限されています。",
+				diagnosticsLabel: "プロバイダーの結果",
+				tone: "neutral",
+			};
+		}
+		if (reason === "instrumental") {
+			return {
+				title: "インストゥルメンタルです",
+				detail: "歌詞のないインストゥルメンタルです。",
 				diagnosticsLabel: "プロバイダーの結果",
 				tone: "neutral",
 			};
@@ -111,6 +143,22 @@ const noticeCopy = (language: UiLanguage, reason: LyricsLoadFailureReason): Noti
 			tone: "neutral",
 		};
 	}
+	if (reason === "restricted") {
+		return {
+			title: "Lyrics are unavailable",
+			detail: "Musixmatch has restricted this lyric.",
+			diagnosticsLabel: "Provider results",
+			tone: "neutral",
+		};
+	}
+	if (reason === "instrumental") {
+		return {
+			title: "Instrumental track",
+			detail: "This is an instrumental track with no lyrics.",
+			diagnosticsLabel: "Provider results",
+			tone: "neutral",
+		};
+	}
 	return {
 		title: "Local files are not supported",
 		detail: "Lyrics for Spotify local files cannot be loaded by AuraLyrics.",
@@ -137,6 +185,7 @@ const attemptStatusLabel = (status: ProviderAttemptStatus, language: UiLanguage)
 			success: "success",
 			"no-lyrics": "no lyrics",
 			instrumental: "instrumental",
+			restricted: "restricted",
 			"temporarily-unavailable": "temporarily unavailable",
 			cooldown: "cooldown",
 			error: "error",
@@ -145,6 +194,7 @@ const attemptStatusLabel = (status: ProviderAttemptStatus, language: UiLanguage)
 			success: "성공",
 			"no-lyrics": "가사 없음",
 			instrumental: "연주곡",
+			restricted: "제한됨",
 			"temporarily-unavailable": "일시적으로 사용할 수 없음",
 			cooldown: "잠시 대기 중",
 			error: "오류",
@@ -153,6 +203,7 @@ const attemptStatusLabel = (status: ProviderAttemptStatus, language: UiLanguage)
 			success: "成功",
 			"no-lyrics": "歌詞なし",
 			instrumental: "インストゥルメンタル",
+			restricted: "制限あり",
 			"temporarily-unavailable": "一時利用不可",
 			cooldown: "クールダウン中",
 			error: "エラー",

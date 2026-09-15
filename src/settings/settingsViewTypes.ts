@@ -1,3 +1,4 @@
+import type { ProviderId } from "../domain/types";
 import type { SettingsIconName } from "./settingsIcons";
 import type { TranslationKey } from "./settingsTranslations";
 
@@ -18,6 +19,8 @@ export type SettingsCallbacks = {
 	onMusixmatchTokenAccepted(token: string): void;
 	onRefreshMusixmatchToken(): Promise<string | undefined>;
 	onResetCurrentTrackLyricsDelay(uri: string): boolean;
+	getCurrentTrackLyricsProvider?(): { uri: string; provider?: ProviderId; title?: string; artist?: string } | undefined;
+	onSetCurrentTrackLyricsProvider?(uri: string, provider: ProviderId | undefined): boolean;
 };
 
 export type SettingsFeedbackState = "error" | "idle" | "previewing" | "saved" | "success" | "working";

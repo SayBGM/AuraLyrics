@@ -20,6 +20,7 @@ export type SettingsPanelRendererCallbacks = SettingsCallbacks & {
 
 type SelectSettingKey =
 	| "alignmentMode"
+	| "compactMode"
 	| "fontFamily"
 	| "highlightEffect"
 	| "highlightMotion"
@@ -27,7 +28,16 @@ type SelectSettingKey =
 	| "language"
 	| "preset"
 	| "syncPreference";
-type ToggleSettingKey = "backgroundEnabled" | "debugMode" | "motionEnabled" | "pseudoKaraoke" | "reduceMotion" | "showInterludes" | "showTranslation";
+type ToggleSettingKey =
+	| "backgroundEnabled"
+	| "debugMode"
+	| "motionEnabled"
+	| "prefetchNextTrack"
+	| "pseudoKaraoke"
+	| "reduceMotion"
+	| "showInterludes"
+	| "showPerformers"
+	| "showTranslation";
 type RangeSettingKey = NumericSettingKey;
 
 type DisabledReasonResolver = (settings: ExtensionSettings, language: UiLanguage) => string | undefined;
@@ -160,6 +170,7 @@ const SECTION_CONTROLS: Record<Exclude<SettingsSection, "providers">, ControlGro
 				},
 				{ type: "toggle", id: "pseudo-karaoke", key: "pseudoKaraoke", labelKey: "pseudoKaraoke", disabledReason: pseudoKaraokeDisabledReason },
 				{ type: "toggle", id: "show-translation", key: "showTranslation", labelKey: "showTranslation" },
+				{ type: "toggle", id: "show-performers", key: "showPerformers", labelKey: "showPerformers", refresh: true },
 			],
 		},
 		{
@@ -167,6 +178,16 @@ const SECTION_CONTROLS: Record<Exclude<SettingsSection, "providers">, ControlGro
 			titleKey: "alignmentContext",
 			descriptionKey: "alignmentContextDescription",
 			controls: [
+				{
+					type: "select",
+					id: "compact-mode",
+					key: "compactMode",
+					labelKey: "compactMode",
+					descriptionKey: "compactModeDescription",
+					optionGroup: "compactMode",
+					options: ["auto", "always", "off"],
+					refresh: true,
+				},
 				{
 					type: "select",
 					id: "alignment",
@@ -281,6 +302,12 @@ const SECTION_CONTROLS: Record<Exclude<SettingsSection, "providers">, ControlGro
 	],
 	advanced: [
 		{
+			id: "advanced-prefetch",
+			titleKey: "prefetch",
+			descriptionKey: "prefetchDescription",
+			controls: [{ type: "toggle", id: "prefetch-next-track", key: "prefetchNextTrack", labelKey: "prefetchNextTrack" }],
+		},
+		{
 			id: "advanced-diagnostics",
 			titleKey: "diagnostics",
 			descriptionKey: "diagnosticsDescription",
@@ -318,6 +345,8 @@ export class SettingsPanelRenderer {
 			onPreview: () => this.feedback("previewing", "previewing"),
 		});
 		this.providerPanel = new SettingsProviderPanel(ownerDocument, store, providers, this.controls, {
+			getCurrentTrackLyricsProvider: callbacks.getCurrentTrackLyricsProvider,
+			onSetCurrentTrackLyricsProvider: callbacks.onSetCurrentTrackLyricsProvider,
 			onFeedback: callbacks.onFeedback,
 			onMusixmatchTokenAccepted: callbacks.onMusixmatchTokenAccepted,
 			onRefreshMusixmatchToken: callbacks.onRefreshMusixmatchToken,

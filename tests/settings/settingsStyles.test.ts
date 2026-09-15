@@ -15,9 +15,9 @@ import {
 // split against silently dropping or mangling a rule: every one of these must still appear
 // verbatim, somewhere, in the reassembled settingsStyles output.
 const ORIGINAL_SELECTOR_HEADS: string[] = [
-	"body.aura-lyrics-settings-open .main-trackCreditsModal-container",
-	"body.aura-lyrics-settings-open .main-trackCreditsModal-mainSection",
-	"body.aura-lyrics-settings-open .main-trackCreditsModal-originalCredits",
+	"body.aura-lyrics-settings-open",
+	".aura-lyrics-settings-modal",
+	".aura-lyrics-settings-modal::backdrop",
 	".aura-lyrics-settings",
 	".aura-lyrics-settings .settings-layout",
 	".aura-lyrics-settings .settings-content",

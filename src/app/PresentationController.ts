@@ -86,7 +86,18 @@ export class PresentationController {
 				this.presentReadySnapshot(state.snapshot);
 				return;
 			case "instrumental":
-				this.host.renderer.showTrackMetadata(session.root, { mode: "persistent", track: state.track }, this.host.settings);
+				{
+					const notice = lyricsLoadNoticeFor("instrumental", this.host.settings.language);
+					this.host.renderer.showTrackMetadata(
+						session.root,
+						{
+							mode: "persistent",
+							track: state.track,
+							notice: { title: notice.title, detail: notice.detail, tone: notice.tone },
+						},
+						this.host.settings
+					);
+				}
 				return;
 			case "metadata": {
 				const notice = lyricsLoadNoticeFor(state.reason, this.host.settings.language, state.message, state.diagnostics);

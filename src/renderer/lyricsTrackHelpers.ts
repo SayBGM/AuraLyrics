@@ -1,4 +1,4 @@
-import type { SyllableVocalSet } from "../lyrics/types";
+import type { LyricsPerformer, SyllableVocalSet } from "../lyrics/types";
 import type { AnimatedGroup } from "./AnimatedGroup";
 
 /**
@@ -31,7 +31,23 @@ export const syllableToLine = (item: SyllableVocalSet) => ({
 	startTime: item.lead.startTime,
 	endTime: item.lead.endTime,
 	oppositeAligned: item.oppositeAligned,
+	performers: item.performers,
 });
+
+/** Creates non-lyric attribution text separately from lyric/translation nodes. */
+export const createPerformersElement = (
+	performers: readonly LyricsPerformer[] | undefined,
+	ownerDocument: Document = document
+): HTMLSpanElement | undefined => {
+	const names = [...new Set((performers ?? []).map((performer) => performer.name.trim()).filter(Boolean))];
+	if (names.length === 0) {
+		return undefined;
+	}
+	const element = ownerDocument.createElement("span");
+	element.className = "lyric-performers";
+	element.textContent = names.join(", ");
+	return element;
+};
 
 // Translations render as one plain block of text — parentheses inside a translation are
 // never split into segments; the translation style takes priority over parenthetical styling.

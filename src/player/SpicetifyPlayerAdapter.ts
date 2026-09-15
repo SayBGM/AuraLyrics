@@ -1,5 +1,5 @@
 import type { TrackIdentity } from "../domain/types";
-import type { SpicetifyGlobal } from "../runtime/spicetify";
+import type { SpicetifyGlobal, SpicetifyQueue, SpicetifyQueueItem } from "../runtime/spicetify";
 import { EventEmitter } from "../shared/EventEmitter";
 
 export type TrackChangedEvent = {
@@ -25,6 +25,8 @@ export class SpicetifyPlayerAdapter {
 	public readonly trackChanged = new EventEmitter<TrackChangedEvent>();
 	public readonly playbackChanged = new EventEmitter<boolean>();
 	public readonly progressChanged = new EventEmitter<number>();
+	/** Emits the best available queued track after Spotify's queue updates. */
+	public readonly queueChanged = new EventEmitter<TrackIdentity | undefined>();
 
 	private currentTrackUri: string | undefined;
 	private readonly progressByTrackUri = new Map<string, TrackProgress>();
@@ -53,6 +55,7 @@ export class SpicetifyPlayerAdapter {
 		});
 	};
 	private readonly onPlayPause = () => this.playbackChanged.emit(this.isPlaying());
+	private readonly onQueueUpdate = (event?: { data?: SpicetifyQueue }) => this.queueChanged.emit(this.getNextTrack(event?.data));
 	private readonly onProgress = (event?: { data?: unknown }) => {
 		const progressSec = typeof event?.data === "number" ? event.data / 1000 : Number.NaN;
 		if (!Number.isFinite(progressSec) || progressSec < 0) {
@@ -89,12 +92,14 @@ export class SpicetifyPlayerAdapter {
 		this.spicetify.Player.addEventListener("songchange", this.onSongChange);
 		this.spicetify.Player.addEventListener("onplaypause", this.onPlayPause);
 		this.spicetify.Player.addEventListener("onprogress", this.onProgress);
+		this.spicetify.Player.origin?._events?.addListener("queue_update", this.onQueueUpdate);
 	}
 
 	public detach(): void {
 		this.spicetify.Player.removeEventListener?.("songchange", this.onSongChange);
 		this.spicetify.Player.removeEventListener?.("onplaypause", this.onPlayPause);
 		this.spicetify.Player.removeEventListener?.("onprogress", this.onProgress);
+		this.spicetify.Player.origin?._events?.removeListener("queue_update", this.onQueueUpdate);
 		this.progressByTrackUri.clear();
 		this.previousEpochCandidate = undefined;
 		this.currentTrackUri = undefined;
@@ -102,26 +107,14 @@ export class SpicetifyPlayerAdapter {
 
 	public getCurrentTrack(): TrackIdentity | undefined {
 		const item = this.spicetify.Player.data?.item;
-		const metadata = item?.metadata;
-		if (!item || !metadata) {
-			return undefined;
-		}
-		const uri = item.uri;
-		const isLocal = this.spicetify.URI?.isLocalTrack(uri) ?? uri.startsWith("spotify:local:");
-		const isTrack = this.spicetify.URI?.isTrack(uri) ?? uri.startsWith("spotify:track:");
-		if (!isTrack && !isLocal) {
-			return undefined;
-		}
-		return {
-			uri,
-			id: uri.split(":")[2],
-			title: metadata.title ?? "",
-			artist: metadata.artist_name ?? "",
-			album: metadata.album_title ?? "",
-			durationMs: Number(metadata.duration ?? this.spicetify.Player.getDuration()),
-			coverUrl: findCoverUrl(item),
-			isLocal,
-		};
+		return item ? toTrackIdentity(item, this.spicetify, this.spicetify.Player.getDuration(), false) : undefined;
+	}
+
+	/** Returns `queued[0]`, falling back to `nextUp[0]`. Invalid and local queue items are excluded. */
+	public getNextTrack(queue: SpicetifyQueue | undefined = this.spicetify.Queue): TrackIdentity | undefined {
+		const item = queue?.queued?.[0] ?? queue?.nextUp?.[0];
+		const track = item ? toTrackIdentity(item, this.spicetify, undefined, true) : undefined;
+		return track?.isLocal ? undefined : track;
 	}
 
 	public getTimestamp(delayMs: number): number {
@@ -163,11 +156,33 @@ const isSameUriNaturalRepeatReset = (previousProgress: TrackProgress, progressSe
 
 const COVER_METADATA_KEYS = ["image_url", "image_xlarge_url", "image_large_url", "image_medium_url", "image_small_url"] as const;
 
-type PlayerItemWithCover = {
-	metadata?: Record<string, string>;
-	images?: Array<{ url?: string; uri?: string }>;
-	album?: {
-		images?: Array<{ url?: string; uri?: string }>;
+type PlayerItemWithCover = Pick<SpicetifyQueueItem, "metadata" | "images" | "album">;
+
+const toTrackIdentity = (
+	item: SpicetifyQueueItem,
+	spicetify: SpicetifyGlobal,
+	fallbackDurationMs?: number,
+	requireValidDuration = false
+): TrackIdentity | undefined => {
+	const metadata = item.metadata;
+	if (!metadata) {
+		return undefined;
+	}
+	const isLocal = spicetify.URI?.isLocalTrack(item.uri) ?? item.uri.startsWith("spotify:local:");
+	const isTrack = spicetify.URI?.isTrack(item.uri) ?? item.uri.startsWith("spotify:track:");
+	const durationMs = Number(metadata.duration ?? fallbackDurationMs);
+	if ((!isTrack && !isLocal) || (requireValidDuration && (!Number.isFinite(durationMs) || durationMs <= 0))) {
+		return undefined;
+	}
+	return {
+		uri: item.uri,
+		id: item.uri.split(":")[2],
+		title: metadata.title ?? "",
+		artist: metadata.artist_name ?? "",
+		album: metadata.album_title ?? "",
+		durationMs,
+		coverUrl: findCoverUrl(item),
+		isLocal,
 	};
 };
 
