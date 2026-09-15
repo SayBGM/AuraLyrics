@@ -10,7 +10,21 @@ export type LyricsLoadNotice = {
 	tryAgainLabel?: string;
 	diagnosticsLabel: string;
 	diagnostics?: string[];
+	copyDiagnosticsLabel: string;
+	diagnosticsCopiedLabel: string;
 	tone: "neutral" | "danger";
+};
+
+const COPY_DIAGNOSTICS_LABEL: Record<UiLanguage, string> = {
+	en: "Copy diagnostics",
+	ko: "진단 정보 복사",
+	ja: "診断情報をコピー",
+};
+
+const DIAGNOSTICS_COPIED_LABEL: Record<UiLanguage, string> = {
+	en: "Copied",
+	ko: "복사됨",
+	ja: "コピーしました",
 };
 
 /**
@@ -32,11 +46,13 @@ export const lyricsLoadNoticeFor = (
 		tryAgainLabel: localized.tryAgainLabel,
 		diagnosticsLabel: localized.diagnosticsLabel,
 		diagnostics: diagnostics ? diagnosticsFor(diagnostics, language) : undefined,
+		copyDiagnosticsLabel: COPY_DIAGNOSTICS_LABEL[language],
+		diagnosticsCopiedLabel: DIAGNOSTICS_COPIED_LABEL[language],
 		tone: reason === "error" ? "danger" : "neutral",
 	};
 };
 
-type NoticeCopy = Omit<LyricsLoadNotice, "diagnostics">;
+type NoticeCopy = Omit<LyricsLoadNotice, "diagnostics" | "copyDiagnosticsLabel" | "diagnosticsCopiedLabel">;
 
 const noticeCopy = (language: UiLanguage, reason: LyricsLoadFailureReason): NoticeCopy => {
 	if (language === "ko") {

@@ -91,15 +91,34 @@ export const metadataStyles = `
 	line-height: 1.35;
 }
 
+.track-metadata-notice-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-self: start;
+	gap: 6px;
+	margin-top: 3px;
+}
+
 .track-metadata-notice-action {
 	-webkit-app-region: no-drag;
-	justify-self: start;
-	margin-top: 3px;
 	padding: 5px 9px;
 	border: 0;
 	border-radius: 999px;
 	background: var(--pip-foreground-color);
 	color: rgb(var(--pip-scrim-rgb));
+	font-size: clamp(10px, 1.8vmin, 13px);
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.track-metadata-notice-copy {
+	-webkit-app-region: no-drag;
+	padding: 5px 9px;
+	border: 1px solid rgba(var(--pip-foreground-rgb), 0.32);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--pip-foreground-color);
 	font-size: clamp(10px, 1.8vmin, 13px);
 	font-weight: 700;
 	cursor: pointer;

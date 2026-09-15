@@ -32,6 +32,8 @@ describe("lyricsLoadNoticeFor", () => {
 			title: "Unable to load lyrics",
 			detail: "Network request failed",
 			tryAgainLabel: "Retry this track",
+			copyDiagnosticsLabel: "Copy diagnostics",
+			diagnosticsCopiedLabel: "Copied",
 			tone: "danger",
 		});
 		expect(notice.diagnostics).toEqual([

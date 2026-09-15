@@ -113,6 +113,8 @@ export class PresentationController {
 							diagnostics: notice.diagnostics,
 							actionLabel: notice.tryAgainLabel,
 							onAction: notice.tryAgainLabel ? () => this.host.reloadCurrentTrack() : undefined,
+							copyDiagnosticsLabel: notice.copyDiagnosticsLabel,
+							diagnosticsCopiedLabel: notice.diagnosticsCopiedLabel,
 							tone: notice.tone,
 						},
 					},

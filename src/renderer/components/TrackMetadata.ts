@@ -13,6 +13,8 @@ export type TrackMetadataNotice = {
 	diagnostics?: string[];
 	actionLabel?: string;
 	onAction?: () => void;
+	copyDiagnosticsLabel?: string;
+	diagnosticsCopiedLabel?: string;
 	tone?: "neutral" | "danger";
 };
 
@@ -89,13 +91,26 @@ const createMetadataNotice = (document: Document, notice: TrackMetadataNotice): 
 	detail.textContent = notice.detail;
 	container.append(detail);
 
+	const actionElements: HTMLElement[] = [];
 	if (notice.actionLabel && notice.onAction) {
 		const button = document.createElement("button");
 		button.type = "button";
 		button.className = "track-metadata-notice-action";
 		button.textContent = notice.actionLabel;
 		button.addEventListener("click", notice.onAction);
-		container.append(button);
+		actionElements.push(button);
+	}
+	if (notice.diagnostics?.length) {
+		const copyButton = createCopyDiagnosticsButton(document, notice);
+		if (copyButton) {
+			actionElements.push(copyButton);
+		}
+	}
+	if (actionElements.length > 0) {
+		const actions = document.createElement("div");
+		actions.className = "track-metadata-notice-actions";
+		actions.append(...actionElements);
+		container.append(actions);
 	}
 
 	if (notice.diagnostics?.length) {
@@ -115,6 +130,39 @@ const createMetadataNotice = (document: Document, notice: TrackMetadataNotice): 
 	}
 
 	return container;
+};
+
+const createCopyDiagnosticsButton = (document: Document, notice: TrackMetadataNotice): HTMLButtonElement | undefined => {
+	const clipboard = document.defaultView?.navigator.clipboard;
+	const label = notice.copyDiagnosticsLabel;
+	if (!clipboard?.writeText || !label) {
+		return undefined;
+	}
+	const button = document.createElement("button");
+	button.type = "button";
+	button.className = "track-metadata-notice-copy";
+	button.textContent = label;
+	button.addEventListener("click", () => {
+		void clipboard
+			.writeText(diagnosticsReportText(notice))
+			.then(() => {
+				button.textContent = notice.diagnosticsCopiedLabel ?? label;
+				globalThis.setTimeout(() => {
+					button.textContent = label;
+				}, 2000);
+			})
+			.catch(() => {});
+	});
+	return button;
+};
+
+const diagnosticsReportText = (notice: TrackMetadataNotice): string => {
+	const lines = [notice.title, notice.detail];
+	if (notice.diagnosticsLabel) {
+		lines.push(notice.diagnosticsLabel);
+	}
+	lines.push(...(notice.diagnostics ?? []));
+	return lines.filter((line): line is string => Boolean(line)).join("\n");
 };
 
 const normalizedMetadata = (value: string | undefined): string | undefined => {
