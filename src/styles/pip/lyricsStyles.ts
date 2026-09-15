@@ -84,7 +84,8 @@ export const lyricsStyles = `
 	white-space: normal;
 	overflow-wrap: break-word;
 	word-break: keep-all;
-	contain: layout paint;
+	/* Keep layout isolation, but let scaled glyphs/glow paint beyond the row box. */
+	contain: layout;
 }
 
 .lyrics-track.align-left .vocals-group,
@@ -305,7 +306,8 @@ export const lyricsStyles = `
 	filter: blur(0);
 	visibility: visible;
 	transition: opacity 420ms ease, filter 420ms ease, visibility 0s;
-	contain: layout paint;
+	/* Highlight transforms can extend past the row's unscaled bounds. */
+	contain: layout;
 }
 
 .syllable-row.has-parenthetical-echo {

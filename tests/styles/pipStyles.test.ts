@@ -356,6 +356,7 @@ describe("pipStyles", () => {
 
 	test("reserves bleed space so active lyric glow is not clipped", () => {
 		const vocalsGroupRule = pipStyles.match(/\.vocals-group \{[^}]+\}/)?.[0] ?? "";
+		const syllableRowRule = pipStyles.match(/\.syllable-row \{[^}]+\}/)?.[0] ?? "";
 		const activeGroupRule = pipStyles.match(/\.vocals-group\.active \{[^}]+\}/)?.[0] ?? "";
 		const viewportRule = pipStyles.match(/\.lyrics-viewport \{[^}]+\}/)?.[0] ?? "";
 
@@ -367,6 +368,10 @@ describe("pipStyles", () => {
 		expect(vocalsGroupRule).toContain("padding-block: var(--lyric-layout-bleed)");
 		expect(vocalsGroupRule).toContain("margin-block: calc(-1 * var(--lyric-layout-bleed))");
 		expect(vocalsGroupRule).toContain("margin-inline: 0");
+		expect(vocalsGroupRule).toContain("contain: layout");
+		expect(vocalsGroupRule).not.toContain("contain: layout paint");
+		expect(syllableRowRule).toContain("contain: layout");
+		expect(syllableRowRule).not.toContain("contain: layout paint");
 		expect(activeGroupRule).not.toContain("padding");
 		expect(activeGroupRule).not.toContain("--lyric-layout-bleed");
 		expect(viewportRule).toContain("#000 9%");
