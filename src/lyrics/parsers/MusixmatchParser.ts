@@ -216,6 +216,13 @@ const collectTimedRichsyncTokens = (line: MusixmatchRichsyncLine): TimedMusixmat
 		const startTime = Number.isFinite(line.ts) && Number.isFinite(token.o) ? line.ts + token.o : Number.NaN;
 		if (token.c.trim().length === 0) {
 			separatorStartTime = Number.isFinite(startTime) ? startTime : undefined;
+			// Richsync represents word spacing as separate tokens. Keep the space in
+			// the preceding visual token; otherwise the renderer creates adjacent
+			// inline-flex words and the displayed lyric text is concatenated.
+			const previous = tokens.at(-1);
+			if (previous) {
+				previous.text += token.c;
+			}
 			continue;
 		}
 		if (Number.isFinite(startTime)) {

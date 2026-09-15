@@ -31,7 +31,7 @@ describe("parseMusixmatchRichsync", () => {
 		if (vocal.type !== "vocal") {
 			throw new Error("expected vocal");
 		}
-		expect(vocal.lead.syllables.map((syllable) => syllable.text)).toEqual(["Happy", "birthday", "to", "you"]);
+		expect(vocal.lead.syllables.map((syllable) => syllable.text)).toEqual(["Happy ", "birthday ", "to ", "you"]);
 		expect(vocal.lead.syllables[0]).toMatchObject({ startTime: 3.94, endTime: 4.6, isPartOfWord: false });
 		expect(vocal.lead.syllables.at(-1)).toMatchObject({ startTime: 6.49, endTime: 7.24 });
 	});
@@ -88,7 +88,7 @@ describe("parseMusixmatchRichsync", () => {
 		const lead = lyrics.content[0].lead;
 		expect(lead.startTime).toBe(148.18);
 		expect(lead.endTime).toBe(149.805);
-		expect(lead.syllables.map((syllable) => syllable.text)).toEqual(["되는", "건"]);
+		expect(lead.syllables.map((syllable) => syllable.text)).toEqual(["되는 ", "건"]);
 		expect(lead.syllables[0]).toMatchObject({ startTime: 148.18, endTime: 149.387 });
 		expect(lead.syllables[1]).toMatchObject({ startTime: 149.387, endTime: 149.805 });
 	});
@@ -117,7 +117,7 @@ describe("parseMusixmatchRichsync", () => {
 			throw new Error("expected syllable vocal");
 		}
 		const syllables = lyrics.content[0].lead.syllables;
-		expect(syllables.map((syllable) => syllable.text)).toEqual(["시간은", "조각칼을", "든", "채"]);
+		expect(syllables.map((syllable) => syllable.text)).toEqual(["시간은 ", "조각칼을 ", "든 ", "채"]);
 		expect(syllables[2]).toMatchObject({ startTime: 163.847, endTime: 164.357 });
 		expect(syllables[3]).toMatchObject({ startTime: 164.357, endTime: 164.358 });
 		for (const [index, syllable] of syllables.entries()) {
