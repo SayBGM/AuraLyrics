@@ -6,6 +6,7 @@ import type { TrackEpoch } from "../../src/app/TrackEpoch";
 import { type ReadyTrackSessionSnapshot, TrackSessionController, type TrackSessionSnapshot } from "../../src/app/TrackSessionController";
 import { buildTrackTheme, type TrackTheme } from "../../src/app/TrackThemeService";
 import type { TrackTransitionDirectionController } from "../../src/app/TrackTransitionDirectionController";
+import { MusixmatchRequestError } from "../../src/lyrics/providers/musixmatchProxy";
 import type { LineLyrics, LyricsDocument, LyricsLoadState, SyllableLyrics, TrackIdentity } from "../../src/lyrics/types";
 import type { PlaybackSynchronizer } from "../../src/player/PlaybackSynchronizer";
 import type { TrackChangedEvent } from "../../src/player/SpicetifyPlayerAdapter";
@@ -2222,6 +2223,23 @@ describe("ExtensionApp", () => {
 			internals.settingsView.destroy();
 			window.Spicetify = undefined;
 		}
+	});
+
+	test("preserves token rate-limit details for provider recovery", async () => {
+		const { spicetify } = createSpicetify();
+		const app = new ExtensionApp(spicetify);
+		const internals = app as unknown as {
+			musixmatchTokenService: { refresh: () => Promise<string> };
+			settings: { get: () => ExtensionSettings };
+			refreshMusixmatchToken: (providers: ExtensionSettings["providers"]) => Promise<string | undefined>;
+		};
+		const error = new MusixmatchRequestError("Musixmatch rate limit was reached.", "rate-limit", 429, 60_000);
+		internals.musixmatchTokenService = {
+			refresh: vi.fn(async () => {
+				throw error;
+			}),
+		};
+		await expect(internals.refreshMusixmatchToken(internals.settings.get().providers)).rejects.toBe(error);
 	});
 
 	test("keeps token persistence failure in the open settings status bar instead of a toast", async () => {

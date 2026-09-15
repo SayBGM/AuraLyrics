@@ -4,13 +4,15 @@ import {
 	MUSIXMATCH_MOBILE_FETCH_HEADERS,
 	musixmatchMobileUrl,
 } from "./MusixmatchMobileApi";
-import { requestMusixmatch } from "./musixmatchProxy";
+import { MusixmatchRequestError, type MusixmatchRequestErrorKind, requestMusixmatch, toMusixmatchRequestError } from "./musixmatchProxy";
 
 export type MusixmatchTokenResponse = {
 	message?: {
 		header?: {
 			status_code?: number;
 			hint?: string;
+			mode?: string;
+			retry_after?: number | string;
 		};
 		body?: {
 			user_token?: string;
@@ -54,9 +56,9 @@ export class MusixmatchTokenService {
 			if (token) {
 				return token;
 			}
-			throw new Error(this.errorMessage(response));
+			throw this.responseError(response);
 		} catch (error) {
-			throw new Error(`Musixmatch mobile token request failed. ${error instanceof Error ? error.message : String(error)}`);
+			throw toMusixmatchRequestError(error);
 		}
 	}
 
@@ -68,11 +70,27 @@ export class MusixmatchTokenService {
 		return undefined;
 	}
 
-	private errorMessage(response: MusixmatchTokenResponse): string {
+	private responseError(response: MusixmatchTokenResponse): MusixmatchRequestError {
 		const header = response.message?.header;
-		if (header?.status_code === 401) {
-			return "rate-limited or captcha required";
-		}
-		return header?.hint ?? "failed to generate token";
+		const status = header?.status_code;
+		const text = `${header?.hint ?? ""} ${header?.mode ?? ""}`.toLowerCase();
+		let kind: MusixmatchRequestErrorKind;
+		if (text.includes("captcha")) kind = "captcha";
+		else if (status === 429 || /rate.?limit|too many|blocked/.test(text)) kind = "rate-limit";
+		else if (status === 401 || status === 403) kind = "authentication";
+		else kind = status === 200 || status === undefined ? "invalid-response" : "http";
+		const retryAfter = Number(header?.retry_after);
+		const retryAfterMs = Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1000 : undefined;
+		const message =
+			kind === "captcha"
+				? "Musixmatch token request requires captcha verification."
+				: kind === "rate-limit"
+					? "Musixmatch token request was rate limited."
+					: kind === "authentication"
+						? "Musixmatch token authentication failed."
+						: kind === "http" && status !== undefined
+							? `Musixmatch token request failed with HTTP ${status}.`
+							: "Musixmatch token response was invalid.";
+		return new MusixmatchRequestError(message, kind, status, retryAfterMs);
 	}
 }

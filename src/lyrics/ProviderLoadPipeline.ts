@@ -131,29 +131,30 @@ export class ProviderLoadPipeline {
 				if (!isCurrent()) {
 					return { outcomes };
 				}
+				const requestDetails = result.diagnostics ? { requests: result.diagnostics } : {};
 				if (result.ok) {
 					const lyrics = prepareProviderLyrics(result.lyrics);
-					attempts.push({ provider: provider.id, status: "success" });
+					attempts.push({ provider: provider.id, status: "success", ...requestDetails });
 					return { ready: { lyrics, provider: provider.id, metadata: result.metadata }, outcomes };
 				}
 				if (result.reason === "temporarily-unavailable") {
 					this.cooldownUntil.set(provider.id, options.now() + (result.cooldownMs ?? options.temporaryUnavailableCooldownMs));
-					attempts.push({ provider: provider.id, status: "temporarily-unavailable", message: result.message });
+					attempts.push({ provider: provider.id, status: "temporarily-unavailable", message: result.message, ...requestDetails });
 					outcomes.set(provider.id, { status: "temporarily-unavailable", message: result.message });
 					continue;
 				}
 				if (result.reason === "instrumental") {
-					attempts.push({ provider: provider.id, status: "instrumental", message: result.message });
+					attempts.push({ provider: provider.id, status: "instrumental", message: result.message, ...requestDetails });
 					outcomes.set(provider.id, { status: "instrumental", message: result.message });
 					continue;
 				}
 				if (result.reason === "restricted") {
-					attempts.push({ provider: provider.id, status: "restricted", message: result.message });
+					attempts.push({ provider: provider.id, status: "restricted", message: result.message, ...requestDetails });
 					outcomes.set(provider.id, { status: "restricted", message: result.message });
 					continue;
 				}
 				const status = result.reason === "no-lyrics" ? "no-lyrics" : "error";
-				attempts.push({ provider: provider.id, status, message: result.message });
+				attempts.push({ provider: provider.id, status, message: result.message, ...requestDetails });
 				outcomes.set(provider.id, { status, message: result.message });
 			} catch (error) {
 				if (!isCurrent()) {

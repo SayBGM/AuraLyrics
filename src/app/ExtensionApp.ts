@@ -440,15 +440,11 @@ export class ExtensionApp {
 		return this.musixmatchTokenService.refresh(resolveProviderProxyBaseUrl(this.settings.get().providers));
 	}
 
-	/** Musixmatch 401 recovery: refreshes the token and persists it, or resolves `undefined` on failure. */
+	/** Preserve typed token failures so the provider can apply the correct cooldown. */
 	private async refreshMusixmatchToken(providers: ExtensionSettings["providers"]): Promise<string | undefined> {
-		try {
-			const token = await this.musixmatchTokenService.refresh(resolveProviderProxyBaseUrl(providers));
-			this.settings.update({ providers: { ...providers, musixmatchToken: token } });
-			return token;
-		} catch {
-			return undefined;
-		}
+		const token = await this.musixmatchTokenService.refresh(resolveProviderProxyBaseUrl(providers));
+		this.settings.update({ providers: { ...providers, musixmatchToken: token } });
+		return token;
 	}
 
 	private showSettingsPersistenceFailure(): void {

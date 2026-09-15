@@ -26,6 +26,28 @@ const lineLyrics = (text: string) => ({
 });
 
 describe("ProviderLoadPipeline", () => {
+	test("preserves request diagnostics through a blocked provider and successful fallback", async () => {
+		const requests = [{ stage: "track.subtitles.get", status: 429, outcome: "rate-limit", durationMs: 42 }];
+		const recovered = [{ stage: "track.subtitle.get", status: 200, outcome: "success", durationMs: 12 }];
+		const blocked: LyricsProvider = {
+			id: "musixmatch",
+			supports: () => true,
+			fetch: vi.fn(async () => ({ ok: false as const, reason: "temporarily-unavailable" as const, diagnostics: requests })),
+		};
+		const fallback: LyricsProvider = {
+			id: "lrclib",
+			supports: () => true,
+			fetch: async () => ({ ok: true, lyrics: lineLyrics("Recovered"), diagnostics: recovered }),
+		};
+		const pipeline = new ProviderLoadPipeline(() => context, { retryDelayMs: 0 });
+		const result = await pipeline.load(track, DEFAULT_SETTINGS, [blocked, fallback], () => true);
+		expect(result.state.status).toBe("ready");
+		expect(result.attempts[0].requests).toEqual(requests);
+		expect(result.attempts[1].requests).toEqual(recovered);
+		await pipeline.load(track, DEFAULT_SETTINGS, [blocked, fallback], () => true);
+		expect(blocked.fetch).toHaveBeenCalledTimes(1);
+	});
+
 	afterEach(() => {
 		vi.useRealTimers();
 	});

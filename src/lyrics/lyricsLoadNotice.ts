@@ -168,10 +168,14 @@ const noticeCopy = (language: UiLanguage, reason: LyricsLoadFailureReason): Noti
 };
 
 const diagnosticsFor = (diagnostics: LyricsLoadDiagnostics, language: UiLanguage): string[] => {
-	const attempts = diagnostics.attempts.map((attempt) => {
+	const attempts = diagnostics.attempts.flatMap((attempt) => {
 		const status = attemptStatusLabel(attempt.status, language);
 		const message = attempt.message ? ` · ${truncateDiagnostic(attempt.message)}` : "";
-		return `${providerDisplayName(attempt.provider)}: ${status}${message}`;
+		const requests = (attempt.requests ?? []).slice(0, 20).map((request) => {
+			const code = request.status === undefined ? "" : ` [${request.status}]`;
+			return truncateDiagnostic(`${request.stage}${code}: ${request.outcome} · ${Math.max(0, Math.round(request.durationMs))} ms`);
+		});
+		return [`${providerDisplayName(attempt.provider)}: ${status}${message}`, ...requests];
 	});
 	if (attempts.length > 0) {
 		return attempts;

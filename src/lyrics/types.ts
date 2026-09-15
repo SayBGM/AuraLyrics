@@ -84,10 +84,19 @@ export type LyricsCacheStatus =
 
 export type ProviderAttemptStatus = "success" | "no-lyrics" | "instrumental" | "restricted" | "temporarily-unavailable" | "cooldown" | "error";
 
+/** Safe request metadata only: never include request URLs, credentials, or raw responses. */
+export type ProviderRequestDiagnostic = {
+	stage: string;
+	status?: number;
+	outcome: string;
+	durationMs: number;
+};
+
 export type ProviderAttempt = {
 	provider: ProviderId;
 	status: ProviderAttemptStatus;
 	message?: string;
+	requests?: ProviderRequestDiagnostic[];
 };
 
 export type LyricsLoadDiagnostics = {
@@ -117,12 +126,13 @@ export type LyricsLoadState =
 	| { status: "error"; track: TrackIdentity; message: string; diagnostics?: LyricsLoadDiagnostics };
 
 export type ProviderResult =
-	| { ok: true; lyrics: LyricsDocument; metadata?: LyricsProviderMetadata }
+	| { ok: true; lyrics: LyricsDocument; metadata?: LyricsProviderMetadata; diagnostics?: ProviderRequestDiagnostic[] }
 	| {
 			ok: false;
 			reason: "no-lyrics" | "instrumental" | "restricted" | "unsupported-local" | "error" | "temporarily-unavailable";
 			message?: string;
 			cooldownMs?: number;
+			diagnostics?: ProviderRequestDiagnostic[];
 	  };
 
 export type ProviderContext = {

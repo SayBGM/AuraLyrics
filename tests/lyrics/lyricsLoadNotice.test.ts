@@ -11,6 +11,20 @@ const diagnostics: LyricsLoadDiagnostics = {
 };
 
 describe("lyricsLoadNoticeFor", () => {
+	test("shows the failing subcall status and duration in request details", () => {
+		const notice = lyricsLoadNoticeFor("error", "ko", undefined, {
+			cache: { status: "miss" },
+			attempts: [
+				{
+					provider: "musixmatch",
+					status: "temporarily-unavailable",
+					requests: [{ stage: "track.subtitles.get", status: 429, outcome: "rate-limit", durationMs: 42.2 }],
+				},
+			],
+		});
+		expect(notice.diagnostics).toEqual(["Musixmatch: 일시적으로 사용할 수 없음", "track.subtitles.get [429]: rate-limit · 42 ms"]);
+	});
+
 	test("explains the provider failure and exposes a retry action", () => {
 		const notice = lyricsLoadNoticeFor("error", "en", "Network request failed", diagnostics);
 
